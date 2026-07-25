@@ -1,0 +1,17 @@
+Port 22
+ListenAddress 0.0.0.0
+HostKey /var/lib/threadline-ssh/ssh_host_ed25519_key
+HostKey /var/lib/threadline-ssh/ssh_host_rsa_key
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitEmptyPasswords no
+PermitRootLogin no
+AllowUsers threadline
+AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+X11Forwarding no
+PrintMotd no
+Subsystem sftp internal-sftp

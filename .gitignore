@@ -1,0 +1,12 @@
+*.iml
+.DS_Store
+.env
+.gradle/
+.idea/
+.kotlin/
+build/
+captures/
+externalNativeBuild/
+local.properties
+app/build/
+fixtures/openssh/.state/

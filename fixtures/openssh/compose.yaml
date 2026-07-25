@@ -1,0 +1,20 @@
+services:
+  openssh:
+    build:
+      context: .
+    environment:
+      THREADLINE_TEST_PASSWORD: ${THREADLINE_TEST_PASSWORD:?set THREADLINE_TEST_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${THREADLINE_TEST_PORT:-2222}:22"
+    volumes:
+      - host_keys:/var/lib/threadline-ssh
+      - ./.state/client_ed25519.pub:/fixture-keys/client_ed25519.pub:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: "no"
+
+volumes:
+  host_keys:

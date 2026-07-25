@@ -1,0 +1,56 @@
+# OpenSSH test fixture
+
+The fixture exposes an OpenSSH server on localhost only. It has one user:
+`threadline`. Its password comes from the ignored `.env` file, and `start.sh`
+generates an unencrypted Ed25519 client key under the ignored `.state`
+directory.
+
+```bash
+cd fixtures/openssh
+cp .env.example .env
+# Edit .env and choose a local-only password.
+./start.sh
+```
+
+From the development host:
+
+```bash
+ssh -p 2222 threadline@127.0.0.1
+ssh -p 2222 -i .state/client_ed25519 threadline@127.0.0.1
+docker compose exec openssh \
+  ssh-keygen -lf /var/lib/threadline-ssh/ssh_host_ed25519_key.pub
+```
+
+From the standard Android emulator, use host `10.0.2.2` and port `2222`.
+The password is the value in `.env`. For key auth, copy
+`.state/client_ed25519` to the emulator and choose it through Android's file
+picker.
+
+To exercise the exact production SSH adapter on the development JVM:
+
+```bash
+./test-adapter.sh
+```
+
+The smoke test verifies the fixture fingerprint, authenticates once by
+password and once with the generated Ed25519 key, opens a PTY-backed shell,
+resizes it to 41 rows by 101 columns, and exchanges raw bytes. It is skipped
+during ordinary `./gradlew test` runs unless its fixture environment variables
+are present.
+
+Run `threadline-test-output` in the remote shell for mixed raw output. It also
+accepts `ansi`, `progress`, `unicode`, and `volume`.
+
+To stop the fixture:
+
+```bash
+docker compose down
+```
+
+To intentionally rotate the server host key for changed-key testing, remove
+the fixture volume and start it again:
+
+```bash
+docker compose down --volumes
+./start.sh
+```
