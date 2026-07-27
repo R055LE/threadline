@@ -23,7 +23,8 @@ tested before product UI is built.
 - A foreground service and visible disconnect notification
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
 - Unit tests for session transitions, host-key decisions, and credential wiping
-- An Android instrumentation test for the exact Ed25519 decode/sign/verify path
+- Android tests for the exact Ed25519 decode/sign/verify path and selective
+  connection-form retention
 - A bounded, ordered input queue so rapid IME and paste events cannot reorder
   bytes on the SSH channel
 - An opt-in plain-JVM smoke test that compiles the production SSH adapter and
@@ -122,10 +123,11 @@ risks are recorded in
 ## Project status
 
 This is a deliberately playful proof of concept, not a production SSH client.
-Password auth, Ed25519 host verification, a PTY shell, and ordered rapid input
-have now been proven on an Android 15 emulator. The specification files describe
-later phases, but Phase 1 should not begin until the remaining device/emulator
-checklist in the ADR is complete.
+Password auth, imported Ed25519 client-key auth, Ed25519 host verification,
+changed-host blocking, a PTY shell, and ordered rapid input have now been proven
+on an Android 15 emulator. The specification files describe later phases, but
+Phase 1 should not begin until the remaining device/emulator checklist in the
+ADR is complete.
 
 ## License
 

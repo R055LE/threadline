@@ -220,10 +220,46 @@ cleared as soon as a connection request is prepared. An Android Compose
 instrumentation regression removes and recreates the form to verify both halves
 of that policy.
 
+### Changed-host and imported-key Android proof
+
+The remaining host-trust and client-key paths were exercised on the Pixel 9
+Android 15 emulator with an isolated `dev.threadline.validation` install. The
+normal app and its private data were not changed.
+
+The changed-host proof used two Compose project names on one unused loopback
+port. Each project received a different Docker host-key volume:
+
+1. Start the baseline project and independently compare its served Ed25519
+   fingerprint with the Android prompt.
+2. Accept and persist that key. An intentionally invalid test password lets the
+   flow stop at authentication without exposing the fixture password.
+3. Stop the baseline without deleting its volume.
+4. Start the second project on the same host and port with a fresh volume.
+5. Reconnect with the validation app.
+
+Threadline showed the changed-key error with saved and presented fingerprints.
+It did not show an acceptance dialog and did not reach authentication. The
+baseline project was then restored from its retained volume.
+
+For client-key authentication, the ignored fixture-only Ed25519 private key was
+copied to emulator Downloads, selected through Android DocumentsUI, and read
+through the production content-URI path. The app authenticated without a
+password, opened the PTY-backed shell, and returned a `KEY_AUTH_OK` marker.
+OpenSSH independently logged the session as accepted public-key authentication.
+The copied key, validation app, and emulator-side proof files were removed
+afterward.
+
+The first attempted baseline comparison caught a useful environment problem:
+an older WSL-local Docker daemon already owned the default fixture port while a
+new Docker Desktop project had a different key but no effective port mapping.
+Because the fingerprints differed, the app prompt was rejected. Moving the
+controlled proof to an unused port made the listener, container key, and Android
+prompt agree. The lesson is operational but security-relevant: verify the key
+actually served at the endpoint, not merely the key inside the container one
+expects to own it.
+
 ### Remaining Phase 0 device checks
 
-- Android Ed25519 client-key authentication through the file picker;
-- changed-host-key block after regenerating the fixture volume;
 - ANSI, Unicode, carriage-return, and high-volume visual rendering;
 - PTY resize confirmed remotely after rotation;
 - foreground/background terminal preservation; and

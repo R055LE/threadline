@@ -5,12 +5,14 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val applicationIdOverride = providers.gradleProperty("threadline.applicationId").orNull
+
 android {
     namespace = "dev.threadline"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.threadline"
+        applicationId = applicationIdOverride ?: "dev.threadline"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

@@ -124,6 +124,17 @@ proved:
 - password authentication, PTY creation, and the raw terminal surface; and
 - ordered rapid keyboard input and returned shell output.
 
+A follow-up on the same emulator additionally proved:
+
+- a different real Ed25519 host key at the same endpoint is blocked without an
+  acceptance prompt, before authentication;
+- the generated fixture Ed25519 client key can be selected through Android's
+  system file picker and used for public-key authentication;
+- sshd records the Android session as accepted public-key authentication; and
+- that key-authenticated session opens the same PTY and returns a shell marker.
+
+![Key-authenticated Android PTY returning a validation marker](../images/phase0-client-key-auth.png)
+
 The first Android run exposed a platform/provider mismatch that the plain-JVM
 smoke test could not reproduce. The investigation and exact isolation method
 are recorded in
@@ -154,12 +165,12 @@ Do not mark this ADR accepted, or Phase 0 complete, until all of these have been
 observed against the Docker fixture:
 
 - [x] Password authentication succeeds.
-- [ ] Generated Ed25519-key authentication succeeds on Android. It is proven
-  only by the production adapter's JVM fixture test.
+- [x] Generated Ed25519-key authentication succeeds on Android through the
+  system file picker.
 - [x] The shown fingerprint matches the fixture host key.
 - [x] A restarted fixture with the same volume reconnects without prompting.
-- [ ] A regenerated host-key volume is blocked as changed on Android. The policy
-  has unit coverage.
+- [x] A regenerated host-key volume is blocked as changed on Android without
+  offering acceptance.
 - [ ] Raw commands, ANSI output, Unicode, carriage-return progress, and high-volume
   output render in termlib.
 - [x] Keyboard input reaches the same PTY and remains ordered under a rapid

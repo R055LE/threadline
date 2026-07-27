@@ -54,3 +54,27 @@ the fixture volume and start it again:
 docker compose down --volumes
 ./start.sh
 ```
+
+For an Android changed-key proof that keeps the accepted baseline available for
+restoration, use two Compose project names and an otherwise unused loopback
+port:
+
+```bash
+THREADLINE_TEST_PORT=2223 docker compose -p threadline-baseline \
+  up --build --detach --wait
+# Verify and accept the baseline key in an isolated app install.
+
+THREADLINE_TEST_PORT=2223 docker compose -p threadline-baseline down
+THREADLINE_TEST_PORT=2223 docker compose -p threadline-changed \
+  up --build --detach --wait
+# Reconnect to the same host and port; Threadline must block the changed key.
+
+THREADLINE_TEST_PORT=2223 docker compose -p threadline-changed down --volumes
+THREADLINE_TEST_PORT=2223 docker compose -p threadline-baseline \
+  up --detach --wait
+```
+
+`down` without `--volumes` preserves the baseline key. The second project gets
+its own host-key volume, so the endpoint changes identity without deleting the
+trusted baseline. Compare the public fingerprint at every acceptance step; do
+not accept a key merely because a container was expected to own the port.

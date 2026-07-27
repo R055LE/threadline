@@ -97,3 +97,18 @@ the user's app and losing its private data.
 - Password: the ignored local value in `fixtures/openssh/.env`
 
 Never paste the password into documentation, commits, bug reports, or Logcat.
+
+## Isolated validation install
+
+To exercise destructive fixture scenarios such as host-key rotation without
+touching the normal app's known-host database, build with a separate
+application ID:
+
+```powershell
+.\gradlew.bat :app:assembleDebug `
+  "-Pthreadline.applicationId=dev.threadline.validation"
+```
+
+The property is opt-in. Ordinary builds remain `dev.threadline`. The validation
+APK has separate Android app data, so it can be installed beside the normal
+debug app and removed after the test.
