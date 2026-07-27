@@ -41,6 +41,10 @@ are present.
 Run `threadline-test-output` in the remote shell for mixed raw output. It also
 accepts `ansi`, `progress`, `unicode`, and `volume`.
 
+`volume` emits 100,000 lines. It is an intentional stress probe, not a routine
+smoke test: the selected termlib version currently accumulates a render backlog
+for well over a minute under that load even though the SSH session survives.
+
 To stop the fixture:
 
 ```bash

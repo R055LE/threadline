@@ -113,8 +113,23 @@ On 2026-07-24, the Docker fixture and production adapter passed:
 - host-key persistence across a fixture restart using the same Docker volume.
 
 The fixture also produced ANSI, Unicode, carriage-return progress, and
-high-volume output. Those modes have not yet been visually verified through
-termlib on Android, so the decision remains provisional.
+high-volume output. The first three modes were visually verified through
+termlib on Android on 2026-07-27:
+
+- ANSI escapes were consumed and the expected token rendered red;
+- `π 日本語 🚀` rendered with the expected glyphs and cell widths; and
+- carriage-return progress replaced one line from `step 1` through `step 3`
+  before returning to the prompt.
+
+The 100,000-line mode exposed a performance boundary. Threadline stayed alive,
+rendered the stream, and accepted another command on the same PTY after the
+backlog drained. A repeat run also kept the Disconnect action responsive while
+output remained backlogged. However, termlib continued processing the
+already-generated stream for well over a minute and showed blank intermediate
+frames. Moving termlib's snapshot handler to a dedicated `HandlerThread` did
+not remove the per-line backlog and made those intermediate frames more
+obvious, so that experiment was reverted. High-volume correctness is proven;
+high-volume usability is not, and the dependency decision remains provisional.
 
 On 2026-07-27, a Pixel 9 Android 15 emulator and the production adapter also
 proved:
@@ -134,6 +149,12 @@ A follow-up on the same emulator additionally proved:
 - that key-authenticated session opens the same PTY and returns a shell marker.
 
 ![Key-authenticated Android PTY returning a validation marker](../images/phase0-client-key-auth.png)
+
+![ANSI color rendered by the Android terminal](../images/phase0-terminal-ansi.png)
+
+![Unicode glyphs rendered by the Android terminal](../images/phase0-terminal-unicode.png)
+
+![Carriage-return progress completing on one terminal line](../images/phase0-terminal-progress.png)
 
 The first Android run exposed a platform/provider mismatch that the plain-JVM
 smoke test could not reproduce. The investigation and exact isolation method
@@ -171,8 +192,12 @@ observed against the Docker fixture:
 - [x] A restarted fixture with the same volume reconnects without prompting.
 - [x] A regenerated host-key volume is blocked as changed on Android without
   offering acceptance.
-- [ ] Raw commands, ANSI output, Unicode, carriage-return progress, and high-volume
-  output render in termlib.
+- [x] Raw commands and ANSI output render in termlib.
+- [x] Unicode and carriage-return progress render correctly in termlib.
+- [x] A 100,000-line stream renders without crashing the process, and the same
+  PTY remains usable afterward.
+- [ ] High-volume output drains without a prolonged render backlog or blank
+  intermediate frames.
 - [x] Keyboard input reaches the same PTY and remains ordered under a rapid
   event burst.
 - [ ] Rotation changes PTY dimensions and `stty size` confirms them.

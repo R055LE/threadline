@@ -258,9 +258,60 @@ prompt agree. The lesson is operational but security-relevant: verify the key
 actually served at the endpoint, not merely the key inside the container one
 expects to own it.
 
+### Terminal rendering proof and high-volume boundary
+
+The normal app was reconnected to the unchanged fixture with its generated
+client key. Each fixture mode was run through the production SSH adapter and
+the same PTY-backed termlib surface:
+
+1. clear the terminal;
+2. run `threadline-test-output ansi`, `unicode`, or `progress`;
+3. capture the live Android surface, including both an intermediate and final
+   progress frame; and
+4. run `threadline-test-output volume`, which emits 100,000 lines, then verify
+   process health and reuse or explicit disconnection of the same session.
+
+ANSI, Unicode, and carriage-return handling passed visually. The ANSI control
+bytes were not shown as text, the expected token was red, `π 日本語 🚀` rendered
+intact, and progress advanced from `step 1` to `step 3` on one line before the
+prompt returned.
+
+![ANSI color rendered on Android](../images/phase0-terminal-ansi.png)
+
+![Unicode glyphs rendered on Android](../images/phase0-terminal-unicode.png)
+
+![Carriage-return progress completed on one line](../images/phase0-terminal-progress.png)
+
+The volume mode established a narrower result. Threadline rendered the stream
+without a crash or SSH disconnect and stayed near 133–135 MB proportional set
+size in the observed runs. After the original backlog drained, a
+`VOLUME_AFTER` marker returned through the same PTY. In a repeat run, the
+Disconnect action returned to the retained connection form in under three
+seconds even while terminal work remained backlogged.
+
+![The Android terminal rendering the 100,000-line stream](../images/phase0-terminal-volume-stream.png)
+
+![The same PTY returning a marker after the volume backlog drained](../images/phase0-terminal-volume-recovered.png)
+
+The performance itself did not pass. The fixture generator had exited while
+termlib continued processing output for well over a minute, and observations
+alternated between populated and blank terminal frames before recovery. A
+targeted experiment moved termlib's snapshot handler from the UI looper to a
+dedicated `HandlerThread`. The experiment passed `test`, `lint`, and
+`assembleDebug`, then reproduced the same per-line backlog and made the blank
+intermediate frames more visible. It was reverted rather than preserving an
+unproven concurrency workaround.
+
+The current evidence therefore separates correctness from usability: raw
+control sequences and glyphs are correct, and the session survives load, but
+the selected termlib version is not yet acceptable for unbounded high-volume
+output. The next investigation should compare an upstream fix, a bounded
+scrollback/output policy, and a terminal-library fallback without dropping raw
+bytes silently.
+
 ### Remaining Phase 0 device checks
 
-- ANSI, Unicode, carriage-return, and high-volume visual rendering;
+- resolve or explicitly bound termlib's high-volume output backlog;
 - PTY resize confirmed remotely after rotation;
 - foreground/background terminal preservation; and
 - disconnect leak/thread inspection.
@@ -278,7 +329,11 @@ expects to own it.
   [`ProviderLoader`](https://github.com/connectbot/connectbot/blob/main/app/src/oss/java/org/connectbot/util/ProviderLoader.kt)
   and
   [version catalog](https://github.com/connectbot/connectbot/blob/main/gradle/libs.versions.toml)
-  for its Android Conscrypt strategy; and
+  for its Android Conscrypt strategy;
+- termlib's
+  [`TerminalEmulator`](https://github.com/connectbot/termlib/blob/main/lib/src/main/java/org/connectbot/terminal/TerminalEmulator.kt)
+  implementation for its looper, snapshot, scrollback, and damage-coalescing
+  behavior; and
 - the official
   [Conscrypt repository](https://github.com/google/conscrypt)
   for provider context and licensing.

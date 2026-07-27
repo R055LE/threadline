@@ -124,10 +124,13 @@ risks are recorded in
 
 This is a deliberately playful proof of concept, not a production SSH client.
 Password auth, imported Ed25519 client-key auth, Ed25519 host verification,
-changed-host blocking, a PTY shell, and ordered rapid input have now been proven
-on an Android 15 emulator. The specification files describe later phases, but
-Phase 1 should not begin until the remaining device/emulator checklist in the
-ADR is complete.
+changed-host blocking, a PTY shell, ordered rapid input, ANSI color, Unicode,
+and carriage-return progress have now been proven on an Android 15 emulator. A
+100,000-line stream also survives without a crash or lost SSH session, but
+termlib accumulates an unacceptably long render backlog under that load. The
+specification files describe later phases, but Phase 1 should not begin until
+that performance boundary and the remaining device/emulator checklist in the
+ADR are resolved.
 
 ## License
 
