@@ -208,10 +208,17 @@ specifically rather than a generic connection failure.
 
 ### Host-form persistence
 
-After a failed connection, the form returns with defaults instead of preserving
-the non-secret display name, host, port, username, and authentication selection.
-Passwords and passphrases must remain session-only and cleared. Persisting or
-restoring the non-secret fields is a separate UX fix.
+Resolved in the follow-up to this investigation. The form originally owned all
+of its fields, so Compose discarded them when the UI switched to connection
+progress and created a new form after failure.
+
+The non-secret display name, host, port, username, and authentication selection
+are now held by the parent application UI and survive that state transition.
+They are also saveable across Android state restoration. Passwords and
+passphrases remain short-lived form state: they are never saveable and are
+cleared as soon as a connection request is prepared. An Android Compose
+instrumentation regression removes and recreates the form to verify both halves
+of that policy.
 
 ### Remaining Phase 0 device checks
 

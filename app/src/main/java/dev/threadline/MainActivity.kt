@@ -44,11 +44,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -83,9 +86,59 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class AuthenticationMode {
+internal enum class AuthenticationMode {
     PASSWORD,
     PRIVATE_KEY,
+}
+
+internal data class ConnectionFormDraft(
+    val displayName: String,
+    val hostname: String,
+    val port: String,
+    val username: String,
+    val authenticationMode: AuthenticationMode,
+) {
+    companion object {
+        fun fixtureDefaults() = ConnectionFormDraft(
+            displayName = "Local fixture",
+            hostname = "10.0.2.2",
+            port = "2222",
+            username = "threadline",
+            authenticationMode = AuthenticationMode.PASSWORD,
+        )
+
+        val Saver: Saver<ConnectionFormDraft, Any> = listSaver(
+            save = {
+                listOf(
+                    it.displayName,
+                    it.hostname,
+                    it.port,
+                    it.username,
+                    it.authenticationMode.name,
+                )
+            },
+            restore = {
+                ConnectionFormDraft(
+                    displayName = it[0],
+                    hostname = it[1],
+                    port = it[2],
+                    username = it[3],
+                    authenticationMode = AuthenticationMode.valueOf(it[4]),
+                )
+            },
+        )
+    }
+}
+
+internal object ConnectionFormTags {
+    const val DISPLAY_NAME = "connection-display-name"
+    const val HOSTNAME = "connection-hostname"
+    const val PORT = "connection-port"
+    const val USERNAME = "connection-username"
+    const val PASSWORD_AUTH = "connection-password-auth"
+    const val PRIVATE_KEY_AUTH = "connection-private-key-auth"
+    const val PASSWORD = "connection-password"
+    const val KEY_PASSPHRASE = "connection-key-passphrase"
 }
 
 @Composable
@@ -93,6 +146,9 @@ private fun ThreadlineApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val manager = SessionRuntime.manager
     val state by manager.state.collectAsStateWithLifecycle()
+    var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+        mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -108,6 +164,8 @@ private fun ThreadlineApp() {
         SessionState.Disconnected,
         is SessionState.Failed,
         -> HostForm(
+            draft = connectionDraft,
+            onDraftChange = { connectionDraft = it },
             sessionError = (current as? SessionState.Failed)?.error,
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
@@ -169,18 +227,13 @@ private fun startSessionService(context: Context) {
 }
 
 @Composable
-private fun HostForm(
+internal fun HostForm(
+    draft: ConnectionFormDraft,
+    onDraftChange: (ConnectionFormDraft) -> Unit,
     sessionError: SessionError?,
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var displayName by rememberSaveable { mutableStateOf("Local fixture") }
-    var hostname by rememberSaveable { mutableStateOf("10.0.2.2") }
-    var port by rememberSaveable { mutableStateOf("2222") }
-    var username by rememberSaveable { mutableStateOf("threadline") }
-    var authenticationMode by rememberSaveable {
-        mutableStateOf(AuthenticationMode.PASSWORD)
-    }
     // Secrets deliberately use remember rather than rememberSaveable.
     var password by remember { mutableStateOf("") }
     var keyPassphrase by remember { mutableStateOf("") }
@@ -234,55 +287,75 @@ private fun HostForm(
             }
 
             OutlinedTextField(
-                value = displayName,
-                onValueChange = { displayName = it },
+                value = draft.displayName,
+                onValueChange = { onDraftChange(draft.copy(displayName = it)) },
                 label = { Text("Display name") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.DISPLAY_NAME),
             )
             OutlinedTextField(
-                value = hostname,
-                onValueChange = { hostname = it },
+                value = draft.hostname,
+                onValueChange = { onDraftChange(draft.copy(hostname = it)) },
                 label = { Text("Hostname or IP") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.HOSTNAME),
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter(Char::isDigit) },
+                    value = draft.port,
+                    onValueChange = {
+                        onDraftChange(draft.copy(port = it.filter(Char::isDigit)))
+                    },
                     label = { Text("Port") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
-                    modifier = Modifier.weight(0.35f),
+                    modifier = Modifier
+                        .weight(0.35f)
+                        .testTag(ConnectionFormTags.PORT),
                 )
                 OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
+                    value = draft.username,
+                    onValueChange = { onDraftChange(draft.copy(username = it)) },
                     label = { Text("Username") },
                     singleLine = true,
-                    modifier = Modifier.weight(0.65f),
+                    modifier = Modifier
+                        .weight(0.65f)
+                        .testTag(ConnectionFormTags.USERNAME),
                 )
             }
 
             Text("Authentication", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(
-                    selected = authenticationMode == AuthenticationMode.PASSWORD,
-                    onClick = { authenticationMode = AuthenticationMode.PASSWORD },
+                    selected = draft.authenticationMode == AuthenticationMode.PASSWORD,
+                    onClick = {
+                        onDraftChange(
+                            draft.copy(authenticationMode = AuthenticationMode.PASSWORD),
+                        )
+                    },
                     label = { Text("Password") },
+                    modifier = Modifier.testTag(ConnectionFormTags.PASSWORD_AUTH),
                 )
                 FilterChip(
-                    selected = authenticationMode == AuthenticationMode.PRIVATE_KEY,
-                    onClick = { authenticationMode = AuthenticationMode.PRIVATE_KEY },
+                    selected = draft.authenticationMode == AuthenticationMode.PRIVATE_KEY,
+                    onClick = {
+                        onDraftChange(
+                            draft.copy(authenticationMode = AuthenticationMode.PRIVATE_KEY),
+                        )
+                    },
                     label = { Text("Private key") },
+                    modifier = Modifier.testTag(ConnectionFormTags.PRIVATE_KEY_AUTH),
                 )
             }
 
-            when (authenticationMode) {
+            when (draft.authenticationMode) {
                 AuthenticationMode.PASSWORD -> OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -290,7 +363,9 @@ private fun HostForm(
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.PASSWORD),
                 )
 
                 AuthenticationMode.PRIVATE_KEY -> {
@@ -307,7 +382,9 @@ private fun HostForm(
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.KEY_PASSPHRASE),
                     )
                 }
             }
@@ -316,11 +393,11 @@ private fun HostForm(
             Button(
                 onClick = {
                     formError = null
-                    val parsedPort = port.toIntOrNull()
+                    val parsedPort = draft.port.toIntOrNull()
                     if (
-                        displayName.isBlank() ||
-                        hostname.isBlank() ||
-                        username.isBlank() ||
+                        draft.displayName.isBlank() ||
+                        draft.hostname.isBlank() ||
+                        draft.username.isBlank() ||
                         parsedPort == null ||
                         parsedPort !in 1..65535
                     ) {
@@ -329,7 +406,7 @@ private fun HostForm(
                     }
 
                     val credential = runCatching {
-                        when (authenticationMode) {
+                        when (draft.authenticationMode) {
                             AuthenticationMode.PASSWORD -> {
                                 if (password.isEmpty()) {
                                     error("Enter the fixture password.")
@@ -360,9 +437,9 @@ private fun HostForm(
 
                     val request = ConnectionRequest(
                         profile = HostProfile(
-                            displayName = displayName.trim(),
-                            endpoint = HostEndpoint(hostname.trim(), parsedPort),
-                            username = username.trim(),
+                            displayName = draft.displayName.trim(),
+                            endpoint = HostEndpoint(draft.hostname.trim(), parsedPort),
+                            username = draft.username.trim(),
                         ),
                         credential = credential,
                     )
