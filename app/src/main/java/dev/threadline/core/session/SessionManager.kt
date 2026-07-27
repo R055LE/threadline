@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +46,7 @@ class SessionManager(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
+    private val inputRequests = Channel<SessionInput>(capacity = INPUT_QUEUE_CAPACITY)
 
     val state: StateFlow<SessionState> = stateMachine.state
 
@@ -59,6 +61,19 @@ class SessionManager(
     private var liveSession: LiveSshSession? = null
 
     init {
+        scope.launch {
+            inputRequests.consumeEach { input ->
+                runCatching { input.session.send(input.bytes) }
+                    .onFailure {
+                        if (
+                            liveSession === input.session &&
+                            state.value is SessionState.Connected
+                        ) {
+                            stateMachine.apply(SessionEvent.Failed(SessionError.ConnectionLost))
+                        }
+                    }
+            }
+        }
         scope.launch {
             resizeRequests
                 .debounce(100)
@@ -111,14 +126,12 @@ class SessionManager(
     }
 
     fun send(bytes: ByteArray) {
-        val safeCopy = bytes.copyOf()
-        scope.launch {
-            runCatching { liveSession?.send(safeCopy) }
-                .onFailure {
-                    if (state.value is SessionState.Connected) {
-                        stateMachine.apply(SessionEvent.Failed(SessionError.ConnectionLost))
-                    }
-                }
+        val session = liveSession ?: return
+        if (
+            inputRequests.trySend(SessionInput(session, bytes.copyOf())).isFailure &&
+            state.value is SessionState.Connected
+        ) {
+            stateMachine.apply(SessionEvent.Failed(SessionError.InputBackpressure))
         }
     }
 
@@ -227,5 +240,14 @@ class SessionManager(
         if (state.value is SessionState.Connected) {
             stateMachine.apply(SessionEvent.Failed(SessionError.ConnectionLost))
         }
+    }
+
+    private data class SessionInput(
+        val session: LiveSshSession,
+        val bytes: ByteArray,
+    )
+
+    private companion object {
+        const val INPUT_QUEUE_CAPACITY = 256
     }
 }

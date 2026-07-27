@@ -3,7 +3,9 @@ package dev.threadline
 import android.content.Context
 import dev.threadline.core.security.SharedPreferencesKnownHostStore
 import dev.threadline.core.session.SessionManager
+import dev.threadline.core.ssh.AndroidSshCryptoProvider
 import dev.threadline.core.ssh.ConnectBotSshClientAdapter
+import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
 import dev.threadline.core.terminal.TerminalBridge
 
 object SessionRuntime {
@@ -17,9 +19,12 @@ object SessionRuntime {
     fun initialize(context: Context) {
         if (::manager.isInitialized) return
 
+        val hostKeyAlgorithms = HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
+            AndroidSshCryptoProvider.install(),
+        )
         val bridge = TerminalBridge()
         val sessionManager = SessionManager(
-            adapter = ConnectBotSshClientAdapter(),
+            adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = SharedPreferencesKnownHostStore(
                 context.getSharedPreferences("known_hosts", Context.MODE_PRIVATE),
             ),

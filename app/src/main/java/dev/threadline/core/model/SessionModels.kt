@@ -146,6 +146,11 @@ sealed interface SessionError {
         override val userMessage: String = "The SSH connection was lost."
     }
 
+    data object InputBackpressure : SessionError {
+        override val userMessage: String =
+            "Local input was stopped because the SSH send queue filled."
+    }
+
     data object NotificationPermissionRequired : SessionError {
         override val userMessage: String =
             "Notification permission is required while an SSH session is active."

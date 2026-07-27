@@ -17,7 +17,9 @@ import org.connectbot.sshlib.SshClient
 import org.connectbot.sshlib.SshClientConfig
 import org.connectbot.sshlib.SshSession
 
-class ConnectBotSshClientAdapter : SshClientAdapter {
+class ConnectBotSshClientAdapter(
+    private val hostKeyAlgorithmsOverride: String? = null,
+) : SshClientAdapter {
     override suspend fun connect(
         request: ConnectionRequest,
         verifier: ServerHostKeyVerifier,
@@ -28,6 +30,7 @@ class ConnectBotSshClientAdapter : SshClientAdapter {
             host = request.profile.endpoint.hostname
             port = request.profile.endpoint.port
             preferPasswordAuth = true
+            hostKeyAlgorithmsOverride?.let { hostKeyAlgorithms = it }
             hostKeyVerifier = object : HostKeyVerifier {
                 override suspend fun verify(key: PublicKey): Boolean =
                     verifier.verify(key.type, key.encoded)

@@ -1,6 +1,6 @@
 # ADR 0001: SSH and terminal libraries
 
-- Status: Provisional — implementation selected, device spike pending
+- Status: Provisional — Android transport proven, device matrix incomplete
 - Date: 2026-07-24
 
 ## Context
@@ -26,6 +26,7 @@ Use:
 
 - `org.connectbot.sshlib:sshlib:0.4.1`
 - `org.connectbot:termlib:0.1.0`
+- `org.conscrypt:conscrypt-android:2.6.1`
 
 Both versions are pinned in the Gradle version catalog.
 
@@ -53,6 +54,21 @@ A different saved key is blocked without offering a one-tap replacement.
 An SLF4J no-op runtime provider disables dependency logging in the POC. This
 avoids library messages containing host or username context entering Logcat.
 
+The app installs the bundled Conscrypt provider before constructing the SSH
+adapter. This follows the provider strategy used by ConnectBot's open-source
+Android flavor. A real Ed25519 key-generation, X.509 decode, sign, and verify
+probe decides whether the provider is usable; checking only that the algorithm
+name exists is insufficient on Android.
+
+If that probe fails, Threadline removes Ed25519 and Ed448 from its client
+host-key offer for that process and retains ECDSA plus RSA-SHA2. It does not
+enable legacy `ssh-rsa` signatures. Strict unknown/changed-host behavior is
+unchanged in either path.
+
+Raw input is serialized through one bounded, session-bound queue. Launching one
+I/O coroutine per keyboard event reordered rapid input in the emulator even
+though ordinary typing appeared healthy.
+
 ## License
 
 - The new ConnectBot sshlib is Apache-2.0.
@@ -66,6 +82,13 @@ the two libraries have additional transitive dependencies.
 
 - sshlib `0.4.1` targets JVM 17 and uses Ktor networking. Android build and
   runtime compatibility must be proven on the target emulator/device matrix.
+- Conscrypt adds native code and APK size. Its provider is process-global, so a
+  full SSH handshake test remains required in addition to the isolated crypto
+  probe.
+- sshlib `0.4.1` applies a hard-coded 30-second timeout to key exchange,
+  including time spent waiting for the app's host-key decision. A user who
+  takes longer to verify an unknown fingerprint receives a generic connection
+  failure. This needs an upstream change or a two-pass verification design.
 - sshlib exposes stdout and SSH extended-data streams separately. OpenSSH
   merges stdout and stderr for a PTY, which preserves the expected ordered raw
   terminal stream in the fixture. A server that emits extended data despite a
@@ -93,6 +116,19 @@ The fixture also produced ANSI, Unicode, carriage-return progress, and
 high-volume output. Those modes have not yet been visually verified through
 termlib on Android, so the decision remains provisional.
 
+On 2026-07-27, a Pixel 9 Android 15 emulator and the production adapter also
+proved:
+
+- negotiation and display of the fixture's `ssh-ed25519` host key;
+- explicit acceptance and persistence of its SHA-256 fingerprint;
+- password authentication, PTY creation, and the raw terminal surface; and
+- ordered rapid keyboard input and returned shell output.
+
+The first Android run exposed a platform/provider mismatch that the plain-JVM
+smoke test could not reproduce. The investigation and exact isolation method
+are recorded in
+[`docs/investigations/2026-07-27-android-ssh-connection.md`](../investigations/2026-07-27-android-ssh-connection.md).
+
 ## Alternatives considered
 
 ### Older ConnectBot/Trilead sshlib
@@ -117,15 +153,18 @@ distribution decision for the whole application.
 Do not mark this ADR accepted, or Phase 0 complete, until all of these have been
 observed against the Docker fixture:
 
-1. Password authentication succeeds.
-2. Generated Ed25519-key authentication succeeds.
-3. The shown fingerprint matches the fixture host key.
-4. A restarted fixture with the same volume reconnects without prompting.
-5. A regenerated host-key volume is blocked as changed.
-6. Raw commands, ANSI output, Unicode, carriage-return progress, and high-volume
-   output render in termlib.
-7. Keyboard input reaches the same PTY.
-8. Rotation changes PTY dimensions and `stty size` confirms them.
-9. Backgrounding shows the foreground notification; returning preserves
-   terminal state.
-10. Disconnect closes the channel without leaked jobs or threads.
+- [x] Password authentication succeeds.
+- [ ] Generated Ed25519-key authentication succeeds on Android. It is proven
+  only by the production adapter's JVM fixture test.
+- [x] The shown fingerprint matches the fixture host key.
+- [x] A restarted fixture with the same volume reconnects without prompting.
+- [ ] A regenerated host-key volume is blocked as changed on Android. The policy
+  has unit coverage.
+- [ ] Raw commands, ANSI output, Unicode, carriage-return progress, and high-volume
+  output render in termlib.
+- [x] Keyboard input reaches the same PTY and remains ordered under a rapid
+  event burst.
+- [ ] Rotation changes PTY dimensions and `stty size` confirms them.
+- [ ] Backgrounding shows the foreground notification; returning preserves
+  terminal state.
+- [ ] Disconnect closes the channel without leaked jobs or threads.

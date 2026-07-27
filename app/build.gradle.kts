@@ -69,6 +69,7 @@ dependencies {
 
     implementation(libs.connectbot.sshlib)
     implementation(libs.connectbot.termlib)
+    implementation(libs.conscrypt.android)
 
     // Silence library logging in the POC so hosts, usernames, and auth details
     // cannot accidentally enter Logcat through an installed SLF4J provider.
@@ -78,4 +79,6 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

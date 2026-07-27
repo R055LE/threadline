@@ -13,6 +13,8 @@ tested before product UI is built.
 
 - Native Kotlin, Jetpack Compose, and Material 3 app in one Gradle module
 - ConnectBot's coroutine SSH library behind a narrow adapter
+- A bundled Conscrypt provider with an Android Ed25519 capability probe and
+  modern ECDSA/RSA-SHA2 compatibility fallback
 - ConnectBot's libvterm-backed Compose terminal component
 - Password and imported OpenSSH private-key authentication
 - Explicit confirmation and persistence for unknown host keys
@@ -21,6 +23,9 @@ tested before product UI is built.
 - A foreground service and visible disconnect notification
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
 - Unit tests for session transitions, host-key decisions, and credential wiping
+- An Android instrumentation test for the exact Ed25519 decode/sign/verify path
+- A bounded, ordered input queue so rapid IME and paste events cannot reorder
+  bytes on the SSH channel
 - An opt-in plain-JVM smoke test that compiles the production SSH adapter and
   proves password auth, key auth, PTY resize, and byte exchange against the
   fixture
@@ -40,8 +45,17 @@ tested before product UI is built.
 ./gradlew assembleDebug
 ```
 
+With an emulator or device running:
+
+```bash
+./gradlew connectedDebugAndroidTest
+```
+
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`.
+
+Windows/WSL setup and APK-install notes are in
+[the Android development guide](docs/development/windows-wsl-android.md).
 
 ## Run the SSH fixture
 
@@ -101,12 +115,17 @@ Passwords, passphrases, and imported key bytes are not persisted.
 
 The dependency choice and its open questions are recorded in
 [ADR 0001](docs/adr/0001-ssh-and-terminal-libraries.md).
+The Android connection failure, isolation method, root cause, fix, and remaining
+risks are recorded in
+[the July 2026 investigation](docs/investigations/2026-07-27-android-ssh-connection.md).
 
 ## Project status
 
 This is a deliberately playful proof of concept, not a production SSH client.
-The specification files describe later phases, but Phase 1 should not begin
-until a developer has completed the real-device/emulator checklist in the ADR.
+Password auth, Ed25519 host verification, a PTY shell, and ordered rapid input
+have now been proven on an Android 15 emulator. The specification files describe
+later phases, but Phase 1 should not begin until the remaining device/emulator
+checklist in the ADR is complete.
 
 ## License
 
