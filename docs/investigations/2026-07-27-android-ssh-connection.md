@@ -353,11 +353,25 @@ Threadline retains the suspending ordered terminal delivery, disconnect
 cancellation, typed renderer failure, and their unit tests. The evidence no
 longer supports a termlib fork or terminal replacement for this load case.
 
-### Remaining Phase 0 device checks
+### Phase 0 lifecycle completion
 
-- PTY resize confirmed remotely after rotation;
-- foreground/background terminal preservation; and
-- disconnect leak/thread inspection.
+The remaining lifecycle checks passed on the same Pixel 6 API 35 emulator:
+
+- remote `stty size` returned `34 63` in portrait, `2 133` after rotating to
+  landscape with the software keyboard open, and `34 63` after restoring
+  portrait;
+- the backgrounded app retained its process-owned terminal while the
+  foreground notification reported `Raw shell connected`;
+- a delayed `BACKGROUND_DURING` marker and its prompt were present when the
+  Activity returned;
+- each live connection had one container `sshd-session` pair and one shell,
+  all of which disappeared after Disconnect;
+- the foreground service and notification were removed after Disconnect; and
+- repeated connection cycles used 32 app threads while connected and returned
+  to 30 while disconnected, with no accumulation.
+
+These results satisfy ADR 0001's exit checklist and complete the Phase 0
+dependency spike.
 
 ## Upstream sources inspected
 

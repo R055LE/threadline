@@ -4,10 +4,10 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-This repository is currently **Phase 0: repository and dependency spike**.
-There are no transcript cards yet. The app contains one host form and one raw,
-PTY-backed SSH session so the risky dependency and lifecycle assumptions can be
-tested before product UI is built.
+**Phase 0: repository and dependency spike is complete.** The repository is
+moving into Phase 1's structured command lifecycle. There are no transcript
+cards yet; the app currently contains one host form and one proven raw,
+PTY-backed SSH session.
 
 ## What the spike contains
 
@@ -131,8 +131,9 @@ same PTY visibly returns a follow-up marker. What first looked like a
 multi-minute termlib backlog was the bottom half of a 59-row terminal hidden
 behind the software keyboard. Applying the IME inset to the terminal host fixed
 its PTY and Canvas size without dropping or sampling output bytes. The
-specification files describe later phases, but Phase 1 should not begin until
-the remaining device/emulator checklist in the ADR is resolved.
+The remaining rotation, background, and disconnect checks also pass, so
+[ADR 0001](docs/adr/0001-ssh-and-terminal-libraries.md) is accepted and Phase 1
+may proceed.
 
 ## License
 

@@ -1,6 +1,6 @@
 # ADR 0001: SSH and terminal libraries
 
-- Status: Provisional — Android transport proven, device matrix incomplete
+- Status: Accepted — Phase 0 exit criterion met
 - Date: 2026-07-24
 
 ## Context
@@ -147,8 +147,19 @@ the keyboard still open.
 Threadline retains the main callback looper, ordered suspending output
 delivery, disconnect cancellation, and typed renderer failure. No termlib fork
 or terminal replacement is justified by the high-volume evidence. The
-dependency decision remains provisional only because the remaining lifecycle
-and device-matrix checks are incomplete.
+dependency decision remains isolated behind adapters so a broader device matrix
+can still reveal compatibility work without reopening the Phase 0 gate.
+
+The final API 35 lifecycle checks passed on 2026-07-29:
+
+- remote `stty size` changed from `34 63` in portrait to `2 133` in landscape
+  and returned to `34 63` in portrait on the same PTY;
+- while the Activity was backgrounded, the foreground notification reported
+  `Raw shell connected`, the service and process remained active, and delayed
+  `BACKGROUND_DURING` output was present on return; and
+- two disconnect cycles removed the container's `sshd-session` and shell,
+  Android's foreground service and notification, and returned the app from 32
+  connected threads to 30 disconnected threads without accumulation.
 
 On 2026-07-27, a Pixel 9 Android 15 emulator and the production adapter also
 proved:
@@ -219,7 +230,7 @@ observed against the Docker fixture:
   above the open software keyboard.
 - [x] Keyboard input reaches the same PTY and remains ordered under a rapid
   event burst.
-- [ ] Rotation changes PTY dimensions and `stty size` confirms them.
-- [ ] Backgrounding shows the foreground notification; returning preserves
+- [x] Rotation changes PTY dimensions and `stty size` confirms them.
+- [x] Backgrounding shows the foreground notification; returning preserves
   terminal state.
-- [ ] Disconnect closes the channel without leaked jobs or threads.
+- [x] Disconnect closes the channel without leaked jobs or threads.
