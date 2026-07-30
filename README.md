@@ -22,7 +22,8 @@ PTY-backed SSH session.
 - PTY creation, raw ordered output, keyboard input, and resize propagation
 - A foreground service and visible disconnect notification
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
-- Unit tests for session transitions, host-key decisions, and credential wiping
+- Unit tests for session transitions, host-key decisions, credential wiping,
+  and the incremental structured-shell marker parser
 - Android tests for the exact Ed25519 decode/sign/verify path and selective
   connection-form retention
 - A bounded, ordered input queue so rapid IME and paste events cannot reorder
@@ -131,9 +132,15 @@ same PTY visibly returns a follow-up marker. What first looked like a
 multi-minute termlib backlog was the bottom half of a 59-row terminal hidden
 behind the software keyboard. Applying the IME inset to the terminal host fixed
 its PTY and Canvas size without dropping or sampling output bytes. The
-The remaining rotation, background, and disconnect checks also pass, so
+remaining rotation, background, and disconnect checks also pass, so
 [ADR 0001](docs/adr/0001-ssh-and-terminal-libraries.md) is accepted and Phase 1
 may proceed.
+
+Phase 1 now has random session nonces, typed command lifecycle events, and a
+bounded incremental OSC parser. The parser preserves byte/event ordering across
+arbitrary buffer splits, removes only valid same-session Threadline markers
+from transcript output, and passes unknown or malformed sequences through
+unchanged. It is not yet wired into the live PTY pipeline.
 
 ## License
 
