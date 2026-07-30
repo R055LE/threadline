@@ -2,8 +2,8 @@
 
 - Date: 2026-07-29
 - Phase: 1 — Structured command lifecycle
-- Status: Protocol primitives and live Bash fixture proof complete; Android
-  session wiring remains
+- Status: Protocol primitives, live Bash fixture proof, and Android session
+  wiring complete; command UI remains
 
 ## Goal
 
@@ -74,12 +74,37 @@ case proved, in one SSH channel and PTY:
 - `false` returned exit status 1; and
 - a multiline assignment and `printf` completed successfully.
 
+`SessionManager` unit tests additionally prove:
+
+- bootstrap markers fragmented across SSH output reads reach structured
+  `Ready` state;
+- one accepted command blocks a second transcript submission until completion;
+- start, output, exit status, and current directory update immutable
+  structured-shell state;
+- the exact original marker-bearing byte stream still reaches the raw terminal;
+- bootstrap timeout becomes structured `Unavailable` while the SSH connection
+  and raw input remain usable; and
+- an exception during structured setup has the same raw-only downgrade
+  behavior.
+
+The final Android gate ran on the Pixel 6 API 35 emulator:
+
+- all three connected Android tests passed;
+- the production app authenticated to the loopback fixture with its disposable
+  Ed25519 client key;
+- the production `SessionManager` installed the temporary Bash integration,
+  parsed its live SSH output, and reached structured `Ready`; and
+- the Compose terminal header rendered `Structured shell ready · same PTY`.
+
+The session then disconnected cleanly, and the fixture-only key copied to the
+emulator for this check was removed.
+
 ## Current limits
 
 - Only the Bash path is implemented. Zsh and generic POSIX compatibility still
   need explicit probes and downgrade behavior.
-- The bootstrap, parser, and live proof are not yet connected to Android's
-  `SessionManager` or command state machine.
+- `SessionManager` exposes submission and structured lifecycle state, but the
+  Compose UI remains the raw terminal and does not submit transcript commands.
 - The current-directory field follows the Phase 1 specification and is emitted
   directly. Semicolons are supported because the parser treats the final field
   as a remainder, but a directory containing an OSC terminator control

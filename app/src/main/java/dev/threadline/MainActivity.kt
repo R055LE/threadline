@@ -68,6 +68,7 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
+import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.service.SshSessionService
 import org.connectbot.terminal.Terminal
 import java.io.ByteArrayOutputStream
@@ -146,7 +147,8 @@ internal object ConnectionFormTags {
 private fun ThreadlineApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val manager = SessionRuntime.manager
-    val state by manager.state.collectAsStateWithLifecycle()
+    val snapshot by manager.snapshot.collectAsStateWithLifecycle()
+    val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
         mutableStateOf(ConnectionFormDraft.fixtureDefaults())
     }
@@ -188,6 +190,7 @@ private fun ThreadlineApp() {
 
         is SessionState.Connected -> TerminalScreen(
             displayName = current.displayName,
+            structuredShell = snapshot.structuredShell,
             onControlC = manager::sendControlC,
             onDisconnect = manager::disconnect,
         )
@@ -213,7 +216,7 @@ private fun ThreadlineApp() {
 
     if (state is SessionState.AwaitingHostKey) {
         HostKeyDialog(
-            prompt = (state as SessionState.AwaitingHostKey).prompt,
+            prompt = state.prompt,
             onDecision = manager::resolveHostKey,
         )
     }
@@ -268,11 +271,12 @@ internal fun HostForm(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "Phase 0 · raw SSH dependency spike",
+                "Phase 1 · structured command lifecycle",
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "Connect to the local fixture, verify its host key, and use one live PTY-backed shell.",
+                "Connect to the local fixture and use the live PTY-backed shell " +
+                    "while structured command handling is built underneath it.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -491,6 +495,7 @@ private fun ErrorCard(error: SessionError) {
 @Composable
 private fun TerminalScreen(
     displayName: String,
+    structuredShell: StructuredShellState,
     onControlC: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -501,7 +506,7 @@ private fun TerminalScreen(
                     Column {
                         Text(displayName)
                         Text(
-                            "Raw terminal · same PTY",
+                            structuredShell.statusLabel(),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
@@ -529,6 +534,14 @@ private fun TerminalScreen(
             )
         }
     }
+}
+
+private fun StructuredShellState.statusLabel(): String = when (this) {
+    StructuredShellState.Inactive -> "Raw terminal · same PTY"
+    is StructuredShellState.Bootstrapping -> "Setting up structured shell · raw available"
+    is StructuredShellState.Ready -> "Structured shell ready · same PTY"
+    is StructuredShellState.Running -> "Structured command running · raw available"
+    is StructuredShellState.Unavailable -> "Structured shell unavailable · raw available"
 }
 
 @Composable

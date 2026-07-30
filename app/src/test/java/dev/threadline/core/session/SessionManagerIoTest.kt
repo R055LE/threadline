@@ -9,6 +9,13 @@ import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
 import dev.threadline.core.security.KnownHostRecord
 import dev.threadline.core.security.KnownHostStore
+import dev.threadline.core.shell.CommandId
+import dev.threadline.core.shell.CommandSubmissionRejection
+import dev.threadline.core.shell.CommandSubmissionResult
+import dev.threadline.core.shell.CompletedCommand
+import dev.threadline.core.shell.SessionNonce
+import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.shell.StructuredShellUnavailableReason
 import dev.threadline.core.ssh.LiveSshSession
 import dev.threadline.core.ssh.ServerHostKeyVerifier
 import dev.threadline.core.ssh.SshClientAdapter
@@ -22,6 +29,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,9 +63,11 @@ class SessionManagerIoTest {
         expected.forEach { manager.send(byteArrayOf(it.code.toByte())) }
 
         withTimeout(2_000) {
-            while (session.sent.size < expected.length) delay(10)
+            while (!session.sent.joinToString("") { it.decodeToString() }.endsWith(expected)) {
+                delay(10)
+            }
         }
-        assertEquals(expected, session.sent.joinToString("") { it.decodeToString() })
+        assertTrue(session.sent.joinToString("") { it.decodeToString() }.endsWith(expected))
 
         manager.disconnect()
         withTimeout(2_000) {
@@ -155,6 +165,190 @@ class SessionManagerIoTest {
             manager.state.first { it is SessionState.Disconnected }
         }
         assertTrue(session.disconnected.isCompleted)
+    }
+
+    @Test
+    fun `structured lifecycle preserves exact raw output and enforces one active command`() =
+        runBlocking {
+            val session = RecordingSession()
+            val terminal = RecordingTerminal()
+            val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+            val commandIds = ArrayDeque(
+                listOf(
+                    CommandId("bootstrap-probe"),
+                    CommandId("first-command"),
+                    CommandId("second-command"),
+                ),
+            )
+            val manager = SessionManager(
+                adapter = ImmediateAdapter(session),
+                knownHostStore = EmptyKnownHostStore,
+                terminal = terminal,
+                sessionNonceFactory = { nonce },
+                commandIdFactory = { commandIds.removeFirst() },
+                bootstrapTimeoutMillis = 2_000,
+            )
+
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            withTimeout(2_000) {
+                manager.state.filterIsInstance<SessionState.Connected>().first()
+            }
+            withTimeout(2_000) {
+                while (session.sent.isEmpty()) delay(10)
+            }
+            assertTrue(
+                session.sent.first().decodeToString().contains(
+                    "__threadline_run_${nonce.value}",
+                ),
+            )
+
+            val bootstrapRaw = lifecycleBytes(
+                nonce = nonce,
+                commandId = CommandId("bootstrap-probe"),
+                exitStatus = 0,
+                currentDirectory = "/home/threadline",
+            )
+            session.output.send(bootstrapRaw.copyOfRange(0, 17))
+            session.output.send(bootstrapRaw.copyOfRange(17, bootstrapRaw.size))
+            withTimeout(2_000) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+            }
+
+            val accepted = manager.submitCommand("cd /tmp && false")
+            assertEquals(
+                CommandSubmissionResult.Accepted(CommandId("first-command")),
+                accepted,
+            )
+            assertEquals(
+                CommandSubmissionResult.Rejected(
+                    CommandSubmissionRejection.COMMAND_ALREADY_RUNNING,
+                ),
+                manager.submitCommand("printf duplicate"),
+            )
+            withTimeout(2_000) {
+                while (session.sent.size < 2) delay(10)
+            }
+
+            val commandRaw = lifecycleBytes(
+                nonce = nonce,
+                commandId = CommandId("first-command"),
+                exitStatus = 1,
+                currentDirectory = "/tmp",
+                output = "visible output\r\n",
+            )
+            session.output.send(commandRaw)
+            val ready = withTimeout(2_000) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>()
+                    .first { it.lastCommand != null }
+            }
+
+            assertEquals(
+                CompletedCommand(
+                    id = CommandId("first-command"),
+                    command = "cd /tmp && false",
+                    directoryAtStart = "/home/threadline",
+                    currentDirectory = "/tmp",
+                    exitStatus = 1,
+                ),
+                ready.lastCommand,
+            )
+            assertArrayEquals(
+                bootstrapRaw + commandRaw,
+                terminal.received.flattenBytes(),
+            )
+            assertEquals(
+                CommandSubmissionResult.Accepted(CommandId("second-command")),
+                manager.submitCommand("printf next"),
+            )
+
+            manager.disconnect()
+            withTimeout(2_000) {
+                manager.state.first { it is SessionState.Disconnected }
+            }
+            assertEquals(StructuredShellState.Inactive, manager.structuredState.value)
+        }
+
+    @Test
+    fun `bootstrap timeout downgrades to raw mode without failing connection`() = runBlocking {
+        val session = RecordingSession()
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = {
+                SessionNonce("0123456789abcdef0123456789abcdef")
+            },
+            commandIdFactory = { CommandId("bootstrap-probe") },
+            bootstrapTimeoutMillis = 50,
+        )
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        val unavailable = withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Unavailable>().first()
+        }
+
+        assertEquals(
+            StructuredShellUnavailableReason.BOOTSTRAP_TIMED_OUT,
+            unavailable.reason,
+        )
+        assertTrue(manager.state.value is SessionState.Connected)
+
+        manager.send("raw-still-works".encodeToByteArray())
+        withTimeout(2_000) {
+            while (
+                !session.sent.joinToString("") { it.decodeToString() }
+                    .endsWith("raw-still-works")
+            ) {
+                delay(10)
+            }
+        }
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+        Unit
+    }
+
+    @Test
+    fun `structured setup failure leaves the connected raw shell available`() = runBlocking {
+        val session = RecordingSession()
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { error("nonce provider unavailable") },
+        )
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        val unavailable = withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Unavailable>().first()
+        }
+
+        assertEquals(
+            StructuredShellUnavailableReason.BOOTSTRAP_FAILED,
+            unavailable.reason,
+        )
+        assertTrue(manager.state.value is SessionState.Connected)
+
+        manager.send("raw-after-setup-failure".encodeToByteArray())
+        withTimeout(2_000) {
+            while (
+                !session.sent.joinToString("") { it.decodeToString() }
+                    .endsWith("raw-after-setup-failure")
+            ) {
+                delay(10)
+            }
+        }
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+        Unit
     }
 }
 
@@ -254,3 +448,39 @@ private object FailingTerminal : TerminalSink {
         error("renderer failed")
     }
 }
+
+private class RecordingTerminal : TerminalSink {
+    override val size = TerminalSize(rows = 24, columns = 80)
+    val received = CopyOnWriteArrayList<ByteArray>()
+
+    override fun clear() {
+        received.clear()
+    }
+
+    override suspend fun receive(bytes: ByteArray) {
+        received += bytes.copyOf()
+    }
+}
+
+private fun lifecycleBytes(
+    nonce: SessionNonce,
+    commandId: CommandId,
+    exitStatus: Int,
+    currentDirectory: String,
+    output: String = "",
+): ByteArray {
+    fun marker(event: String, vararg fields: String): ByteArray =
+        (
+            "\u001b]777;threadline;${nonce.value};$event;${commandId.value}" +
+                fields.joinToString(separator = "", prefix = "") { ";$it" } +
+                "\u0007"
+        ).encodeToByteArray()
+
+    return marker("start") +
+        marker("output") +
+        output.encodeToByteArray() +
+        marker("end", exitStatus.toString(), currentDirectory)
+}
+
+private fun Iterable<ByteArray>.flattenBytes(): ByteArray =
+    fold(ByteArray(0)) { accumulated, bytes -> accumulated + bytes }

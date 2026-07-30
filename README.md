@@ -142,8 +142,11 @@ bootstrap have also passed the live OpenSSH fixture with persistent `cd` and
 `export` state, success and failure statuses, and multiline input. The parser
 preserves byte/event ordering across arbitrary buffer splits, removes only
 valid same-session Threadline markers from transcript output, and passes
-unknown or malformed sequences through unchanged. This structured path is not
-yet wired into the Android `SessionManager`.
+unknown or malformed sequences through unchanged. Android's `SessionManager`
+now bootstraps this path, exposes immutable structured-shell state, enforces one
+active command, records exit status and directory, and downgrades failures to
+the still-connected raw terminal. The terminal header reports structured
+readiness; command submission UI is not built yet.
 
 ## License
 
