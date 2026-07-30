@@ -12,6 +12,8 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.isPopup
@@ -29,6 +31,8 @@ import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.LifecyclePhase
 import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.terminal.TerminalKey
+import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
@@ -408,6 +412,53 @@ class TranscriptScreenTest {
         composeRule.onNodeWithText("Transcript").performClick()
         composeRule.onNodeWithText("This command may need interactive input.")
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun terminalExtraKeyRowExposesOneShotModifiersAndTerminalKeys() {
+        val modifiers = mutableStateOf(TerminalModifiers())
+        var sentKey: TerminalKey? = null
+        composeRule.setContent {
+            MaterialTheme {
+                TerminalExtraKeyRow(
+                    modifiers = modifiers.value,
+                    onToggleControl = {
+                        modifiers.value = modifiers.value.copy(
+                            control = !modifiers.value.control,
+                        )
+                    },
+                    onToggleAlt = {
+                        modifiers.value = modifiers.value.copy(
+                            alt = !modifiers.value.alt,
+                        )
+                    },
+                    onKey = {
+                        sentKey = it
+                        modifiers.value = TerminalModifiers()
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL)
+            .assertIsNotSelected()
+            .performClick()
+            .assertIsSelected()
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_ALT)
+            .assertIsNotSelected()
+            .performClick()
+            .assertIsSelected()
+
+        TerminalKey.entries.forEach { key ->
+            composeRule.onNodeWithTag(TranscriptTags.terminalKey(key)).assertExists()
+        }
+        composeRule.onNodeWithTag(TranscriptTags.terminalKey(TerminalKey.ARROW_UP))
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(TerminalKey.ARROW_UP, sentKey)
+        }
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertIsNotSelected()
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_ALT).assertIsNotSelected()
     }
 
     @Test

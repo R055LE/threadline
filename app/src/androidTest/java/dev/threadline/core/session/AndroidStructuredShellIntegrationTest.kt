@@ -146,26 +146,24 @@ class AndroidStructuredShellIntegrationTest {
             assertTrue(!renderedTurn.output.approximate)
             assertTrue(!renderedTurn.output.truncated)
 
-            val lessSubmission = accepted(
-                manager.submitCommand("less /etc/services"),
+            executeInteractive(
+                manager = manager,
+                command = "less /etc/services",
+                exitInput = "q".encodeToByteArray(),
+                description = "less",
             )
-            val suggestedTurn = withTimeout(COMMAND_TIMEOUT_MILLIS) {
-                manager.transcriptState.first { transcript ->
-                    transcript.turns
-                        .firstOrNull { it.id == lessSubmission.commandId }
-                        ?.output
-                        ?.interactiveHint != null
-                }.turns.first { it.id == lessSubmission.commandId }
-            }
-            assertEquals(CommandStatus.RUNNING, suggestedTurn.status)
-            assertTrue(suggestedTurn.output.interactiveHint != null)
-            manager.send("q".encodeToByteArray())
-            val lessCompleted = awaitCompletion(
-                manager,
-                lessSubmission.commandId,
-                "interactive less command",
+            executeInteractive(
+                manager = manager,
+                command = "top",
+                exitInput = "q".encodeToByteArray(),
+                description = "top",
             )
-            assertEquals(0, lessCompleted.exitStatus)
+            executeInteractive(
+                manager = manager,
+                command = "vim -Nu NONE -n -i NONE /tmp/threadline-vim-proof",
+                exitInput = "\u001b:q!\r".encodeToByteArray(),
+                description = "vim",
+            )
 
             val volumeSubmission = accepted(
                 manager.submitCommand("yes 0123456789 | head -n 20000"),
@@ -215,6 +213,33 @@ class AndroidStructuredShellIntegrationTest {
                 manager.state.first { it is SessionState.Disconnected }
             }
         }
+    }
+
+    private suspend fun executeInteractive(
+        manager: SessionManager,
+        command: String,
+        exitInput: ByteArray,
+        description: String,
+    ) {
+        val submission = accepted(manager.submitCommand(command))
+        val suggestedTurn = withTimeout(COMMAND_TIMEOUT_MILLIS) {
+            manager.transcriptState.first { transcript ->
+                transcript.turns
+                    .firstOrNull { it.id == submission.commandId }
+                    ?.output
+                    ?.interactiveHint != null
+            }.turns.first { it.id == submission.commandId }
+        }
+        assertEquals(CommandStatus.RUNNING, suggestedTurn.status)
+        assertTrue(suggestedTurn.output.interactiveHint != null)
+
+        manager.send(exitInput)
+        val completed = awaitCompletion(
+            manager,
+            submission.commandId,
+            "interactive $description command",
+        )
+        assertEquals(0, completed.exitStatus)
     }
 
     private suspend fun assertSuccessful(

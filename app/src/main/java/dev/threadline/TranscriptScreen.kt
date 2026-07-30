@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +20,13 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -32,7 +35,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.terminal.TerminalKey
+import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.AnsiColor
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
@@ -76,10 +83,29 @@ internal object TranscriptTags {
     const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
     const val INTERACTIVE_OPEN = "interactive-open-terminal"
+    const val TERMINAL_CONTROL = "terminal-control"
+    const val TERMINAL_ALT = "terminal-alt"
+    private const val TERMINAL_KEY_PREFIX = "terminal-key-"
     private const val OUTPUT_PREFIX = "command-output-"
 
     fun output(commandId: String): String = "$OUTPUT_PREFIX$commandId"
+
+    fun terminalKey(key: TerminalKey): String = "$TERMINAL_KEY_PREFIX${key.name}"
 }
+
+private val terminalExtraKeys = listOf(
+    TerminalKey.ESCAPE to "Esc",
+    TerminalKey.TAB to "Tab",
+    TerminalKey.ARROW_UP to "↑",
+    TerminalKey.ARROW_DOWN to "↓",
+    TerminalKey.ARROW_LEFT to "←",
+    TerminalKey.ARROW_RIGHT to "→",
+    TerminalKey.HOME to "Home",
+    TerminalKey.END to "End",
+    TerminalKey.PAGE_UP to "PgUp",
+    TerminalKey.PAGE_DOWN to "PgDn",
+    TerminalKey.DELETE to "Del",
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,18 +179,77 @@ internal fun ConnectedSessionScreen(
 
 @Composable
 private fun RawTerminal(modifier: Modifier = Modifier) {
-    Box(
+    val bridge = SessionRuntime.terminal
+    val modifiers by bridge.modifiers.collectAsState()
+    DisposableEffect(bridge) {
+        bridge.clearModifiers()
+        onDispose(bridge::clearModifiers)
+    }
+
+    Column(
         modifier = modifier
             .imePadding()
             .background(Color.Black),
     ) {
-        Terminal(
-            terminalEmulator = SessionRuntime.terminal.emulator,
-            keyboardEnabled = true,
-            showSoftKeyboard = true,
-            onHyperlinkClick = {},
-            modifier = Modifier.fillMaxSize(),
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            Terminal(
+                terminalEmulator = bridge.emulator,
+                keyboardEnabled = true,
+                showSoftKeyboard = true,
+                onHyperlinkClick = {},
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        HorizontalDivider()
+        TerminalExtraKeyRow(
+            modifiers = modifiers,
+            onToggleControl = bridge::toggleControl,
+            onToggleAlt = bridge::toggleAlt,
+            onKey = bridge::sendKey,
+            modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+internal fun TerminalExtraKeyRow(
+    modifiers: TerminalModifiers,
+    onToggleControl: () -> Unit,
+    onToggleAlt: () -> Unit,
+    onKey: (TerminalKey) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = modifiers.control,
+            onClick = onToggleControl,
+            label = { Text("Ctrl") },
+            modifier = Modifier.testTag(TranscriptTags.TERMINAL_CONTROL),
+        )
+        FilterChip(
+            selected = modifiers.alt,
+            onClick = onToggleAlt,
+            label = { Text("Alt") },
+            modifier = Modifier.testTag(TranscriptTags.TERMINAL_ALT),
+        )
+        terminalExtraKeys.forEach { (key, label) ->
+            TextButton(
+                onClick = { onKey(key) },
+                modifier = Modifier.testTag(TranscriptTags.terminalKey(key)),
+            ) {
+                Text(label)
+            }
+        }
     }
 }
 

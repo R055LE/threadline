@@ -4,11 +4,11 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 3: seamless raw fallback is in progress.** The app opens on a
+**Phase 3: seamless raw fallback is complete.** The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
-terminal.
+terminal with mobile modifier and navigation keys.
 
 ## What the prototype contains
 
@@ -41,6 +41,8 @@ terminal.
 - Advisory detection of alternate-screen, cursor-addressing, mouse-tracking,
   and bracketed-paste control sequences with an explicit same-session terminal
   handoff
+- A horizontally scrollable terminal key row with one-shot Ctrl and Alt plus
+  Esc, Tab, arrows, Home, End, Page Up, Page Down, and Delete
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -196,21 +198,28 @@ oversized candidates stay inert. Tapping a detected link first shows the exact
 address in a confirmation dialog; only an explicit Open action hands it to
 Android, and a missing handler becomes a visible error rather than a crash.
 
-Phase 3 begins mostly on already-proven infrastructure: the raw terminal uses
+Phase 3 builds mostly on already-proven infrastructure: the raw terminal uses
 the same SSH channel and PTY, its emulator remains process-owned while hidden,
 manual switching and return already work, and terminal measurements already
-resize the remote PTY. The first missing slice adds bounded, incremental
+resize the remote PTY. The first missing slice added bounded, incremental
 interactive hints for strong terminal control sequences. A running card says
 only that the command *may* need input and requires an explicit Open terminal
-action. A production Android fixture run launched real `less`, observed the
-hint, sent `q` through the same PTY, and completed the structured command with
-exit 0. The boundary and acceptance evidence are recorded in the
+action.
+
+The completion slice adds a mobile extra-key row. Ctrl and Alt are explicit
+one-shot modifiers shared by normal IME input and the row; they clear after the
+next input and whenever the raw view is entered or left. Navigation keys use
+conventional xterm modifier parameters, and Ctrl never rewrites a multi-byte
+IME callback. A production Android fixture run launched real `less`, `top`, and
+`vim` in sequence, observed an interactive hint for each, sent their exit input
+through the same manager and PTY, and received exit 0 for every structured
+command in 2.737 seconds. JVM tests, lint, the debug build, and all 22 routine
+device tests also pass. The boundary and acceptance evidence are recorded in the
 [Phase 3 investigation](docs/investigations/2026-07-30-seamless-raw-fallback.md).
 
-The remaining Phase 3 work is the mobile extra-key row and live `top`/`vim`
-proof. Deferred transcript hardening still includes history deletion and
-retention controls, user-scrolled streaming behavior, and focused rotation and
-background-transition checks.
+Phase 3 is complete. Phase 4 is security and persistence. Deferred transcript
+hardening still includes history deletion and retention controls, user-scrolled
+streaming behavior, and focused rotation and background-transition checks.
 
 ## License
 
