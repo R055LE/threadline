@@ -7,17 +7,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.isPopup
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
 import dev.threadline.core.shell.ActiveCommand
 import dev.threadline.core.shell.CommandId
@@ -233,6 +237,136 @@ class TranscriptScreenTest {
         composeRule.onNodeWithText("printf hello").assertExists()
         composeRule.onNodeWithText("hello").assertExists()
         composeRule.onNodeWithText("Succeeded · /srv/app · 35 ms · exit 0").assertExists()
+    }
+
+    @Test
+    fun outputWebLinkRequiresConfirmationBeforeOpeningExactUrl() {
+        val url = "https://example.com/report?q=threadline"
+        var openedUrl: String? = null
+        val turn = turn(
+            status = CommandStatus.SUCCEEDED,
+            output = url,
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    onOpenUrl = { openedUrl = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.output(turn.id.value)).performClick()
+        composeRule.onNodeWithText("Open external link?").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals(null, openedUrl)
+        }
+
+        composeRule.onNodeWithText("Cancel").performClick()
+        composeRule.onNodeWithText("Open external link?").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(null, openedUrl)
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.output(turn.id.value)).performClick()
+        composeRule.onNodeWithText("Open").performClick()
+        composeRule.runOnIdle {
+            assertEquals(url, openedUrl)
+        }
+    }
+
+    @Test
+    fun rejectedExternalOpenShowsAnErrorInsteadOfCrashing() {
+        val turn = turn(
+            status = CommandStatus.SUCCEEDED,
+            output = "https://example.com",
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    onOpenUrl = {
+                        throw IllegalArgumentException("No activity can handle the URL")
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.output(turn.id.value)).performClick()
+        composeRule.onNodeWithText("Open").performClick()
+
+        composeRule.onNodeWithText("Could not open link").assertIsDisplayed()
+        composeRule.onNodeWithText("No installed app accepted this web address.")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun nonWebOutputSchemesDoNotBecomeLinks() {
+        val turn = turn(
+            status = CommandStatus.SUCCEEDED,
+            output = "file:///tmp/report ssh://example.com javascript:alert(1)",
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.LinkTestMarker),
+            useUnmergedTree = true,
+        ).assertCountEquals(0)
+    }
+
+    @Test
+    fun outputRemainsSelectableWhenItContainsAWebLink() {
+        val turn = turn(
+            status = CommandStatus.SUCCEEDED,
+            output = "select this https://example.com safely",
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.output(turn.id.value))
+            .performTouchInput {
+                longClick(
+                    position = percentOffset(x = 0.1f, y = 0.5f),
+                    durationMillis = 1_000L,
+                )
+            }
+        composeRule.onNodeWithText("Open external link?").assertDoesNotExist()
+        composeRule.onAllNodes(isPopup(), useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test

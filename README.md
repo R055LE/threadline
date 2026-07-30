@@ -35,7 +35,8 @@ same persistent raw terminal.
   state
 - A multiline command composer and neutral command cards with one-shot stop,
   delayed explicit disconnect, Older/Newer command history with draft
-  restoration, copy, edit, rerun, output collapsing, and raw-terminal switching
+  restoration, copy, edit, rerun, output collapsing, selectable output,
+  confirmed HTTP(S) links, and raw-terminal switching
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -184,10 +185,17 @@ latest entry. Typing, editing a card, or accepting any submission leaves
 history-navigation mode deliberately. Composer text, history position, and the
 saved draft survive Android saved-state recreation.
 
+The output-interaction follow-up keeps rendered command output selectable while
+underlining only conservative HTTP(S) detections. Remote text remains plain,
+untrusted text: unsupported schemes, malformed or credential-bearing URLs, and
+oversized candidates stay inert. Tapping a detected link first shows the exact
+address in a confirmation dialog; only an explicit Open action hands it to
+Android, and a missing handler becomes a visible error rather than a crash.
+
 The remaining Phase 2 work is interaction hardening rather than visual polish:
-history deletion and retention controls, interactive-command suggestions, URL
-handling, selection, user-scrolled streaming behavior, and device testing of
-rotation and background transitions.
+history deletion and retention controls, interactive-command suggestions,
+user-scrolled streaming behavior, and device testing of rotation and background
+transitions.
 
 ## License
 

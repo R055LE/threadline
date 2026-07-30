@@ -267,3 +267,39 @@ Remaining Phase 2 work includes history deletion and retention controls, URL
 interaction, interactive-command suggestions, selection, user-scrolled
 streaming behavior, rotation, and background transitions. Room transcript
 persistence remains deferred to Phase 4.
+
+## Phase 2 selectable output and confirmed web links
+
+The next interaction slice treats linkification as a boundary around untrusted
+remote text, not as permission to navigate. The transcript continues to render
+plain `AnnotatedString` content inside a `SelectionContainer`; it never renders
+remote output as HTML. Link detection accepts only parseable HTTP or HTTPS URLs
+with a host, no user-info component, and at most 4,096 candidate characters.
+Bare domains, `file:`, SSH, JavaScript, malformed hosts, and oversized
+candidates remain ordinary selectable text. Sentence punctuation and unmatched
+closing delimiters are excluded without dropping balanced parentheses from a
+URL.
+
+A tap does not open the address. It stores the detected URL as pending UI state
+and presents the exact value in a selectable confirmation dialog. Cancel clears
+the pending value; Open is the only action that delegates to Android's URI
+handler. Handler failure produces a visible error dialog rather than crashing
+the transcript. A link clipped by the collapsed-output boundary is not made
+interactive until the complete link is visible.
+
+Plain-JVM tests cover exact source ranges, multiple links, case-insensitive web
+schemes, prose punctuation, balanced parentheses, rejected schemes and hosts,
+credential-bearing addresses, and the length bound. API 35 Compose tests prove
+that non-web schemes have no link semantics, a tap requires confirmation before
+the exact URL reaches the injected opener, and a long press in output that also
+contains a link produces both selection handles without opening the link
+dialog. The full `test`, `lint`, `assembleDebug`, and routine connected Android
+gate passed with all 18 routine device tests green; the password-gated
+production SSH case was skipped as designed. This UI-only slice does not change
+transport, collection, or shell integration, so the separate credential
+fixture was not rerun.
+
+Remaining Phase 2 work includes history deletion and retention controls,
+interactive-command suggestions, user-scrolled streaming behavior, rotation,
+and background transitions. Room transcript persistence remains deferred to
+Phase 4.

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,9 +43,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -59,6 +63,7 @@ import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.CommandTurn
+import dev.threadline.core.transcript.TranscriptLinkDetector
 import dev.threadline.core.transcript.TranscriptStyle
 import kotlinx.coroutines.delay
 import org.connectbot.terminal.Terminal
@@ -70,6 +75,9 @@ internal object TranscriptTags {
     const val HISTORY_OLDER = "command-history-older"
     const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
+    private const val OUTPUT_PREFIX = "command-output-"
+
+    fun output(commandId: String): String = "$OUTPUT_PREFIX$commandId"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -167,7 +175,10 @@ internal fun TranscriptSurface(
     modifier: Modifier = Modifier,
     clockMillis: () -> Long = System::currentTimeMillis,
     listState: LazyListState = rememberLazyListState(),
+    onOpenUrl: ((String) -> Unit)? = null,
 ) {
+    val uriHandler = LocalUriHandler.current
+    val openUrl = onOpenUrl ?: uriHandler::openUri
     var composer by rememberSaveable { mutableStateOf("") }
     var historyIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var historyDraft by rememberSaveable { mutableStateOf("") }
@@ -282,6 +293,7 @@ internal fun TranscriptSurface(
                         submissionError = null
                     },
                     onRerun = { submit(turn.command, clearComposer = false) },
+                    onOpenUrl = openUrl,
                     clockMillis = clockMillis,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
@@ -367,11 +379,14 @@ private fun CommandCard(
     onDisconnect: () -> Unit,
     onEdit: () -> Unit,
     onRerun: () -> Unit,
+    onOpenUrl: (String) -> Unit,
     clockMillis: () -> Long,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable(turn.id.value) { mutableStateOf(false) }
+    var pendingUrl by rememberSaveable(turn.id.value) { mutableStateOf<String?>(null) }
+    var linkOpenFailed by rememberSaveable(turn.id.value) { mutableStateOf(false) }
     val nowMillis = rememberTurnTime(turn, clockMillis)
     val outputStart = if (
         !expanded &&
@@ -408,9 +423,13 @@ private fun CommandCard(
             if (turn.output.plainText.isNotEmpty()) {
                 SelectionContainer {
                     Text(
-                        text = turn.output.toAnnotatedString(outputStart),
+                        text = turn.output.toAnnotatedString(
+                            start = outputStart,
+                            onLinkClick = { pendingUrl = it },
+                        ),
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag(TranscriptTags.output(turn.id.value)),
                     )
                 }
             }
@@ -483,6 +502,57 @@ private fun CommandCard(
                 }
             }
         }
+    }
+
+    pendingUrl?.let { url ->
+        AlertDialog(
+            onDismissRequest = { pendingUrl = null },
+            title = { Text("Open external link?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Threadline detected this web address in untrusted command output:")
+                    SelectionContainer {
+                        Text(
+                            text = url,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingUrl = null
+                        try {
+                            onOpenUrl(url)
+                        } catch (_: RuntimeException) {
+                            linkOpenFailed = true
+                        }
+                    },
+                ) {
+                    Text("Open")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingUrl = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (linkOpenFailed) {
+        AlertDialog(
+            onDismissRequest = { linkOpenFailed = false },
+            title = { Text("Could not open link") },
+            text = { Text("No installed app accepted this web address.") },
+            confirmButton = {
+                TextButton(onClick = { linkOpenFailed = false }) {
+                    Text("OK")
+                }
+            },
+        )
     }
 }
 
@@ -566,7 +636,10 @@ private fun CommandStatus.isActive(): Boolean =
         this == CommandStatus.STOPPING
 
 @Composable
-private fun CommandOutput.toAnnotatedString(start: Int): AnnotatedString {
+private fun CommandOutput.toAnnotatedString(
+    start: Int,
+    onLinkClick: (String) -> Unit,
+): AnnotatedString {
     val defaultForeground = MaterialTheme.colorScheme.onSurface
     val defaultBackground = MaterialTheme.colorScheme.surface
     return buildAnnotatedString {
@@ -579,6 +652,23 @@ private fun CommandOutput.toAnnotatedString(start: Int): AnnotatedString {
                     style = run.style.toSpanStyle(defaultForeground, defaultBackground),
                     start = clippedStart - start,
                     end = clippedEnd - start,
+                )
+            }
+        }
+        TranscriptLinkDetector.detect(plainText).forEach { link ->
+            if (link.start >= start) {
+                addLink(
+                    url = LinkAnnotation.Url(
+                        url = link.url,
+                        styles = TextLinkStyles(
+                            style = SpanStyle(textDecoration = TextDecoration.Underline),
+                        ),
+                        linkInteractionListener = {
+                            onLinkClick(link.url)
+                        },
+                    ),
+                    start = link.start - start,
+                    end = link.endExclusive - start,
                 )
             }
         }
