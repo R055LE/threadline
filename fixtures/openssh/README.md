@@ -34,16 +34,32 @@ To exercise the exact production SSH adapter on the development JVM:
 
 The smoke test verifies the fixture fingerprint, authenticates once by
 password and once with the generated Ed25519 key, opens a PTY-backed shell,
-resizes it to 41 rows by 101 columns, and exchanges raw bytes. It is skipped
-during ordinary `./gradlew test` runs unless its fixture environment variables
-are present.
+resizes it to 41 rows by 101 columns, exchanges raw bytes, and proves the
+structured Bash command lifecycle in one persistent shell. It is skipped during
+ordinary `./gradlew test` runs unless its fixture environment variables are
+present.
+
+With the standard Android emulator running, exercise the production Android
+adapter and `SessionManager` together:
+
+```bash
+./test-android-structured.sh
+```
+
+The script reads the disposable password from the running container, holds it
+only in memory, installs the app and test APKs, and passes it directly to the
+instrumentation runner. The test proves bootstrap, one-active-command
+enforcement, persistent `cd` and `export`, success and failure exit statuses,
+and multiline input. It is skipped during ordinary connected-test runs because
+no fixture password argument is supplied.
 
 Run `threadline-test-output` in the remote shell for mixed raw output. It also
 accepts `ansi`, `progress`, `unicode`, and `volume`.
 
 `volume` emits 100,000 lines. It is an intentional stress probe, not a routine
-smoke test: the selected termlib version currently accumulates a render backlog
-for well over a minute under that load even though the SSH session survives.
+smoke test. The selected termlib version drains it without dropping the
+session; keep the terminal host above the software keyboard so the visible
+viewport follows the PTY's actual rows.
 
 To stop the fixture:
 

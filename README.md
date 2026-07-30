@@ -4,12 +4,12 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 0: repository and dependency spike is complete.** The repository is
-moving into Phase 1's structured command lifecycle. There are no transcript
-cards yet; the app currently contains one host form and one proven raw,
-PTY-backed SSH session.
+**Phase 1: structured command lifecycle is complete.** The repository is ready
+to move into Phase 2's transcript UX. There are no transcript cards yet; the
+app currently shows the proven raw PTY while structured command handling runs
+underneath it.
 
-## What the spike contains
+## What the prototype contains
 
 - Native Kotlin, Jetpack Compose, and Material 3 app in one Gradle module
 - ConnectBot's coroutine SSH library behind a narrow adapter
@@ -147,6 +147,11 @@ now bootstraps this path, exposes immutable structured-shell state, enforces one
 active command, records exit status and directory, and downgrades failures to
 the still-connected raw terminal. The terminal header reports structured
 readiness; command submission UI is not built yet.
+
+The Phase 1 exit cases—persistent `cd` and `export`, success, failure,
+multiline input, fragmented markers, and one active command—pass through the
+production Android adapter and `SessionManager` against the Docker fixture.
+Phase 2 can now build transcript collection and command UI on this lifecycle.
 
 ## License
 

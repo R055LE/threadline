@@ -2,8 +2,7 @@
 
 - Date: 2026-07-29
 - Phase: 1 — Structured command lifecycle
-- Status: Protocol primitives, live Bash fixture proof, and Android session
-  wiring complete; command UI remains
+- Status: Complete — Phase 1 exit criterion met
 
 ## Goal
 
@@ -89,7 +88,7 @@ case proved, in one SSH channel and PTY:
 
 The final Android gate ran on the Pixel 6 API 35 emulator:
 
-- all three connected Android tests passed;
+- all three routine connected Android tests passed;
 - the production app authenticated to the loopback fixture with its disposable
   Ed25519 client key;
 - the production `SessionManager` installed the temporary Bash integration,
@@ -99,12 +98,30 @@ The final Android gate ran on the Pixel 6 API 35 emulator:
 The session then disconnected cleanly, and the fixture-only key copied to the
 emulator for this check was removed.
 
+An opt-in fourth Android test then exercised the complete production path
+without UI text injection. Its runtime-only fixture password was read from the
+container and passed directly to the instrumentation process without entering
+source, Gradle properties, or test reports. In 0.93 seconds it:
+
+- accepted the fixture's first-seen key through `StrictHostKeyGate`;
+- connected through `ConnectBotSshClientAdapter`;
+- reached structured `Ready` through the real `SessionManager`;
+- rejected a second submission while `cd /tmp` was active;
+- retained `/tmp` and an exported variable across later commands;
+- recorded exit status 0 for successful checks and 1 for `false`; and
+- completed a multiline assignment and test.
+
+Together with the every-split-point parser tests, this satisfies Phase 1's exit
+criterion for persistent `cd`, `export`, success, failure, multiline input, and
+fragmented markers in one shell.
+
 ## Current limits
 
 - Only the Bash path is implemented. Zsh and generic POSIX compatibility still
   need explicit probes and downgrade behavior.
 - `SessionManager` exposes submission and structured lifecycle state, but the
-  Compose UI remains the raw terminal and does not submit transcript commands.
+  Compose UI remains the raw terminal. Transcript collection and command UI are
+  Phase 2 work.
 - The current-directory field follows the Phase 1 specification and is emitted
   directly. Semicolons are supported because the parser treats the final field
   as a remainder, but a directory containing an OSC terminator control
