@@ -128,3 +128,37 @@ fragmented markers in one shell.
   character cannot be represented by this version.
 - Transcript text collection and rendering remain Phase 2 work. This slice
   preserves ordered bytes but does not interpret terminal display operations.
+
+## Phase 2 handoff
+
+Phase 2 can treat the structured-shell layer as a stable boundary:
+
+- Every PTY read still reaches the raw terminal unchanged and in order.
+- The transcript path receives an ordered stream of output-byte segments and
+  typed command lifecycle events with recognized Threadline markers removed.
+- At most one transcript command can be active, and each accepted command has a
+  stable ID, start event, end event, exit status, and resulting directory.
+- Structured setup failure leaves the SSH session usable in raw-only mode.
+
+The smallest end-to-end Phase 2 slice should consume that stream into a bounded
+in-memory `CommandTurn`, expose it as immutable UI state, and render one
+streaming command card submitted from a multiline composer. Completion should
+show duration, exit status, and current directory. This proves the new product
+interaction before adding persistence or a broader history model.
+
+Collector behavior belongs below Compose. It should incrementally decode UTF-8,
+handle LF, CR/CRLF, backspace, tabs, repeated-CR progress updates, and ANSI SGR
+style runs. Unsupported terminal operations must mark the rendering
+approximate, while the unchanged raw-terminal stream remains authoritative.
+Transcript updates should be batched, output storage bounded by tested
+constants, and truncation explicit.
+
+The first Phase 2 planning discussion should settle:
+
+- whether the initial slice lands plain display text before ANSI styled runs or
+  includes the complete collector contract from its first card;
+- the active-output, completed-output, and UI update-cadence limits;
+- the immutable `CommandTurn` and styled-output representation;
+- when approximate rendering should suggest opening the raw terminal; and
+- whether command history initially lives only for the current session, with
+  Room persistence deferred to Phase 4 as specified.
