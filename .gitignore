@@ -14,3 +14,6 @@ fixtures/openssh/.state/
 # Local-only Claude state (project-shared config stays committed)
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Local-only Codex agent instructions (may reference private/sibling repos)
+AGENTS.md
