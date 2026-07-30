@@ -2,6 +2,7 @@ package dev.threadline.core.shell
 
 import java.io.ByteArrayOutputStream
 import java.security.SecureRandom
+import java.util.UUID
 
 @JvmInline
 value class SessionNonce(val value: String) {
@@ -37,8 +38,10 @@ value class CommandId(val value: String) {
         require(value.all(::isProtocolTokenCharacter))
     }
 
-    private companion object {
-        const val MAX_LENGTH = 128
+    companion object {
+        private const val MAX_LENGTH = 128
+
+        fun random(): CommandId = CommandId(UUID.randomUUID().toString())
     }
 }
 
@@ -287,7 +290,7 @@ class ThreadlineOscParser(
     }
 
     private companion object {
-        const val DEFAULT_MAXIMUM_SEQUENCE_BYTES = 4_096
+        const val DEFAULT_MAXIMUM_SEQUENCE_BYTES = 8_192
         const val MINIMUM_SEQUENCE_BYTES = 32
         const val OSC_PREFIX_BYTES = 2
         const val BEL_TERMINATOR_BYTES = 1

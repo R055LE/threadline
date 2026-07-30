@@ -125,6 +125,22 @@ class ThreadlineOscParserTest {
     }
 
     @Test
+    fun `default sequence limit bounds a huge current directory marker`() {
+        val oversized = marker(
+            "end",
+            commandId.value,
+            "0",
+            "/${"directory".repeat(1_100)}",
+        )
+
+        val result = ThreadlineOscParser(nonce).consume(oversized)
+
+        assertTrue(oversized.size > 8_192)
+        assertArrayEquals(oversized, result.transcriptBytes)
+        assertTrue(result.events.isEmpty())
+    }
+
+    @Test
     fun `unknown OSC sequence passes through unchanged`() {
         val sequence = osc("0;remote title")
 

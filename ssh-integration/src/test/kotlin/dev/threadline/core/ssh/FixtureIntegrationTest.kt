@@ -5,8 +5,15 @@ import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.TerminalSize
+import dev.threadline.core.shell.BashShellIntegration
+import dev.threadline.core.shell.CommandId
+import dev.threadline.core.shell.ProtocolStreamItem
+import dev.threadline.core.shell.SessionNonce
+import dev.threadline.core.shell.ShellLifecycleEvent
+import dev.threadline.core.shell.ThreadlineOscParser
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -57,6 +64,69 @@ class FixtureIntegrationTest {
         }
     }
 
+    @Test
+    fun `structured commands retain shell state and report lifecycle`() = runBlocking {
+        val fixture = fixtureConfiguration()
+        val request = ConnectionRequest(
+            profile = fixture.profile,
+            credential = SessionCredential.Password.from(
+                requiredEnvironment("THREADLINE_FIXTURE_PASSWORD").toCharArray(),
+            ),
+        )
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val integration = BashShellIntegration(nonce)
+        val parser = ThreadlineOscParser(nonce)
+
+        withSession(fixture, request) { session ->
+            val bootstrapId = CommandId("bootstrap-probe")
+            session.send(integration.bootstrap(bootstrapId))
+            assertCommandCompleted(session, parser, bootstrapId, expectedExit = 0)
+
+            val cdId = CommandId("change-directory")
+            session.send(integration.invocation(cdId, "cd /tmp"))
+            val changedDirectory = assertCommandCompleted(
+                session,
+                parser,
+                cdId,
+                expectedExit = 0,
+            )
+            assertEquals("/tmp", changedDirectory.currentDirectory)
+
+            val exportId = CommandId("export-variable")
+            session.send(integration.invocation(exportId, "export THREADLINE_PHASE_ONE=retained"))
+            assertCommandCompleted(session, parser, exportId, expectedExit = 0)
+
+            val stateId = CommandId("read-persistent-state")
+            session.send(
+                integration.invocation(
+                    stateId,
+                    "printf 'state=%s pwd=%s\\n' \"\$THREADLINE_PHASE_ONE\" \"\$PWD\"",
+                ),
+            )
+            val state = assertCommandCompleted(session, parser, stateId, expectedExit = 0)
+            assertTrue(state.output.contains("state=retained pwd=/tmp"))
+
+            val failureId = CommandId("failure-status")
+            session.send(integration.invocation(failureId, "false"))
+            assertCommandCompleted(session, parser, failureId, expectedExit = 1)
+
+            val multilineId = CommandId("multiline-command")
+            session.send(
+                integration.invocation(
+                    multilineId,
+                    "value='two lines'\nprintf 'multiline=%s\\n' \"\$value\"",
+                ),
+            )
+            val multiline = assertCommandCompleted(
+                session,
+                parser,
+                multilineId,
+                expectedExit = 0,
+            )
+            assertTrue(multiline.output.contains("multiline=two lines"))
+        }
+    }
+
     private suspend fun withSession(
         fixture: FixtureConfiguration,
         request: ConnectionRequest,
@@ -86,6 +156,56 @@ class FixtureIntegrationTest {
             output.write(session.output.receive())
             val text = output.toString(Charsets.UTF_8.name())
             if (token in text) return@withTimeout text
+        }
+        error("unreachable")
+    }
+
+    private suspend fun assertCommandCompleted(
+        session: LiveSshSession,
+        parser: ThreadlineOscParser,
+        commandId: CommandId,
+        expectedExit: Int,
+    ): StructuredCommandResult = withTimeout(10_000) {
+        val output = ByteArrayOutputStream()
+        var collectingOutput = false
+        var sawStart = false
+        var sawOutputStart = false
+
+        while (true) {
+            val scan = parser.consume(session.output.receive())
+            scan.items.forEach { item ->
+                when (item) {
+                    is ProtocolStreamItem.TranscriptBytes -> {
+                        if (collectingOutput) output.write(item.bytes)
+                    }
+
+                    is ProtocolStreamItem.Lifecycle -> when (val event = item.event) {
+                        is ShellLifecycleEvent.CommandStarted -> {
+                            if (event.commandId == commandId) sawStart = true
+                        }
+
+                        is ShellLifecycleEvent.CommandOutputStarted -> {
+                            if (event.commandId == commandId) {
+                                assertTrue(sawStart)
+                                sawOutputStart = true
+                                collectingOutput = true
+                            }
+                        }
+
+                        is ShellLifecycleEvent.CommandEnded -> {
+                            if (event.commandId == commandId) {
+                                assertTrue(sawStart)
+                                assertTrue(sawOutputStart)
+                                assertEquals(expectedExit, event.exitStatus)
+                                return@withTimeout StructuredCommandResult(
+                                    output = output.toString(Charsets.UTF_8.name()),
+                                    currentDirectory = event.currentDirectory,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
         error("unreachable")
     }
@@ -120,4 +240,9 @@ class FixtureIntegrationTest {
 private data class FixtureConfiguration(
     val profile: HostProfile,
     val fingerprint: String,
+)
+
+private data class StructuredCommandResult(
+    val output: String,
+    val currentDirectory: String,
 )

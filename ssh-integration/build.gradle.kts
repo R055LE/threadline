@@ -24,6 +24,8 @@ sourceSets {
             // otherwise-unimplemented Base64 path.
             srcDir("../app/src/main/java")
             include("dev/threadline/core/model/SessionModels.kt")
+            include("dev/threadline/core/shell/BashShellIntegration.kt")
+            include("dev/threadline/core/shell/ThreadlineOscParser.kt")
             include("dev/threadline/core/ssh/SshClientAdapter.kt")
             include("dev/threadline/core/ssh/ConnectBotSshClientAdapter.kt")
         }

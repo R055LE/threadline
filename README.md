@@ -23,14 +23,14 @@ PTY-backed SSH session.
 - A foreground service and visible disconnect notification
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
 - Unit tests for session transitions, host-key decisions, credential wiping,
-  and the incremental structured-shell marker parser
+  safe shell quoting, bootstrap generation, and the incremental marker parser
 - Android tests for the exact Ed25519 decode/sign/verify path and selective
   connection-form retention
 - A bounded, ordered input queue so rapid IME and paste events cannot reorder
   bytes on the SSH channel
-- An opt-in plain-JVM smoke test that compiles the production SSH adapter and
-  proves password auth, key auth, PTY resize, and byte exchange against the
-  fixture
+- An opt-in plain-JVM smoke test that compiles the production SSH and structured
+  shell code, then proves auth, PTY resize, persistent state, multiline input,
+  lifecycle markers, current directory, and exit status against the fixture
 
 ## Requirements
 
@@ -137,10 +137,13 @@ remaining rotation, background, and disconnect checks also pass, so
 may proceed.
 
 Phase 1 now has random session nonces, typed command lifecycle events, and a
-bounded incremental OSC parser. The parser preserves byte/event ordering across
-arbitrary buffer splits, removes only valid same-session Threadline markers
-from transcript output, and passes unknown or malformed sequences through
-unchanged. It is not yet wired into the live PTY pipeline.
+bounded incremental OSC parser. Safe shell-word quoting and the temporary Bash
+bootstrap have also passed the live OpenSSH fixture with persistent `cd` and
+`export` state, success and failure statuses, and multiline input. The parser
+preserves byte/event ordering across arbitrary buffer splits, removes only
+valid same-session Threadline markers from transcript output, and passes
+unknown or malformed sequences through unchanged. This structured path is not
+yet wired into the Android `SessionManager`.
 
 ## License
 
