@@ -9,6 +9,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -70,6 +72,131 @@ class TranscriptScreenTest {
                     AnnotatedString(""),
                 ),
             )
+    }
+
+    @Test
+    fun historyNavigationPreservesMultilineCommandsAndRestoresDraft() {
+        val transcript = CommandTranscriptState(
+            turns = listOf(
+                turn(
+                    id = "command-1",
+                    command = "printf first",
+                    status = CommandStatus.SUCCEEDED,
+                ),
+                turn(
+                    id = "command-2",
+                    command = "printf second\nprintf line",
+                    status = CommandStatus.SUCCEEDED,
+                ),
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = transcript,
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performTextInput("unfinished draft")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER)
+            .assertIsEnabled()
+            .performClick()
+        assertComposerText("printf second\nprintf line")
+
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER)
+            .assertIsEnabled()
+            .performClick()
+        assertComposerText("printf first")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).assertIsNotEnabled()
+
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER)
+            .assertIsEnabled()
+            .performClick()
+        assertComposerText("printf second\nprintf line")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER)
+            .assertIsEnabled()
+            .performClick()
+        assertComposerText("unfinished draft")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).assertIsNotEnabled()
+    }
+
+    @Test
+    fun composerAndHistoryPositionSurviveSavedStateRestoration() {
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(
+                            turn(
+                                command = "printf history",
+                                status = CommandStatus.SUCCEEDED,
+                            ),
+                        ),
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performTextInput("printf one\nprintf two")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).performClick()
+        assertComposerText("printf history")
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        assertComposerText("printf history")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).performClick()
+        assertComposerText("printf one\nprintf two")
+    }
+
+    @Test
+    fun acceptedCardRerunResetsHistoryNavigationWithoutClearingComposer() {
+        var submitted: String? = null
+        val turn = turn(
+            command = "printf history",
+            status = CommandStatus.SUCCEEDED,
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = { command ->
+                        submitted = command
+                        CommandSubmissionResult.Accepted(CommandId("rerun"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performTextInput("unfinished draft")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).performClick()
+        composeRule.onNodeWithText("Rerun")
+            .performScrollTo()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("printf history", submitted)
+        }
+        assertComposerText("printf history")
+        composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).assertIsNotEnabled()
     }
 
     @Test
@@ -317,6 +444,16 @@ class TranscriptScreenTest {
         ),
         lastCommand = null,
     )
+
+    private fun assertComposerText(expected: String) {
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.EditableText,
+                    AnnotatedString(expected),
+                ),
+            )
+    }
 
     private fun turn(
         id: String = "command-42",

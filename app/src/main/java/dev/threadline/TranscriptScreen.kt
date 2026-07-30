@@ -67,6 +67,8 @@ internal object TranscriptTags {
     const val TRANSCRIPT = "session-transcript"
     const val COMPOSER = "command-composer"
     const val SEND = "command-send"
+    const val HISTORY_OLDER = "command-history-older"
+    const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
 }
 
@@ -167,8 +169,11 @@ internal fun TranscriptSurface(
     listState: LazyListState = rememberLazyListState(),
 ) {
     var composer by rememberSaveable { mutableStateOf("") }
+    var historyIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var historyDraft by rememberSaveable { mutableStateOf("") }
     var submissionError by remember { mutableStateOf<String?>(null) }
     var followOutput by remember { mutableStateOf(true) }
+    val historyCommands = transcript.turns.map(CommandTurn::command)
     val atBottom by remember {
         derivedStateOf {
             val layout = listState.layoutInfo
@@ -197,7 +202,11 @@ internal fun TranscriptSurface(
         submissionError = null
         when (val result = onSubmit(command)) {
             is CommandSubmissionResult.Accepted -> {
-                if (clearComposer) composer = ""
+                if (clearComposer) {
+                    composer = ""
+                }
+                historyIndex = null
+                historyDraft = composer
                 followOutput = true
             }
 
@@ -205,6 +214,33 @@ internal fun TranscriptSurface(
                 submissionError = result.reason.userMessage()
             }
         }
+    }
+
+    fun showOlderCommand() {
+        if (historyCommands.isEmpty()) return
+        if (historyIndex == null) {
+            historyDraft = composer
+        }
+        val olderIndex = historyIndex
+            ?.minus(1)
+            ?.coerceAtLeast(0)
+            ?: historyCommands.lastIndex
+        historyIndex = olderIndex
+        composer = historyCommands[olderIndex]
+        submissionError = null
+    }
+
+    fun showNewerCommand() {
+        val currentIndex = historyIndex ?: return
+        if (currentIndex < historyCommands.lastIndex) {
+            val newerIndex = currentIndex + 1
+            historyIndex = newerIndex
+            composer = historyCommands[newerIndex]
+        } else {
+            historyIndex = null
+            composer = historyDraft
+        }
+        submissionError = null
     }
 
     Column(
@@ -241,6 +277,8 @@ internal fun TranscriptSurface(
                     onDisconnect = onDisconnect,
                     onEdit = {
                         composer = turn.command
+                        historyIndex = null
+                        historyDraft = turn.command
                         submissionError = null
                     },
                     onRerun = { submit(turn.command, clearComposer = false) },
@@ -273,6 +311,8 @@ internal fun TranscriptSurface(
                     value = composer,
                     onValueChange = {
                         composer = it
+                        historyIndex = null
+                        historyDraft = it
                         submissionError = null
                     },
                     label = { Text("Command") },
@@ -290,6 +330,29 @@ internal fun TranscriptSurface(
                     modifier = Modifier.testTag(TranscriptTags.SEND),
                 ) {
                     Text("Send")
+                }
+            }
+            if (historyCommands.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = ::showOlderCommand,
+                        enabled = structuredShell is StructuredShellState.Ready &&
+                            (historyIndex == null || historyIndex != 0),
+                        modifier = Modifier.testTag(TranscriptTags.HISTORY_OLDER),
+                    ) {
+                        Text("Older")
+                    }
+                    TextButton(
+                        onClick = ::showNewerCommand,
+                        enabled = structuredShell is StructuredShellState.Ready &&
+                            historyIndex != null,
+                        modifier = Modifier.testTag(TranscriptTags.HISTORY_NEWER),
+                    ) {
+                        Text("Newer")
+                    }
                 }
             }
         }

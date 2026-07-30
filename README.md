@@ -34,8 +34,8 @@ same persistent raw terminal.
   live duration, status, exit code, directory, truncation, and approximation
   state
 - A multiline command composer and neutral command cards with one-shot stop,
-  delayed explicit disconnect, copy, edit, rerun, output collapsing, and
-  raw-terminal switching
+  delayed explicit disconnect, Older/Newer command history with draft
+  restoration, copy, edit, rerun, output collapsing, and raw-terminal switching
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -177,10 +177,17 @@ that Ctrl-C returns exit 130 and an `Interrupted` turn through the same PTY.
 The Bash wrapper temporarily catches INT so it can emit the end marker, then
 restores the shell's prior INT trap.
 
+The composer/history follow-up uses the bounded session turns as its single
+history source. Older navigation saves the exact unfinished draft, history
+entries preserve multiline commands, and Newer returns to that draft after the
+latest entry. Typing, editing a card, or accepting any submission leaves
+history-navigation mode deliberately. Composer text, history position, and the
+saved draft survive Android saved-state recreation.
+
 The remaining Phase 2 work is interaction hardening rather than visual polish:
-richer history behavior, interactive-command suggestions, URL handling,
-selection, user-scrolled streaming behavior, and device testing of rotation
-and background transitions.
+history deletion and retention controls, interactive-command suggestions, URL
+handling, selection, user-scrolled streaming behavior, and device testing of
+rotation and background transitions.
 
 ## License
 

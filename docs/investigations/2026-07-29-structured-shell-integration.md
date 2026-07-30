@@ -234,7 +234,36 @@ Android suite passed on the API 35 emulator. The password-gated production
 fixture test then passed separately in 1.76 seconds with the long-output and
 Ctrl-C checks enabled.
 
-Remaining Phase 2 work includes richer history behavior, URL interaction,
-interactive-command suggestions, selection, user-scrolled streaming behavior,
-rotation, and background transitions. Room transcript persistence remains
-deferred to Phase 4.
+## Phase 2 composer and command history
+
+Command-history navigation uses the existing bounded session turns rather than
+maintaining a second command list. The composer tracks three saveable values:
+the visible text, the selected history index, and the unfinished draft that was
+present before history navigation began.
+
+The interaction contract is:
+
+- Older starts at the most recent turn and walks toward the oldest retained
+  turn;
+- Newer walks toward the most recent turn, then restores the exact unfinished
+  draft;
+- multiline commands remain exact in both directions;
+- typing or using a card's Edit action exits history navigation and treats the
+  resulting text as the new draft;
+- any accepted submission resets the history cursor, including a card Rerun
+  that intentionally leaves composer text visible; and
+- rejected submissions preserve the current composer and navigation state.
+
+Compose instrumentation tests cover both ends of navigation, multiline
+fidelity, draft restoration, accepted card rerun, and saved-state recreation
+while positioned inside history. The focused transcript suite passed all ten
+tests on the API 35 emulator. The full `test`, `lint`, `assembleDebug`, and
+routine connected Android gate then passed; the password-gated SSH fixture case
+was skipped as designed. This slice does not change transport, collection, or
+shell integration, so the separate production credential fixture was not
+rerun.
+
+Remaining Phase 2 work includes history deletion and retention controls, URL
+interaction, interactive-command suggestions, selection, user-scrolled
+streaming behavior, rotation, and background transitions. Room transcript
+persistence remains deferred to Phase 4.
