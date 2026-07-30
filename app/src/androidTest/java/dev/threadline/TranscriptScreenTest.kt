@@ -1,24 +1,33 @@
 package dev.threadline
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
+import dev.threadline.core.shell.ActiveCommand
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionResult
+import dev.threadline.core.shell.LifecyclePhase
 import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.CommandTurn
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -39,6 +48,7 @@ class TranscriptScreenTest {
                         CommandSubmissionResult.Accepted(CommandId("command-42"))
                     },
                     onStop = {},
+                    onDisconnect = {},
                 )
             }
         }
@@ -88,6 +98,7 @@ class TranscriptScreenTest {
                         CommandSubmissionResult.Accepted(CommandId("rerun"))
                     },
                     onStop = {},
+                    onDisconnect = {},
                 )
             }
         }
@@ -96,4 +107,239 @@ class TranscriptScreenTest {
         composeRule.onNodeWithText("hello").assertExists()
         composeRule.onNodeWithText("Succeeded · /srv/app · 35 ms · exit 0").assertExists()
     }
+
+    @Test
+    fun runningTurnShowsLiveDuration() {
+        val turn = turn(
+            status = CommandStatus.RUNNING,
+            submittedAtMillis = 100L,
+            startedAtMillis = 110L,
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn),
+                        activeCommandId = turn.id,
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    clockMillis = { 3_610L },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Running · /tmp · 3.5 s").assertExists()
+    }
+
+    @Test
+    fun stoppingTurnOffersDisconnectOnlyAfterInterruptGracePeriod() {
+        var disconnected = false
+        val turn = turn(
+            status = CommandStatus.STOPPING,
+            stopRequestedAtMillis = 1_000L,
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn),
+                        activeCommandId = turn.id,
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = { disconnected = true },
+                    clockMillis = { 5_000L },
+                )
+            }
+        }
+
+        assertTrue(composeRule.onAllNodesWithText("Stop").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Disconnect session")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(true, disconnected)
+        }
+    }
+
+    @Test
+    fun stoppingTurnReportsSentInterruptDuringGracePeriod() {
+        val turn = turn(
+            status = CommandStatus.STOPPING,
+            stopRequestedAtMillis = 1_000L,
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn),
+                        activeCommandId = turn.id,
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    clockMillis = { 3_999L },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Interrupt sent").assertIsDisplayed()
+        assertTrue(
+            composeRule.onAllNodesWithText("Disconnect session")
+                .fetchSemanticsNodes()
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun longOutputStartsCollapsedAndCanBeExpanded() {
+        val turn = turn(
+            status = CommandStatus.SUCCEEDED,
+            output = "HEAD_ONLY\n" + "x".repeat(8_100) + "\nTAIL_ONLY",
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        assertTrue(
+            composeRule.onAllNodesWithText("HEAD_ONLY", substring = true)
+                .fetchSemanticsNodes()
+                .isEmpty(),
+        )
+        composeRule.onNodeWithText("TAIL_ONLY", substring = true).assertExists()
+        composeRule.onNodeWithText("Show all")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithText("Collapse").assertExists()
+        assertTrue(
+            composeRule.onAllNodesWithText(
+                "Showing the latest 8000 characters",
+            ).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
+    fun transcriptFollowsNewTurnsWhileAlreadyFollowingOutput() {
+        var listState: LazyListState? = null
+        val transcript = mutableStateOf(
+            CommandTranscriptState(
+                turns = (0 until 10).map { index ->
+                    turn(
+                        id = "command-$index",
+                        command = "printf command-$index",
+                        status = CommandStatus.SUCCEEDED,
+                    )
+                },
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                val rememberedListState = rememberLazyListState()
+                listState = rememberedListState
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = transcript.value,
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    listState = rememberedListState,
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(
+                "transcript-tail",
+                requireNotNull(listState)
+                    .layoutInfo
+                    .visibleItemsInfo
+                    .lastOrNull()
+                    ?.key,
+            )
+        }
+        composeRule.runOnIdle {
+            transcript.value = CommandTranscriptState(
+                turns = transcript.value.turns + turn(
+                    id = "command-10",
+                    command = "printf command-10",
+                    status = CommandStatus.SUCCEEDED,
+                ),
+            )
+        }
+
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(
+                "transcript-tail",
+                requireNotNull(listState)
+                    .layoutInfo
+                    .visibleItemsInfo
+                    .lastOrNull()
+                    ?.key,
+            )
+        }
+    }
+
+    private fun runningShell() = StructuredShellState.Running(
+        activeCommand = ActiveCommand(
+            id = CommandId("command-42"),
+            command = "test command",
+            directoryAtStart = "/tmp",
+            phase = LifecyclePhase.OUTPUT_STARTED,
+        ),
+        lastCommand = null,
+    )
+
+    private fun turn(
+        id: String = "command-42",
+        command: String = "test command",
+        status: CommandStatus,
+        submittedAtMillis: Long = 100L,
+        startedAtMillis: Long? = 110L,
+        stopRequestedAtMillis: Long? = null,
+        output: String = "",
+    ) = CommandTurn(
+        id = CommandId(id),
+        command = command,
+        directoryAtStart = "/tmp",
+        submittedAtMillis = submittedAtMillis,
+        startedAtMillis = startedAtMillis,
+        completedAtMillis = if (status == CommandStatus.SUCCEEDED) 145L else null,
+        status = status,
+        exitStatus = if (status == CommandStatus.SUCCEEDED) 0 else null,
+        currentDirectory = if (status == CommandStatus.SUCCEEDED) "/tmp" else null,
+        output = CommandOutput(
+            plainText = output,
+            byteCount = output.encodeToByteArray().size.toLong(),
+        ),
+        stopRequestedAtMillis = stopRequestedAtMillis,
+    )
 }

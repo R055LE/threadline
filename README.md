@@ -31,9 +31,11 @@ same persistent raw terminal.
 - A bounded incremental transcript collector for UTF-8, line controls,
   repeated-carriage-return progress, and ANSI SGR style runs
 - Immutable, session-local command turns with batched streaming updates,
-  duration, status, exit code, directory, truncation, and approximation state
-- A multiline command composer and neutral command cards with stop, copy,
-  edit, rerun, output collapsing, and raw-terminal switching
+  live duration, status, exit code, directory, truncation, and approximation
+  state
+- A multiline command composer and neutral command cards with one-shot stop,
+  delayed explicit disconnect, copy, edit, rerun, output collapsing, and
+  raw-terminal switching
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -166,10 +168,19 @@ most 100 turns. The production Android fixture test proves ANSI, progress,
 Unicode, and completed transcript status through the real SSH adapter and
 `SessionManager`.
 
+The next interaction-hardening slice adds once-per-second live duration,
+idempotent Stop state, a three-second grace period before offering explicit
+session disconnect, and reliable initial/output-follow scrolling that yields
+when the user drags away from the tail. The Android fixture now also proves a
+20,000-line command retains exactly the configured 131,072-character tail and
+that Ctrl-C returns exit 130 and an `Interrupted` turn through the same PTY.
+The Bash wrapper temporarily catches INT so it can emit the end marker, then
+restores the shell's prior INT trap.
+
 The remaining Phase 2 work is interaction hardening rather than visual polish:
-live-duration updates, richer history behavior, interactive-command
-suggestions, URL handling, and device testing of long-output scrolling,
-selection, cancellation, rotation, and background transitions.
+richer history behavior, interactive-command suggestions, URL handling,
+selection, user-scrolled streaming behavior, and device testing of rotation
+and background transitions.
 
 ## License
 

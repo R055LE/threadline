@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -34,6 +36,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -57,6 +60,7 @@ import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.CommandTurn
 import dev.threadline.core.transcript.TranscriptStyle
+import kotlinx.coroutines.delay
 import org.connectbot.terminal.Terminal
 
 internal object TranscriptTags {
@@ -125,6 +129,7 @@ internal fun ConnectedSessionScreen(
                 transcript = transcript,
                 onSubmit = onSubmit,
                 onStop = onControlC,
+                onDisconnect = onDisconnect,
                 modifier = Modifier
                     .padding(contentPadding)
                     .fillMaxSize(),
@@ -156,11 +161,13 @@ internal fun TranscriptSurface(
     transcript: CommandTranscriptState,
     onSubmit: (String) -> CommandSubmissionResult,
     onStop: () -> Unit,
+    onDisconnect: () -> Unit,
     modifier: Modifier = Modifier,
+    clockMillis: () -> Long = System::currentTimeMillis,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     var composer by rememberSaveable { mutableStateOf("") }
     var submissionError by remember { mutableStateOf<String?>(null) }
-    val listState = rememberLazyListState()
     var followOutput by remember { mutableStateOf(true) }
     val atBottom by remember {
         derivedStateOf {
@@ -169,13 +176,14 @@ internal fun TranscriptSurface(
                 layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
         }
     }
+    val userDragging by listState.interactionSource.collectIsDraggedAsState()
     val lastTurn = transcript.turns.lastOrNull()
     val outputRevision = lastTurn?.let {
         "${it.id.value}:${it.status}:${it.output.plainText.length}"
     }
 
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
+    LaunchedEffect(userDragging, atBottom) {
+        if (userDragging || atBottom) {
             followOutput = atBottom
         }
     }
@@ -230,11 +238,13 @@ internal fun TranscriptSurface(
                     turn = turn,
                     canSubmit = structuredShell is StructuredShellState.Ready,
                     onStop = onStop,
+                    onDisconnect = onDisconnect,
                     onEdit = {
                         composer = turn.command
                         submissionError = null
                     },
                     onRerun = { submit(turn.command, clearComposer = false) },
+                    clockMillis = clockMillis,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
             }
@@ -291,12 +301,15 @@ private fun CommandCard(
     turn: CommandTurn,
     canSubmit: Boolean,
     onStop: () -> Unit,
+    onDisconnect: () -> Unit,
     onEdit: () -> Unit,
     onRerun: () -> Unit,
+    clockMillis: () -> Long,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable(turn.id.value) { mutableStateOf(false) }
+    val nowMillis = rememberTurnTime(turn, clockMillis)
     val outputStart = if (
         !expanded &&
         turn.output.plainText.length > COLLAPSED_OUTPUT_CHARACTERS
@@ -319,7 +332,7 @@ private fun CommandCard(
                 )
             }
             Text(
-                text = turn.metadataLabel(),
+                text = turn.metadataLabel(nowMillis),
                 style = MaterialTheme.typography.labelSmall,
             )
 
@@ -360,11 +373,29 @@ private fun CommandCard(
                         Text(if (expanded) "Collapse" else "Show all")
                     }
                 }
-                if (turn.status.isActive()) {
-                    TextButton(onClick = onStop) { Text("Stop") }
-                } else {
-                    TextButton(onClick = onEdit) { Text("Edit") }
-                    TextButton(onClick = onRerun, enabled = canSubmit) { Text("Rerun") }
+                when (turn.status) {
+                    CommandStatus.SUBMITTED,
+                    CommandStatus.RUNNING,
+                    -> TextButton(onClick = onStop) { Text("Stop") }
+
+                    CommandStatus.STOPPING -> {
+                        if (turn.canDisconnectAfterStop(nowMillis)) {
+                            TextButton(onClick = onDisconnect) {
+                                Text("Disconnect session")
+                            }
+                        } else {
+                            Text(
+                                text = "Interrupt sent",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+                            )
+                        }
+                    }
+
+                    else -> {
+                        TextButton(onClick = onEdit) { Text("Edit") }
+                        TextButton(onClick = onRerun, enabled = canSubmit) { Text("Rerun") }
+                    }
                 }
             }
             Row(
@@ -410,17 +441,41 @@ private fun CommandSubmissionRejection.userMessage(): String = when (this) {
         "The session input queue is full. Try again."
 }
 
-private fun CommandTurn.metadataLabel(): String = buildList {
+@Composable
+private fun rememberTurnTime(
+    turn: CommandTurn,
+    clockMillis: () -> Long,
+): Long {
+    val currentClockMillis by rememberUpdatedState(clockMillis)
+    var nowMillis by remember(turn.id.value) {
+        mutableStateOf(currentClockMillis())
+    }
+    LaunchedEffect(turn.id.value, turn.status) {
+        nowMillis = currentClockMillis()
+        while (turn.status.isActive()) {
+            delay(ACTIVE_DURATION_UPDATE_MILLIS)
+            nowMillis = currentClockMillis()
+        }
+    }
+    return nowMillis
+}
+
+private fun CommandTurn.metadataLabel(nowMillis: Long): String = buildList {
     add(status.label)
     directoryAtStart?.let(::add)
-    durationMillis()?.let { add(formatDuration(it)) }
+    durationMillis(nowMillis)?.let { add(formatDuration(it)) }
     exitStatus?.let { add("exit $it") }
 }.joinToString(" · ")
 
-private fun CommandTurn.durationMillis(): Long? {
+private fun CommandTurn.durationMillis(nowMillis: Long): Long? {
     val start = startedAtMillis ?: submittedAtMillis
-    val end = completedAtMillis ?: return null
+    val end = completedAtMillis ?: nowMillis.takeIf { status.isActive() } ?: return null
     return (end - start).coerceAtLeast(0)
+}
+
+private fun CommandTurn.canDisconnectAfterStop(nowMillis: Long): Boolean {
+    val requestedAt = stopRequestedAtMillis ?: return false
+    return nowMillis - requestedAt >= STOP_DISCONNECT_DELAY_MILLIS
 }
 
 private fun formatDuration(milliseconds: Long): String =
@@ -560,3 +615,5 @@ private fun Context.copyText(
 
 private const val COLLAPSED_OUTPUT_CHARACTERS = 8_000
 private const val DIMMED_ALPHA = 0.6f
+private const val ACTIVE_DURATION_UPDATE_MILLIS = 1_000L
+private const val STOP_DISCONNECT_DELAY_MILLIS = 3_000L

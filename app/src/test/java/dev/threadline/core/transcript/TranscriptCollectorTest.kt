@@ -126,4 +126,24 @@ class TranscriptCollectorTest {
         assertEquals(6, output.byteCount)
         assertTrue(output.truncated)
     }
+
+    @Test
+    fun `many small chunks retain the exact bounded tail`() {
+        val maximumCharacters = 128 * 1024
+        val line = "0123456789\n"
+        val collector = TranscriptCollector(
+            maximumRenderedCharacters = maximumCharacters,
+        )
+
+        repeat(20_000) {
+            collector.consume(line.encodeToByteArray())
+        }
+        collector.finish()
+        val output = collector.snapshot()
+
+        assertEquals(maximumCharacters, output.plainText.length)
+        assertTrue(output.plainText.endsWith(line))
+        assertEquals(20_000L * line.length, output.byteCount)
+        assertTrue(output.truncated)
+    }
 }

@@ -74,6 +74,7 @@ data class CommandTurn(
     val exitStatus: Int?,
     val currentDirectory: String?,
     val output: CommandOutput,
+    val stopRequestedAtMillis: Long? = null,
 )
 
 data class CommandTranscriptState(

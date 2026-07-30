@@ -104,7 +104,9 @@ internal class CommandTranscript(
     @Synchronized
     fun stopRequested(): Boolean {
         val turn = active ?: return false
+        if (turn.stopRequested) return false
         turn.stopRequested = true
+        turn.stopRequestedAtMillis = clockMillis()
         turn.status = CommandStatus.STOPPING
         publishLocked()
         return true
@@ -161,6 +163,7 @@ internal class CommandTranscript(
         var currentDirectory: String? = null,
         var collectingOutput: Boolean = false,
         var stopRequested: Boolean = false,
+        var stopRequestedAtMillis: Long? = null,
         var publishedOutput: CommandOutput = CommandOutput(),
     ) {
         fun snapshot() = CommandTurn(
@@ -174,6 +177,7 @@ internal class CommandTranscript(
             exitStatus = exitStatus,
             currentDirectory = currentDirectory,
             output = publishedOutput,
+            stopRequestedAtMillis = stopRequestedAtMillis,
         )
     }
 

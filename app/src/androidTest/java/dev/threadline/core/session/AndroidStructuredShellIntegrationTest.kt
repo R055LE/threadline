@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -144,6 +145,49 @@ class AndroidStructuredShellIntegrationTest {
             )
             assertTrue(!renderedTurn.output.approximate)
             assertTrue(!renderedTurn.output.truncated)
+
+            val volumeSubmission = accepted(
+                manager.submitCommand("yes 0123456789 | head -n 20000"),
+            )
+            awaitCompletion(
+                manager,
+                volumeSubmission.commandId,
+                "large-output command",
+            )
+            val volumeTurn = requireNotNull(
+                manager.transcriptState.value.turns
+                    .firstOrNull { it.id == volumeSubmission.commandId },
+            )
+            assertEquals(CommandStatus.SUCCEEDED, volumeTurn.status)
+            assertTrue(volumeTurn.output.truncated)
+            assertEquals(
+                MAXIMUM_RENDERED_CHARACTERS,
+                volumeTurn.output.plainText.length,
+            )
+            assertTrue(volumeTurn.output.byteCount > volumeTurn.output.plainText.length)
+            assertTrue(volumeTurn.output.plainText.endsWith("0123456789\n"))
+
+            val cancellationSubmission = accepted(
+                manager.submitCommand("sleep 30"),
+            )
+            withTimeout(COMMAND_TIMEOUT_MILLIS) {
+                manager.structuredState
+                    .filterIsInstance<StructuredShellState.Running>()
+                    .first { it.activeCommand.id == cancellationSubmission.commandId }
+            }
+            manager.sendControlC()
+            val interrupted = awaitCompletion(
+                manager,
+                cancellationSubmission.commandId,
+                "interrupted command",
+            )
+            assertEquals(130, interrupted.exitStatus)
+            val interruptedTurn = requireNotNull(
+                manager.transcriptState.value.turns
+                    .firstOrNull { it.id == cancellationSubmission.commandId },
+            )
+            assertEquals(CommandStatus.INTERRUPTED, interruptedTurn.status)
+            assertTrue(interruptedTurn.stopRequestedAtMillis != null)
         } finally {
             manager.disconnect()
             withTimeout(CONNECTION_TIMEOUT_MILLIS) {
@@ -172,14 +216,14 @@ class AndroidStructuredShellIntegrationTest {
     private suspend fun awaitCompletion(
         manager: SessionManager,
         commandId: CommandId,
-    ): CompletedCommand = withTimeout(COMMAND_TIMEOUT_MILLIS) {
-        requireNotNull(
+        description: String = commandId.value,
+    ): CompletedCommand =
+        withTimeoutOrNull(COMMAND_TIMEOUT_MILLIS) {
             manager.structuredState
                 .filterIsInstance<StructuredShellState.Ready>()
                 .first { it.lastCommand?.id == commandId }
-                .lastCommand,
-        )
-    }
+                .lastCommand
+        } ?: throw AssertionError("Timed out waiting for $description")
 
     private fun accepted(result: CommandSubmissionResult): CommandSubmissionResult.Accepted {
         assertTrue("Expected accepted command, got $result", result is CommandSubmissionResult.Accepted)
@@ -195,7 +239,8 @@ class AndroidStructuredShellIntegrationTest {
         const val DEFAULT_PORT = 2_222
         const val DEFAULT_USER = "threadline"
         const val CONNECTION_TIMEOUT_MILLIS = 20_000L
-        const val COMMAND_TIMEOUT_MILLIS = 10_000L
+        const val COMMAND_TIMEOUT_MILLIS = 20_000L
+        const val MAXIMUM_RENDERED_CHARACTERS = 128 * 1024
     }
 }
 

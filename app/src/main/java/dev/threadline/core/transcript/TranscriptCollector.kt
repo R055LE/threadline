@@ -11,7 +11,9 @@ internal class TranscriptCollector(
     private val tabWidth: Int = DEFAULT_TAB_WIDTH,
     private val maximumEscapeSequenceBytes: Int = DEFAULT_MAXIMUM_ESCAPE_SEQUENCE_BYTES,
 ) {
-    private val lines = mutableListOf(mutableListOf<StyledCharacter>())
+    private val lines = ArrayDeque<MutableList<StyledCharacter>>().apply {
+        addLast(mutableListOf())
+    }
     private val textBytes = ByteArrayOutputStream()
     private val decoder = StandardCharsets.UTF_8.newDecoder()
         .onMalformedInput(CodingErrorAction.REPLACE)
@@ -25,6 +27,7 @@ internal class TranscriptCollector(
     private var truncated = false
     private var approximate = false
     private var byteCount = 0L
+    private var renderedCharacters = 0
 
     init {
         require(maximumRenderedCharacters > 0)
@@ -256,6 +259,7 @@ internal class TranscriptCollector(
     private fun writeCharacter(character: Char) {
         val line = lines.last()
         if (replaceLineOnWrite) {
+            renderedCharacters -= line.size
             line.clear()
             cursor = 0
             replaceLineOnWrite = false
@@ -265,12 +269,14 @@ internal class TranscriptCollector(
             line[cursor] = styled
         } else {
             line += styled
+            renderedCharacters += 1
         }
         cursor += 1
     }
 
     private fun lineFeed() {
-        lines += mutableListOf<StyledCharacter>()
+        lines.addLast(mutableListOf())
+        renderedCharacters += 1
         cursor = 0
         replaceLineOnWrite = false
     }
@@ -382,30 +388,26 @@ internal class TranscriptCollector(
     }
 
     private fun trimToLimit() {
-        var characters = renderedCharacterCount()
-        if (characters <= maximumRenderedCharacters) return
+        if (renderedCharacters <= maximumRenderedCharacters) return
         truncated = true
 
         while (
             lines.size > 1 &&
-            characters - lines.first().size - 1 >= maximumRenderedCharacters
+            renderedCharacters - lines.first().size - 1 >= maximumRenderedCharacters
         ) {
-            characters -= lines.first().size + 1
-            lines.removeAt(0)
+            renderedCharacters -= lines.removeFirst().size + 1
         }
-        val excess = characters - maximumRenderedCharacters
+        val excess = renderedCharacters - maximumRenderedCharacters
         if (excess > 0) {
             val first = lines.first()
             val removed = minOf(excess, first.size)
             first.subList(0, removed).clear()
+            renderedCharacters -= removed
             if (lines.size == 1) {
                 cursor = (cursor - removed).coerceAtLeast(0)
             }
         }
     }
-
-    private fun renderedCharacterCount(): Int =
-        lines.sumOf { it.size } + (lines.size - 1)
 
     private data class StyledCharacter(
         val character: Char,

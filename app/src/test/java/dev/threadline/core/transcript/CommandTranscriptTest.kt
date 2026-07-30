@@ -60,13 +60,21 @@ class CommandTranscriptTest {
 
     @Test
     fun `stop request distinguishes interrupted completion`() {
-        val transcript = CommandTranscript(clockMillis = { 10L })
+        var time = 10L
+        val transcript = CommandTranscript(clockMillis = { time })
         transcript.commandSubmitted(commandId, "sleep 10", "/tmp")
         transcript.lifecycle(ShellLifecycleEvent.CommandStarted(commandId))
         transcript.lifecycle(ShellLifecycleEvent.CommandOutputStarted(commandId))
 
+        time = 20L
         assertTrue(transcript.stopRequested())
-        assertEquals(CommandStatus.STOPPING, transcript.state.value.turns.single().status)
+        val stopping = transcript.state.value.turns.single()
+        assertEquals(CommandStatus.STOPPING, stopping.status)
+        assertEquals(20L, stopping.stopRequestedAtMillis)
+
+        time = 30L
+        assertFalse(transcript.stopRequested())
+        assertEquals(20L, transcript.state.value.turns.single().stopRequestedAtMillis)
 
         transcript.lifecycle(ShellLifecycleEvent.CommandEnded(commandId, 130, "/tmp"))
 

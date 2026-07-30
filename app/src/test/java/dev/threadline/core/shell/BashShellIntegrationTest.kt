@@ -130,6 +130,13 @@ class BashShellIntegrationTest {
             ),
         )
         assertTrue(bootstrap.contains("builtin eval -- \"\$__tl_command\""))
+        assertTrue(bootstrap.contains("trap '__tl_interrupted=1' INT"))
+        assertTrue(
+            bootstrap.contains(
+                "builtin eval -- \"\$__tl_previous_int_trap\"",
+            ),
+        )
+        assertTrue(bootstrap.contains("if (( __tl_interrupted )); then __tl_exit=130; fi"))
         assertTrue(
             bootstrap.endsWith(
                 "__threadline_run_${nonce.value} 'bootstrap-probe' ':'\n",

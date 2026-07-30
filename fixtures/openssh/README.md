@@ -50,8 +50,12 @@ The script reads the disposable password from the running container, holds it
 only in memory, installs the app and test APKs, and passes it directly to the
 instrumentation runner. The test proves bootstrap, one-active-command
 enforcement, persistent `cd` and `export`, success and failure exit statuses,
-and multiline input. It is skipped during ordinary connected-test runs because
-no fixture password argument is supplied.
+multiline input, ANSI/progress/Unicode transcript rendering, exact bounded-tail
+retention under 20,000 lines of output, and Ctrl-C completion as an interrupted
+turn. The script treats runner failures or an unrecognized result as a nonzero
+exit even though `adb shell am instrument` itself can return zero after a test
+failure. The test is skipped during ordinary connected-test runs because no
+fixture password argument is supplied.
 
 Run `threadline-test-output` in the remote shell for mixed raw output. It also
 accepts `ansi`, `progress`, `unicode`, and `volume`.

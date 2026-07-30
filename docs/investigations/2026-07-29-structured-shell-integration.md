@@ -126,6 +126,11 @@ fragmented markers in one shell.
 - The transcript collector is deliberately not a terminal emulator. Unsupported
   terminal operations mark a turn approximate, and the persistent raw terminal
   remains the exact rendering fallback.
+- During a structured command, the wrapper temporarily owns the shell's INT
+  trap so it can complete lifecycle reporting after Ctrl-C. A command that
+  inspects or changes the INT trap will observe different semantics, and INT
+  trap changes do not persist after the wrapper restores the previous trap.
+  Raw terminal mode remains the compatibility fallback for that case.
 - Transcript history is in memory for the current session. Persistence remains
   Phase 4 work.
 
@@ -164,7 +169,7 @@ turn is published before structured shell readiness, preventing observers from
 seeing a ready shell with a still-running card.
 
 The initial Compose surface is intentionally neutral. It provides a saved
-multiline composer, streaming cards, status, duration after completion, exit
+multiline composer, streaming cards, status, live and completed duration, exit
 code, submission directory, ANSI rendering, long-output collapse, explicit
 truncation and approximation notices, stop, copy, edit, rerun, and switching
 to the same persistent raw terminal.
@@ -177,7 +182,59 @@ production Android fixture test additionally proves ANSI color, repeated-CR
 progress, Unicode, and successful transcript completion through
 `ConnectBotSshClientAdapter` and `SessionManager`.
 
-Remaining Phase 2 work includes live duration updates, URL interaction,
-interactive-command suggestions, and device-level stress checks for long
-output, scroll following, selection, cancellation, rotation, and background
-transitions. Room transcript persistence remains deferred to Phase 4.
+## Phase 2 interaction-hardening follow-up
+
+The next slice makes active command state observable and Stop deliberately
+one-shot:
+
+- active cards recompute elapsed duration once per second;
+- the first Stop records its request time and moves the turn to `Stopping`;
+- repeat Stop requests do not mutate the turn or replace that timestamp;
+- the card reports that the interrupt was sent; and
+- after three seconds, a still-stopping card offers explicit session
+  disconnect rather than sending Ctrl-C repeatedly.
+
+The list follows the tail on first render and as turns or active output change,
+but a user drag away from the bottom disables following until the user returns
+to the tail. The first device test exposed a race in the original approach:
+initial layout could report “not at bottom” before the first programmatic
+scroll and disable following immediately. User-drag state now controls that
+decision, and the Compose test checks the actual lazy-list tail sentinel before
+and after adding a turn.
+
+The collector now tracks its rendered character count incrementally and stores
+lines in a deque. Trimming a large stream therefore does not repeatedly scan
+every retained line or shift the complete line list. A unit test feeds 20,000
+small line chunks and verifies the exact configured tail, byte count, and
+truncation flag.
+
+The production Android fixture then ran
+`yes 0123456789 | head -n 20000`. The completed turn:
+
+- retained exactly 131,072 rendered characters;
+- reported a larger total byte count;
+- kept the final complete line; and
+- marked the earlier output truncated.
+
+The same fixture found that sending Ctrl-C to `sleep 30` interrupted Bash's
+temporary wrapper function before its end marker ran. Structured state would
+otherwise remain `Running` even though the command and prompt had returned.
+The wrapper now installs a temporary INT trap around the user command, records
+an interrupt as exit 130, restores the shell's previous INT trap, and emits the
+normal end marker. The live rerun completed the turn as `Interrupted` through
+the production SSH adapter and the same PTY.
+
+One final harness issue also surfaced: Android's instrumentation command can
+exit zero while its textual result reports failed tests. The opt-in fixture
+script now captures that result and exits nonzero for failures or any result
+without a recognized `OK` summary.
+
+On 2026-07-30, `test`, `lint`, `assembleDebug`, and the routine connected
+Android suite passed on the API 35 emulator. The password-gated production
+fixture test then passed separately in 1.76 seconds with the long-output and
+Ctrl-C checks enabled.
+
+Remaining Phase 2 work includes richer history behavior, URL interaction,
+interactive-command suggestions, selection, user-scrolled streaming behavior,
+rotation, and background transitions. Room transcript persistence remains
+deferred to Phase 4.

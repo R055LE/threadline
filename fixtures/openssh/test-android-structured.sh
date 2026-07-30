@@ -31,7 +31,20 @@ cd "$repository_dir"
 "$adb_command" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
     >/dev/null
 
-"$adb_command" shell am instrument -w \
+instrumentation_output=$("$adb_command" shell am instrument -w \
     -e class dev.threadline.core.session.AndroidStructuredShellIntegrationTest \
     -e threadlineFixturePassword "$fixture_password" \
-    dev.threadline.test/androidx.test.runner.AndroidJUnitRunner
+    dev.threadline.test/androidx.test.runner.AndroidJUnitRunner)
+printf '%s\n' "$instrumentation_output"
+
+case "$instrumentation_output" in
+    *"FAILURES!!!"*|*"INSTRUMENTATION_FAILED:"*)
+        exit 1
+        ;;
+    *"OK ("*)
+        ;;
+    *)
+        echo "Instrumentation ended without a recognized success result." >&2
+        exit 1
+        ;;
+esac
