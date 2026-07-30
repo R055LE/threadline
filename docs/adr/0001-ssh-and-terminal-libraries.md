@@ -121,15 +121,34 @@ termlib on Android on 2026-07-27:
 - carriage-return progress replaced one line from `step 1` through `step 3`
   before returning to the prompt.
 
-The 100,000-line mode exposed a performance boundary. Threadline stayed alive,
-rendered the stream, and accepted another command on the same PTY after the
-backlog drained. A repeat run also kept the Disconnect action responsive while
-output remained backlogged. However, termlib continued processing the
-already-generated stream for well over a minute and showed blank intermediate
-frames. Moving termlib's snapshot handler to a dedicated `HandlerThread` did
-not remove the per-line backlog and made those intermediate frames more
-obvious, so that experiment was reverted. High-volume correctness is proven;
-high-volume usability is not, and the dependency decision remains provisional.
+The first 100,000-line Android runs appeared to expose a multi-minute termlib
+backlog: the visible rows continued to show `line`, and a follow-up marker only
+appeared after hiding the keyboard. A dedicated `HandlerThread` made snapshot
+behavior worse because termlib only uses `Choreographer` frame coalescing on
+the main looper, so that threading experiment was reverted.
+
+On 2026-07-29, instrumentation disproved the backlog diagnosis. An isolated
+termlib `0.1.0` benchmark processed the equivalent stream and settled its final
+snapshot in about 9.75 seconds. In the production Android path, all 600,129
+observed bytes crossed into termlib in 11 seconds across 2,952 ordered chunks;
+the termlib calls accounted for 9.63 seconds. Its final snapshot contained the
+marker at 13 seconds, and the Compose adapter, row composition, and Canvas draw
+callback all received it.
+
+The marker was drawn at terminal rows 57–58 while the software keyboard left
+only about 31 rows visible. Threadline's edge-to-edge terminal host had not
+consumed the IME inset, so the live prompt was below the keyboard rather than
+backlogged. Adding Compose `imePadding()` to the terminal host made termlib
+resize the PTY and Canvas to the unobscured viewport. In the clean API 35
+repeat, the 100,000-line stream completed and a same-PTY marker was visibly
+rendered two seconds after it was sent, 17 seconds after the stream began, with
+the keyboard still open.
+
+Threadline retains the main callback looper, ordered suspending output
+delivery, disconnect cancellation, and typed renderer failure. No termlib fork
+or terminal replacement is justified by the high-volume evidence. The
+dependency decision remains provisional only because the remaining lifecycle
+and device-matrix checks are incomplete.
 
 On 2026-07-27, a Pixel 9 Android 15 emulator and the production adapter also
 proved:
@@ -196,8 +215,8 @@ observed against the Docker fixture:
 - [x] Unicode and carriage-return progress render correctly in termlib.
 - [x] A 100,000-line stream renders without crashing the process, and the same
   PTY remains usable afterward.
-- [ ] High-volume output drains without a prolonged render backlog or blank
-  intermediate frames.
+- [x] High-volume output drains and a same-PTY follow-up marker remains visible
+  above the open software keyboard.
 - [x] Keyboard input reaches the same PTY and remains ordered under a rapid
   event burst.
 - [ ] Rotation changes PTY dimensions and `stty size` confirms them.

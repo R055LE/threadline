@@ -151,6 +151,11 @@ sealed interface SessionError {
             "Local input was stopped because the SSH send queue filled."
     }
 
+    data object TerminalRendererFailed : SessionError {
+        override val userMessage: String =
+            "The terminal renderer failed. The SSH session was closed."
+    }
+
     data object NotificationPermissionRequired : SessionError {
         override val userMessage: String =
             "Notification permission is required while an SSH session is active."

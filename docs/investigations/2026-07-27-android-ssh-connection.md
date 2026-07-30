@@ -8,17 +8,21 @@ SHA-256 fingerprint, requires explicit acceptance, authenticates by password,
 opens a PTY-backed shell, preserves rapid input order, and renders returned
 output in the raw terminal.
 
-Two independent Android-only defects were found:
+Three independent Android-only defects were found:
 
 1. cbssh `0.4.1` selected Android's nominal Ed25519 implementation, then failed
    to decode the standard X.509 public-key specification used for the server
    host signature.
 2. Threadline launched one coroutine per terminal input callback, allowing a
    rapid event burst to reach the SSH session out of order.
+3. The edge-to-edge terminal host did not consume the IME inset, so termlib
+   sized the PTY and Canvas behind the software keyboard and hid the live
+   prompt after a full-screen output stream.
 
 The first is fixed with a bundled Conscrypt provider, a real capability probe,
 and a modern algorithm fallback. The second is fixed with one bounded,
-session-bound input queue.
+session-bound input queue. The third is fixed by applying Compose IME padding
+to the terminal host so resize calculations use only the unobscured viewport.
 
 ## What was initially observed
 
@@ -282,36 +286,75 @@ prompt returned.
 
 ![Carriage-return progress completed on one line](../images/phase0-terminal-progress.png)
 
-The volume mode established a narrower result. Threadline rendered the stream
-without a crash or SSH disconnect and stayed near 133–135 MB proportional set
-size in the observed runs. After the original backlog drained, a
-`VOLUME_AFTER` marker returned through the same PTY. In a repeat run, the
-Disconnect action returned to the retained connection form in under three
-seconds even while terminal work remained backlogged.
+The volume mode initially appeared to establish a narrower result. Threadline
+rendered the stream without a crash or SSH disconnect and stayed near
+133–135 MB proportional set size in the observed runs. The visible rows kept
+showing `line`, while a `VOLUME_AFTER` marker appeared only after the software
+keyboard was hidden. In a repeat run, Disconnect returned to the retained
+connection form in under three seconds.
 
 ![The Android terminal rendering the 100,000-line stream](../images/phase0-terminal-volume-stream.png)
 
-![The same PTY returning a marker after the volume backlog drained](../images/phase0-terminal-volume-recovered.png)
+![The same PTY marker revealed after the software keyboard was hidden](../images/phase0-terminal-volume-recovered.png)
 
-The performance itself did not pass. The fixture generator had exited while
-termlib continued processing output for well over a minute, and observations
-alternated between populated and blank terminal frames before recovery. A
-targeted experiment moved termlib's snapshot handler from the UI looper to a
-dedicated `HandlerThread`. The experiment passed `test`, `lint`, and
-`assembleDebug`, then reproduced the same per-line backlog and made the blank
-intermediate frames more visible. It was reverted rather than preserving an
-unproven concurrency workaround.
+That interpretation was wrong. The terminal was current but partly obscured.
+The apparent recovery after hiding the keyboard was a viewport resize, not a
+render queue finally draining.
 
-The current evidence therefore separates correctness from usability: raw
-control sequences and glyphs are correct, and the session survives load, but
-the selected termlib version is not yet acceptable for unbounded high-volume
-output. The next investigation should compare an upstream fix, a bounded
-scrollback/output policy, and a terminal-library fallback without dropping raw
-bytes silently.
+### High-volume isolation and IME inset fix
+
+Development resumed on 2026-07-29 with an upstream comparison. Termlib
+`0.1.0` and upstream commit
+`4b738d235581a72b5425eb8d6186f7953d96b570` have no differences in terminal
+implementation code, so upgrading from the released artifact would not test a
+rendering fix.
+
+The earlier `HandlerThread` experiment was still rejected on source-level
+grounds. Termlib coalesces snapshot work with `Choreographer` only when its
+callback looper is the main looper; a background looper processes pending
+updates for each PTY chunk. Threadline restored the main callback looper.
+
+The next probes measured each boundary without inspecting or dropping terminal
+content:
+
+- an isolated termlib Android benchmark fed 100,000 CRLF-terminated lines in
+  8 KiB chunks and observed its final marker snapshot in about 9.75 seconds;
+- the production SSH path delivered 600,129 bytes into termlib in 11 seconds
+  across 2,952 ordered chunks, ranging from 1 to 7,176 bytes;
+- calls into termlib accounted for 9.63 seconds of that production run;
+- termlib's snapshot contained `VOLUME_AFTER` at 13 seconds with no pending
+  damage;
+- the Compose adapter and `TerminalRows` received the marker; and
+- the row Canvas draw callback ran for the marker.
+
+The decisive trace was spatial: the marker was composed and drawn at terminal
+rows 57–58 while only about 31 rows were visible above the software keyboard.
+Threadline called `enableEdgeToEdge()`, but its terminal host did not consume
+the IME inset. Termlib therefore sized its PTY and Canvas through the keyboard
+area. The screen correctly showed the upper `line` rows while the live prompt
+sat underneath the IME. Hiding the keyboard exposed the marker immediately.
+
+Threadline now applies Compose `imePadding()` to the terminal host before
+termlib measures its available height. This triggers the existing resize path
+with the unobscured dimensions; it does not sample, coalesce, or discard the
+raw byte stream.
+
+The clean Pixel 6 API 35 repeat passed:
+
+- the software keyboard remained open;
+- the 100,000-line stream completed without a crash or SSH disconnect;
+- `VOLUME_AFTER` and the returned prompt were visibly rendered two seconds
+  after the follow-up command was sent, 17 seconds after the stream began; and
+- `test`, `lint`, `assembleDebug`, and three `connectedDebugAndroidTest` cases
+  passed against the released termlib artifact, with all temporary dependency
+  probes removed.
+
+Threadline retains the suspending ordered terminal delivery, disconnect
+cancellation, typed renderer failure, and their unit tests. The evidence no
+longer supports a termlib fork or terminal replacement for this load case.
 
 ### Remaining Phase 0 device checks
 
-- resolve or explicitly bound termlib's high-volume output backlog;
 - PTY resize confirmed remotely after rotation;
 - foreground/background terminal preservation; and
 - disconnect leak/thread inspection.

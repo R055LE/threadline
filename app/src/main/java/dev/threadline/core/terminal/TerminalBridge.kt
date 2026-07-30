@@ -10,7 +10,7 @@ interface TerminalSink {
 
     fun clear()
 
-    fun receive(bytes: ByteArray)
+    suspend fun receive(bytes: ByteArray)
 }
 
 class TerminalBridge : TerminalSink {
@@ -21,6 +21,9 @@ class TerminalBridge : TerminalSink {
     private var resizeHandler: (TerminalSize) -> Unit = {}
 
     val emulator: TerminalEmulator = TerminalEmulatorFactory.create(
+        // termlib uses Choreographer to bound snapshot updates to display
+        // frames only when this is the main looper. A background looper makes
+        // it rebuild snapshots for every PTY chunk under sustained output.
         looper = Looper.getMainLooper(),
         initialRows = 24,
         initialCols = 80,
@@ -46,5 +49,5 @@ class TerminalBridge : TerminalSink {
 
     override fun clear() = emulator.clearScreen()
 
-    override fun receive(bytes: ByteArray) = emulator.writeInput(bytes)
+    override suspend fun receive(bytes: ByteArray) = emulator.writeInput(bytes)
 }

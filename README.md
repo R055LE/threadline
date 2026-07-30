@@ -125,12 +125,14 @@ risks are recorded in
 This is a deliberately playful proof of concept, not a production SSH client.
 Password auth, imported Ed25519 client-key auth, Ed25519 host verification,
 changed-host blocking, a PTY shell, ordered rapid input, ANSI color, Unicode,
-and carriage-return progress have now been proven on an Android 15 emulator. A
-100,000-line stream also survives without a crash or lost SSH session, but
-termlib accumulates an unacceptably long render backlog under that load. The
+carriage-return progress have now been proven on an Android 15 emulator. A
+100,000-line stream also drains without a crash or lost SSH session, and the
+same PTY visibly returns a follow-up marker. What first looked like a
+multi-minute termlib backlog was the bottom half of a 59-row terminal hidden
+behind the software keyboard. Applying the IME inset to the terminal host fixed
+its PTY and Canvas size without dropping or sampling output bytes. The
 specification files describe later phases, but Phase 1 should not begin until
-that performance boundary and the remaining device/emulator checklist in the
-ADR are resolved.
+the remaining device/emulator checklist in the ADR is resolved.
 
 ## License
 

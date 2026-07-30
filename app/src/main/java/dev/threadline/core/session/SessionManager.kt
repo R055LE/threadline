@@ -14,6 +14,7 @@ import dev.threadline.core.ssh.SshAdapterException
 import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -227,8 +228,18 @@ class SessionManager(
 
     private fun startSessionJobs(session: LiveSshSession) {
         outputJob = scope.launch {
-            session.output.consumeEach(terminal::receive)
-            failIfUnexpectedDisconnect()
+            try {
+                for (bytes in session.output) {
+                    terminal.receive(bytes)
+                }
+                failIfUnexpectedDisconnect()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (state.value is SessionState.Connected) {
+                    stateMachine.apply(SessionEvent.Failed(SessionError.TerminalRendererFailed))
+                }
+            }
         }
         disconnectMonitorJob = scope.launch {
             session.disconnects.first()
