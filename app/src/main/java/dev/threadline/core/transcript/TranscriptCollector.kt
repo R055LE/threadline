@@ -26,6 +26,7 @@ internal class TranscriptCollector(
     private var replaceLineOnWrite = false
     private var truncated = false
     private var approximate = false
+    private var interactiveHint: InteractiveTerminalHint? = null
     private var byteCount = 0L
     private var renderedCharacters = 0
 
@@ -100,6 +101,7 @@ internal class TranscriptCollector(
             truncated = truncated,
             approximate = approximate,
             byteCount = byteCount,
+            interactiveHint = interactiveHint,
         )
     }
 
@@ -184,6 +186,9 @@ internal class TranscriptCollector(
         val unsigned = byte.toInt() and 0xff
         if (unsigned !in CSI_FINAL_MIN..CSI_FINAL_MAX) return
 
+        interactiveHint = interactiveHint ?: InteractiveTerminalHintDetector.detectCsi(
+            escapeSequence.toByteArray(),
+        )
         if (byte == SGR_FINAL) {
             applySgr(escapeSequence.toByteArray())
             escapeSequence.reset()

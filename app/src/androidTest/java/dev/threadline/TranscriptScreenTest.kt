@@ -3,6 +3,7 @@ package dev.threadline
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -32,6 +33,7 @@ import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.CommandTurn
+import dev.threadline.core.transcript.InteractiveTerminalHint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -370,6 +372,45 @@ class TranscriptScreenTest {
     }
 
     @Test
+    fun interactiveSuggestionOpensRawTerminalAndCanReturnToTranscript() {
+        val turn = turn(
+            status = CommandStatus.RUNNING,
+            interactiveHint = InteractiveTerminalHint.ALTERNATE_SCREEN,
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Test session",
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn),
+                        activeCommandId = turn.id,
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onControlC = {},
+                    onDisconnect = {},
+                    rawTerminal = { modifier ->
+                        Text("Raw terminal test surface", modifier = modifier)
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("This command may need interactive input.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.INTERACTIVE_OPEN).performClick()
+        composeRule.onNodeWithText("Raw terminal test surface").assertIsDisplayed()
+        composeRule.onNodeWithText("This command may need interactive input.")
+            .assertDoesNotExist()
+
+        composeRule.onNodeWithText("Transcript").performClick()
+        composeRule.onNodeWithText("This command may need interactive input.")
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun runningTurnShowsLiveDuration() {
         val turn = turn(
             status = CommandStatus.RUNNING,
@@ -597,6 +638,7 @@ class TranscriptScreenTest {
         startedAtMillis: Long? = 110L,
         stopRequestedAtMillis: Long? = null,
         output: String = "",
+        interactiveHint: InteractiveTerminalHint? = null,
     ) = CommandTurn(
         id = CommandId(id),
         command = command,
@@ -610,6 +652,7 @@ class TranscriptScreenTest {
         output = CommandOutput(
             plainText = output,
             byteCount = output.encodeToByteArray().size.toLong(),
+            interactiveHint = interactiveHint,
         ),
         stopRequestedAtMillis = stopRequestedAtMillis,
     )

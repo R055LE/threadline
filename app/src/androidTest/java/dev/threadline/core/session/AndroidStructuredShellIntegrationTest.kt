@@ -146,6 +146,27 @@ class AndroidStructuredShellIntegrationTest {
             assertTrue(!renderedTurn.output.approximate)
             assertTrue(!renderedTurn.output.truncated)
 
+            val lessSubmission = accepted(
+                manager.submitCommand("less /etc/services"),
+            )
+            val suggestedTurn = withTimeout(COMMAND_TIMEOUT_MILLIS) {
+                manager.transcriptState.first { transcript ->
+                    transcript.turns
+                        .firstOrNull { it.id == lessSubmission.commandId }
+                        ?.output
+                        ?.interactiveHint != null
+                }.turns.first { it.id == lessSubmission.commandId }
+            }
+            assertEquals(CommandStatus.RUNNING, suggestedTurn.status)
+            assertTrue(suggestedTurn.output.interactiveHint != null)
+            manager.send("q".encodeToByteArray())
+            val lessCompleted = awaitCompletion(
+                manager,
+                lessSubmission.commandId,
+                "interactive less command",
+            )
+            assertEquals(0, lessCompleted.exitStatus)
+
             val volumeSubmission = accepted(
                 manager.submitCommand("yes 0123456789 | head -n 20000"),
             )

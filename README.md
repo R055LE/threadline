@@ -4,10 +4,11 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 2: transcript UX is in progress.** The app now opens on a deliberately
-plain command transcript with a saved multiline composer, streaming command
-cards, bounded ANSI-aware output, lifecycle status, and one-tap access to the
-same persistent raw terminal.
+**Phase 3: seamless raw fallback is in progress.** The app opens on a
+deliberately plain command transcript with a saved multiline composer,
+streaming command cards, bounded ANSI-aware output, lifecycle status,
+interactive-terminal suggestions, and one-tap access to the same persistent raw
+terminal.
 
 ## What the prototype contains
 
@@ -37,6 +38,9 @@ same persistent raw terminal.
   delayed explicit disconnect, Older/Newer command history with draft
   restoration, copy, edit, rerun, output collapsing, selectable output,
   confirmed HTTP(S) links, and raw-terminal switching
+- Advisory detection of alternate-screen, cursor-addressing, mouse-tracking,
+  and bracketed-paste control sequences with an explicit same-session terminal
+  handoff
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -192,10 +196,21 @@ oversized candidates stay inert. Tapping a detected link first shows the exact
 address in a confirmation dialog; only an explicit Open action hands it to
 Android, and a missing handler becomes a visible error rather than a crash.
 
-The remaining Phase 2 work is interaction hardening rather than visual polish:
-history deletion and retention controls, interactive-command suggestions,
-user-scrolled streaming behavior, and device testing of rotation and background
-transitions.
+Phase 3 begins mostly on already-proven infrastructure: the raw terminal uses
+the same SSH channel and PTY, its emulator remains process-owned while hidden,
+manual switching and return already work, and terminal measurements already
+resize the remote PTY. The first missing slice adds bounded, incremental
+interactive hints for strong terminal control sequences. A running card says
+only that the command *may* need input and requires an explicit Open terminal
+action. A production Android fixture run launched real `less`, observed the
+hint, sent `q` through the same PTY, and completed the structured command with
+exit 0. The boundary and acceptance evidence are recorded in the
+[Phase 3 investigation](docs/investigations/2026-07-30-seamless-raw-fallback.md).
+
+The remaining Phase 3 work is the mobile extra-key row and live `top`/`vim`
+proof. Deferred transcript hardening still includes history deletion and
+retention controls, user-scrolled streaming behavior, and focused rotation and
+background-transition checks.
 
 ## License
 

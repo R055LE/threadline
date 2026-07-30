@@ -61,7 +61,15 @@ data class CommandOutput(
     val truncated: Boolean = false,
     val approximate: Boolean = false,
     val byteCount: Long = 0,
+    val interactiveHint: InteractiveTerminalHint? = null,
 )
+
+enum class InteractiveTerminalHint {
+    ALTERNATE_SCREEN,
+    CURSOR_ADDRESSING,
+    MOUSE_TRACKING,
+    BRACKETED_PASTE,
+}
 
 data class CommandTurn(
     val id: CommandId,

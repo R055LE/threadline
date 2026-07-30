@@ -75,6 +75,7 @@ internal object TranscriptTags {
     const val HISTORY_OLDER = "command-history-older"
     const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
+    const val INTERACTIVE_OPEN = "interactive-open-terminal"
     private const val OUTPUT_PREFIX = "command-output-"
 
     fun output(commandId: String): String = "$OUTPUT_PREFIX$commandId"
@@ -89,6 +90,7 @@ internal fun ConnectedSessionScreen(
     onSubmit: (String) -> CommandSubmissionResult,
     onControlC: () -> Unit,
     onDisconnect: () -> Unit,
+    rawTerminal: @Composable (Modifier) -> Unit = { RawTerminal(it) },
 ) {
     var rawModeRequested by rememberSaveable { mutableStateOf(false) }
     val rawModeRequired = structuredShell is StructuredShellState.Unavailable
@@ -128,8 +130,8 @@ internal fun ConnectedSessionScreen(
         },
     ) { contentPadding ->
         if (showingRawTerminal) {
-            RawTerminal(
-                modifier = Modifier
+            rawTerminal(
+                Modifier
                     .padding(contentPadding)
                     .fillMaxSize(),
             )
@@ -140,6 +142,7 @@ internal fun ConnectedSessionScreen(
                 onSubmit = onSubmit,
                 onStop = onControlC,
                 onDisconnect = onDisconnect,
+                onOpenTerminal = { rawModeRequested = true },
                 modifier = Modifier
                     .padding(contentPadding)
                     .fillMaxSize(),
@@ -172,6 +175,7 @@ internal fun TranscriptSurface(
     onSubmit: (String) -> CommandSubmissionResult,
     onStop: () -> Unit,
     onDisconnect: () -> Unit,
+    onOpenTerminal: () -> Unit = {},
     modifier: Modifier = Modifier,
     clockMillis: () -> Long = System::currentTimeMillis,
     listState: LazyListState = rememberLazyListState(),
@@ -294,6 +298,7 @@ internal fun TranscriptSurface(
                     },
                     onRerun = { submit(turn.command, clearComposer = false) },
                     onOpenUrl = openUrl,
+                    onOpenTerminal = onOpenTerminal,
                     clockMillis = clockMillis,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
@@ -380,6 +385,7 @@ private fun CommandCard(
     onEdit: () -> Unit,
     onRerun: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onOpenTerminal: () -> Unit,
     clockMillis: () -> Long,
     modifier: Modifier = Modifier,
 ) {
@@ -444,6 +450,18 @@ private fun CommandCard(
                     "Transcript rendering is approximate; open Terminal for the exact view.",
                     style = MaterialTheme.typography.labelSmall,
                 )
+            }
+            if (turn.status.isActive() && turn.output.interactiveHint != null) {
+                Text(
+                    "This command may need interactive input.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(
+                    onClick = onOpenTerminal,
+                    modifier = Modifier.testTag(TranscriptTags.INTERACTIVE_OPEN),
+                ) {
+                    Text("Open terminal")
+                }
             }
 
             Row(
