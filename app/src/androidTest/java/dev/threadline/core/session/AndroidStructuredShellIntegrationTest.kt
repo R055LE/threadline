@@ -1,5 +1,7 @@
 package dev.threadline.core.session
 
+import android.content.Context
+import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.threadline.core.model.ConnectionRequest
@@ -9,8 +11,6 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
-import dev.threadline.core.security.KnownHostRecord
-import dev.threadline.core.security.KnownHostStore
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
@@ -24,6 +24,8 @@ import dev.threadline.core.transcript.AnsiColor
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.StyledRun
 import dev.threadline.core.transcript.TranscriptStyle
+import dev.threadline.data.db.ThreadlineDatabase
+import dev.threadline.data.host.RoomKnownHostStore
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -45,31 +47,45 @@ class AndroidStructuredShellIntegrationTest {
             "No runtime fixture password supplied; skipping Android SSH integration test",
             !password.isNullOrEmpty(),
         )
+        val fixturePassword = requireNotNull(password)
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val legacyPreferences = targetContext.getSharedPreferences(
+            PRODUCTION_LEGACY_PREFERENCES,
+            Context.MODE_PRIVATE,
+        )
+        legacyPreferences.edit().clear().commit()
+        val database = Room.inMemoryDatabaseBuilder(
+            targetContext,
+            ThreadlineDatabase::class.java,
+        ).build()
+        val knownHostStore = RoomKnownHostStore(
+            dao = database.knownHosts(),
+            legacyPreferences = legacyPreferences,
+        )
 
         val hostKeyAlgorithms = HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
             AndroidSshCryptoProvider.install(),
         )
         val manager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
-            knownHostStore = InMemoryKnownHostStore(),
+            knownHostStore = knownHostStore,
             terminal = NoOpTerminal,
         )
-        val request = ConnectionRequest(
-            profile = HostProfile(
-                displayName = "Android integration fixture",
-                endpoint = HostEndpoint(
-                    hostname = arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
-                    port = arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT,
-                ),
-                username = arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER,
+        val profile = HostProfile(
+            displayName = "Android integration fixture",
+            endpoint = HostEndpoint(
+                hostname = arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
+                port = arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT,
             ),
-            credential = SessionCredential.Password.from(
-                requireNotNull(password).toCharArray(),
-            ),
+            username = arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER,
+        )
+        fun request() = ConnectionRequest(
+            profile = profile,
+            credential = SessionCredential.Password.from(fixturePassword.toCharArray()),
         )
 
         try {
-            assertTrue(manager.prepareConnection(request))
+            assertTrue(manager.prepareConnection(request()))
             assertTrue(manager.connectPrepared())
             val prompt = withTimeout(CONNECTION_TIMEOUT_MILLIS) {
                 manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
@@ -207,11 +223,42 @@ class AndroidStructuredShellIntegrationTest {
             )
             assertEquals(CommandStatus.INTERRUPTED, interruptedTurn.status)
             assertTrue(interruptedTurn.stopRequestedAtMillis != null)
+
+            manager.disconnect()
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.first { it is SessionState.Disconnected }
+            }
+            val persisted = requireNotNull(knownHostStore.find(profile.endpoint))
+            assertEquals("ssh-ed25519", persisted.key.algorithm)
+            assertTrue(persisted.lastSeenAtMillis >= persisted.firstSeenAtMillis)
+
+            val reconnectManager = SessionManager(
+                adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
+                knownHostStore = knownHostStore,
+                terminal = NoOpTerminal,
+            )
+            try {
+                assertTrue(reconnectManager.prepareConnection(request()))
+                assertTrue(reconnectManager.connectPrepared())
+                // No host-key decision is supplied. Reaching Connected proves
+                // the real server key was read back from Room and trusted.
+                withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                    reconnectManager.state.filterIsInstance<SessionState.Connected>().first()
+                }
+            } finally {
+                reconnectManager.disconnect()
+                withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                    reconnectManager.state.first { it is SessionState.Disconnected }
+                }
+            }
+            Unit
         } finally {
             manager.disconnect()
             withTimeout(CONNECTION_TIMEOUT_MILLIS) {
                 manager.state.first { it is SessionState.Disconnected }
             }
+            database.close()
+            legacyPreferences.edit().clear().commit()
         }
     }
 
@@ -287,17 +334,7 @@ class AndroidStructuredShellIntegrationTest {
         const val CONNECTION_TIMEOUT_MILLIS = 20_000L
         const val COMMAND_TIMEOUT_MILLIS = 20_000L
         const val MAXIMUM_RENDERED_CHARACTERS = 128 * 1024
-    }
-}
-
-private class InMemoryKnownHostStore : KnownHostStore {
-    private var record: KnownHostRecord? = null
-
-    override fun find(endpoint: HostEndpoint): KnownHostRecord? =
-        record?.takeIf { it.endpoint == endpoint }
-
-    override fun save(record: KnownHostRecord) {
-        this.record = record
+        const val PRODUCTION_LEGACY_PREFERENCES = "android_structured_known_hosts"
     }
 }
 

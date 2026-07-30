@@ -54,8 +54,11 @@ multiline input, ANSI/progress/Unicode transcript rendering, exact bounded-tail
 retention under 20,000 lines of output, a real `less` process detected as
 interactive and exited with `q`, real `top` exited with `q`, and real `vim`
 exited with Escape-`:q!`-Enter through that same PTY. It also proves Ctrl-C
-completion as an interrupted turn. The script treats runner failures or an
-unrecognized result as a nonzero exit even though
+completion as an interrupted turn. Host-key acceptance uses the production
+Room store; after the first session disconnects, the test reconnects to the
+same real server from that stored record without supplying another host-key
+decision. The script treats runner failures or an unrecognized result as a
+nonzero exit even though
 `adb shell am instrument` itself can return zero after a test failure. The test
 is skipped during ordinary connected-test runs because no fixture password
 argument is supplied.

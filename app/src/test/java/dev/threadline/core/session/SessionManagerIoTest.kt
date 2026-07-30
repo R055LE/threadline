@@ -407,9 +407,15 @@ private class RecordingSession : LiveSshSession {
 }
 
 private object EmptyKnownHostStore : KnownHostStore {
-    override fun find(endpoint: HostEndpoint): KnownHostRecord? = null
+    override suspend fun find(endpoint: HostEndpoint): KnownHostRecord? = null
 
-    override fun save(record: KnownHostRecord) = Unit
+    override suspend fun save(record: KnownHostRecord) = Unit
+
+    override suspend fun recordTrustedSeen(
+        endpoint: HostEndpoint,
+        key: dev.threadline.core.security.KnownHostKey,
+        seenAtMillis: Long,
+    ) = Unit
 }
 
 private object FakeTerminal : TerminalSink {

@@ -4,7 +4,7 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 3: seamless raw fallback is complete.** The app opens on a
+**Phase 4: security and persistence is in progress.** The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
@@ -18,8 +18,10 @@ terminal with mobile modifier and navigation keys.
   modern ECDSA/RSA-SHA2 compatibility fallback
 - ConnectBot's libvterm-backed Compose terminal component
 - Password and imported OpenSSH private-key authentication
-- Explicit confirmation and persistence for unknown host keys
+- Explicit confirmation and Room persistence for unknown host keys
 - Default blocking for changed host keys
+- Idempotent migration from the dependency spike's private known-host
+  preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
 - A foreground service and visible disconnect notification
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
@@ -120,7 +122,7 @@ Compose host/terminal UI
         ▼
 SessionManager ─────────────── Foreground SshSessionService
         │
-        ├── StrictHostKeyGate ── SharedPreferences known-host store
+        ├── StrictHostKeyGate ── Room known-host store
         ├── SshClientAdapter ─── ConnectBot sshlib
         └── TerminalBridge ───── ConnectBot termlib/libvterm
 ```
@@ -220,6 +222,26 @@ device tests also pass. The boundary and acceptance evidence are recorded in the
 Phase 3 is complete. Phase 4 is security and persistence. Deferred transcript
 hardening still includes history deletion and retention controls, user-scrolled
 streaming behavior, and focused rotation and background-transition checks.
+
+The first Phase 4 slice establishes a versioned Room database and exported
+schema for known-host trust. Records contain the normalized endpoint, exact key
+algorithm and bytes, and first-seen plus last-trusted-seen timestamps. Existing
+accepted keys migrate idempotently from the Phase 0 private preference store;
+an older legacy record can never overwrite a Room decision. Database failures
+block verification with a typed, non-secret error, and coroutine cancellation
+is preserved.
+
+Five focused API 35 tests prove Room read/write, monotonic last-seen behavior,
+legacy import, stale-record non-overwrite, changed-key immutability, and
+survival across database reopen. The production Android fixture accepted the
+real OpenSSH key into Room, completed the existing session suite, disconnected,
+and reconnected from the stored key without a second approval in 3.755 seconds.
+The full gate then passed with all 27 routine device tests green. See the
+[Phase 4 persistence investigation](docs/investigations/2026-07-30-room-known-host-persistence.md).
+
+Room persistence for host profiles and transcripts, known-host management,
+encrypted imported keys, ephemeral sessions, sanitized diagnostics, and
+retention controls remain in Phase 4.
 
 ## License
 

@@ -112,6 +112,11 @@ sealed interface SessionError {
             "The server host key changed. The connection was blocked."
     }
 
+    data object KnownHostStorageFailed : SessionError {
+        override val userMessage: String =
+            "The server identity could not be read or saved securely."
+    }
+
     data object AuthenticationRejected : SessionError {
         override val userMessage: String = "The server rejected these credentials."
     }

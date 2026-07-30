@@ -2,7 +2,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.androidx.room)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 val applicationIdOverride = providers.gradleProperty("threadline.applicationId").orNull
@@ -34,6 +36,10 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    room {
+        schemaDirectory("$projectDir/schemas")
     }
 
     compileOptions {
@@ -68,6 +74,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.google.material)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room.runtime)
 
     implementation(libs.connectbot.sshlib)
     implementation(libs.connectbot.termlib)
@@ -76,6 +83,7 @@ dependencies {
     // Silence library logging in the POC so hosts, usernames, and auth details
     // cannot accidentally enter Logcat through an installed SLF4J provider.
     runtimeOnly(libs.slf4j.nop)
+    ksp(libs.androidx.room.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
@@ -86,4 +94,5 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
 }

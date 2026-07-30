@@ -5,6 +5,7 @@ import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
 import dev.threadline.core.model.SessionError
 import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -12,6 +13,7 @@ class StrictHostKeyGate(
     private val endpoint: HostEndpoint,
     private val store: KnownHostStore,
     private val requestDecision: suspend (HostKeyPrompt) -> HostKeyDecision,
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
     var rejection: SessionError? = null
         private set
@@ -19,10 +21,13 @@ class StrictHostKeyGate(
     suspend fun verify(
         algorithm: String,
         encoded: ByteArray,
-    ): Boolean {
+    ): Boolean = try {
         val candidate = KnownHostKey(algorithm, encoded.copyOf())
-        return when (val match = KnownHostPolicy.evaluate(store.find(endpoint), candidate)) {
-            KnownHostMatch.Trusted -> true
+        when (val match = KnownHostPolicy.evaluate(store.find(endpoint), candidate)) {
+            KnownHostMatch.Trusted -> {
+                store.recordTrustedSeen(endpoint, candidate, currentTimeMillis())
+                true
+            }
             KnownHostMatch.Unknown -> verifyUnknown(candidate)
             is KnownHostMatch.Changed -> {
                 rejection = SessionError.HostKeyChanged(
@@ -32,6 +37,11 @@ class StrictHostKeyGate(
                 false
             }
         }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: KnownHostStoreException) {
+        rejection = SessionError.KnownHostStorageFailed
+        false
     }
 
     private suspend fun verifyUnknown(candidate: KnownHostKey): Boolean {
@@ -48,7 +58,15 @@ class StrictHostKeyGate(
             return false
         }
 
-        store.save(KnownHostRecord(endpoint, candidate))
+        val acceptedAtMillis = currentTimeMillis()
+        store.save(
+            KnownHostRecord(
+                endpoint = endpoint,
+                key = candidate,
+                firstSeenAtMillis = acceptedAtMillis,
+                lastSeenAtMillis = acceptedAtMillis,
+            ),
+        )
         return true
     }
 

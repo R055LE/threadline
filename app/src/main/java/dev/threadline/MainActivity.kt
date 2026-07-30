@@ -266,12 +266,12 @@ internal fun HostForm(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "Phase 1 · structured command lifecycle",
+                "Phase 4 · security and persistence",
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "Connect to the local fixture and use the live PTY-backed shell " +
-                    "while structured command handling is built underneath it.",
+                "Connect through the live PTY-backed shell with strict host verification " +
+                    "and local trust persistence.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 

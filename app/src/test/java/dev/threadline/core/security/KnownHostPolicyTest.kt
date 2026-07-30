@@ -16,7 +16,7 @@ class KnownHostPolicyTest {
 
     @Test
     fun `same algorithm and bytes are trusted`() {
-        val record = KnownHostRecord(endpoint, key)
+        val record = record()
 
         assertEquals(
             KnownHostMatch.Trusted,
@@ -30,7 +30,7 @@ class KnownHostPolicyTest {
     @Test
     fun `different key is changed`() {
         val result = KnownHostPolicy.evaluate(
-            KnownHostRecord(endpoint, key),
+            record(),
             KnownHostKey("ssh-ed25519", byteArrayOf(9, 9, 9)),
         )
 
@@ -41,10 +41,17 @@ class KnownHostPolicyTest {
     @Test
     fun `different algorithm is changed even when bytes match`() {
         val result = KnownHostPolicy.evaluate(
-            KnownHostRecord(endpoint, key),
+            record(),
             KnownHostKey("ssh-rsa", byteArrayOf(1, 2, 3)),
         )
 
         assertTrue(result is KnownHostMatch.Changed)
     }
+
+    private fun record() = KnownHostRecord(
+        endpoint = endpoint,
+        key = key,
+        firstSeenAtMillis = 1,
+        lastSeenAtMillis = 1,
+    )
 }

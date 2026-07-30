@@ -1,18 +1,22 @@
 package dev.threadline
 
 import android.content.Context
-import dev.threadline.core.security.SharedPreferencesKnownHostStore
 import dev.threadline.core.session.SessionManager
 import dev.threadline.core.ssh.AndroidSshCryptoProvider
 import dev.threadline.core.ssh.ConnectBotSshClientAdapter
 import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
 import dev.threadline.core.terminal.TerminalBridge
+import dev.threadline.data.db.ThreadlineDatabase
+import dev.threadline.data.host.RoomKnownHostStore
 
 object SessionRuntime {
     lateinit var manager: SessionManager
         private set
 
     lateinit var terminal: TerminalBridge
+        private set
+
+    internal lateinit var database: ThreadlineDatabase
         private set
 
     @Synchronized
@@ -23,10 +27,15 @@ object SessionRuntime {
             AndroidSshCryptoProvider.install(),
         )
         val bridge = TerminalBridge()
+        val threadlineDatabase = ThreadlineDatabase.create(context)
         val sessionManager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
-            knownHostStore = SharedPreferencesKnownHostStore(
-                context.getSharedPreferences("known_hosts", Context.MODE_PRIVATE),
+            knownHostStore = RoomKnownHostStore(
+                dao = threadlineDatabase.knownHosts(),
+                legacyPreferences = context.getSharedPreferences(
+                    "known_hosts",
+                    Context.MODE_PRIVATE,
+                ),
             ),
             terminal = bridge,
         )
@@ -35,6 +44,7 @@ object SessionRuntime {
             onResize = sessionManager::resize,
         )
 
+        database = threadlineDatabase
         terminal = bridge
         manager = sessionManager
     }
