@@ -20,6 +20,10 @@ import dev.threadline.core.ssh.AndroidSshCryptoProvider
 import dev.threadline.core.ssh.ConnectBotSshClientAdapter
 import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
 import dev.threadline.core.terminal.TerminalSink
+import dev.threadline.core.transcript.AnsiColor
+import dev.threadline.core.transcript.CommandStatus
+import dev.threadline.core.transcript.StyledRun
+import dev.threadline.core.transcript.TranscriptStyle
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -108,6 +112,38 @@ class AndroidStructuredShellIntegrationTest {
                 manager,
                 "value='two lines'\ntest \"\$value\" = 'two lines'",
             )
+
+            val renderedSubmission = accepted(
+                manager.submitCommand(
+                    "printf '\\033[31mred\\033[0m\\n'; " +
+                        "printf '\\rstep 1'; printf '\\rstep 2'; printf '\\n'; " +
+                        "printf 'unicode: π 日本語 🚀\\n'",
+                ),
+            )
+            awaitCompletion(manager, renderedSubmission.commandId)
+            val renderedTurn = requireNotNull(
+                manager.transcriptState.value.turns
+                    .firstOrNull { it.id == renderedSubmission.commandId },
+            )
+            assertEquals(CommandStatus.SUCCEEDED, renderedTurn.status)
+            assertEquals(
+                "red\nstep 2\nunicode: π 日本語 🚀\n",
+                renderedTurn.output.plainText,
+            )
+            assertEquals(
+                listOf(
+                    StyledRun(
+                        start = 0,
+                        endExclusive = 3,
+                        style = TranscriptStyle(
+                            foreground = AnsiColor.Indexed(1),
+                        ),
+                    ),
+                ),
+                renderedTurn.output.styledRuns,
+            )
+            assertTrue(!renderedTurn.output.approximate)
+            assertTrue(!renderedTurn.output.truncated)
         } finally {
             manager.disconnect()
             withTimeout(CONNECTION_TIMEOUT_MILLIS) {

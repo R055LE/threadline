@@ -4,10 +4,10 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 1: structured command lifecycle is complete.** The repository is ready
-to move into Phase 2's transcript UX. There are no transcript cards yet; the
-app currently shows the proven raw PTY while structured command handling runs
-underneath it.
+**Phase 2: transcript UX is in progress.** The app now opens on a deliberately
+plain command transcript with a saved multiline composer, streaming command
+cards, bounded ANSI-aware output, lifecycle status, and one-tap access to the
+same persistent raw terminal.
 
 ## What the prototype contains
 
@@ -28,6 +28,12 @@ underneath it.
   connection-form retention
 - A bounded, ordered input queue so rapid IME and paste events cannot reorder
   bytes on the SSH channel
+- A bounded incremental transcript collector for UTF-8, line controls,
+  repeated-carriage-return progress, and ANSI SGR style runs
+- Immutable, session-local command turns with batched streaming updates,
+  duration, status, exit code, directory, truncation, and approximation state
+- A multiline command composer and neutral command cards with stop, copy,
+  edit, rerun, output collapsing, and raw-terminal switching
 - An opt-in plain-JVM smoke test that compiles the production SSH and structured
   shell code, then proves auth, PTY resize, persistent state, multiline input,
   lifecycle markers, current directory, and exit status against the fixture
@@ -145,13 +151,25 @@ valid same-session Threadline markers from transcript output, and passes
 unknown or malformed sequences through unchanged. Android's `SessionManager`
 now bootstraps this path, exposes immutable structured-shell state, enforces one
 active command, records exit status and directory, and downgrades failures to
-the still-connected raw terminal. The terminal header reports structured
-readiness; command submission UI is not built yet.
+the still-connected raw terminal.
 
 The Phase 1 exit cases—persistent `cd` and `export`, success, failure,
 multiline input, fragmented markers, and one active command—pass through the
 production Android adapter and `SessionManager` against the Docker fixture.
-Phase 2 can now build transcript collection and command UI on this lifecycle.
+Phase 2's first vertical slice now consumes that lifecycle into bounded
+session-local command turns. The collector supports incremental UTF-8, LF,
+CR/CRLF, backspace, tabs, repeated-CR progress replacement, standard/indexed/
+truecolor ANSI SGR runs, and explicit approximation for unsupported terminal
+operations. Output publication is capped at 20 updates per second, each card
+retains at most 131,072 rendered UTF-16 code units, and a session retains at
+most 100 turns. The production Android fixture test proves ANSI, progress,
+Unicode, and completed transcript status through the real SSH adapter and
+`SessionManager`.
+
+The remaining Phase 2 work is interaction hardening rather than visual polish:
+live-duration updates, richer history behavior, interactive-command
+suggestions, URL handling, and device testing of long-output scrolling,
+selection, cancellation, rotation, and background transitions.
 
 ## License
 

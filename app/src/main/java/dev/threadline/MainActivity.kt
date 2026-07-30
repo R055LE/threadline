@@ -11,7 +11,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,7 +28,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +37,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +47,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,9 +63,7 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
-import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.service.SshSessionService
-import org.connectbot.terminal.Terminal
 import java.io.ByteArrayOutputStream
 
 class MainActivity : ComponentActivity() {
@@ -188,9 +181,11 @@ private fun ThreadlineApp() {
             },
         )
 
-        is SessionState.Connected -> TerminalScreen(
+        is SessionState.Connected -> ConnectedSessionScreen(
             displayName = current.displayName,
             structuredShell = snapshot.structuredShell,
+            transcript = snapshot.transcript,
+            onSubmit = manager::submitCommand,
             onControlC = manager::sendControlC,
             onDisconnect = manager::disconnect,
         )
@@ -489,59 +484,6 @@ private fun ErrorCard(error: SessionError) {
             }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TerminalScreen(
-    displayName: String,
-    structuredShell: StructuredShellState,
-    onControlC: () -> Unit,
-    onDisconnect: () -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(displayName)
-                        Text(
-                            structuredShell.statusLabel(),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                },
-                actions = {
-                    TextButton(onClick = onControlC) { Text("Ctrl-C") }
-                    TextButton(onClick = onDisconnect) { Text("Disconnect") }
-                },
-            )
-        },
-    ) { contentPadding ->
-        Box(
-            modifier = Modifier
-                .padding(contentPadding)
-                .fillMaxSize()
-                .imePadding()
-                .background(Color.Black),
-        ) {
-            Terminal(
-                terminalEmulator = SessionRuntime.terminal.emulator,
-                keyboardEnabled = true,
-                showSoftKeyboard = true,
-                onHyperlinkClick = {},
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
-private fun StructuredShellState.statusLabel(): String = when (this) {
-    StructuredShellState.Inactive -> "Raw terminal · same PTY"
-    is StructuredShellState.Bootstrapping -> "Setting up structured shell · raw available"
-    is StructuredShellState.Ready -> "Structured shell ready · same PTY"
-    is StructuredShellState.Running -> "Structured command running · raw available"
-    is StructuredShellState.Unavailable -> "Structured shell unavailable · raw available"
 }
 
 @Composable

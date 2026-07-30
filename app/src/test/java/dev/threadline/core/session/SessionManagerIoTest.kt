@@ -20,6 +20,8 @@ import dev.threadline.core.ssh.LiveSshSession
 import dev.threadline.core.ssh.ServerHostKeyVerifier
 import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
+import dev.threadline.core.transcript.CommandOutput
+import dev.threadline.core.transcript.CommandStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -252,6 +254,20 @@ class SessionManagerIoTest {
                     exitStatus = 1,
                 ),
                 ready.lastCommand,
+            )
+            val turn = manager.transcriptState.value.turns.single()
+            assertEquals(CommandId("first-command"), turn.id)
+            assertEquals("cd /tmp && false", turn.command)
+            assertEquals("/home/threadline", turn.directoryAtStart)
+            assertEquals("/tmp", turn.currentDirectory)
+            assertEquals(1, turn.exitStatus)
+            assertEquals(CommandStatus.FAILED, turn.status)
+            assertEquals(
+                CommandOutput(
+                    plainText = "visible output\n",
+                    byteCount = "visible output\r\n".encodeToByteArray().size.toLong(),
+                ),
+                turn.output,
             )
             assertArrayEquals(
                 bootstrapRaw + commandRaw,

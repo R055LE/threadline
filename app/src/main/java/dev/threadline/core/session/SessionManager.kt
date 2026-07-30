@@ -24,6 +24,8 @@ import dev.threadline.core.ssh.ServerHostKeyVerifier
 import dev.threadline.core.ssh.SshAdapterException
 import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
+import dev.threadline.core.transcript.CommandTranscript
+import dev.threadline.core.transcript.CommandTranscriptState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +62,7 @@ class SessionManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val stateMachine = SessionStateMachine()
     private val structuredStateMachine = StructuredShellStateMachine()
+    private val commandTranscript = CommandTranscript()
     private val pendingLock = Any()
     private val decisionLock = Any()
     private val structuredLock = Any()
@@ -68,17 +71,24 @@ class SessionManager(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     private val inputRequests = Channel<SessionInput>(capacity = INPUT_QUEUE_CAPACITY)
+    private val transcriptPublishRequests = Channel<Unit>(capacity = Channel.CONFLATED)
 
     val state: StateFlow<SessionState> = stateMachine.state
     val structuredState: StateFlow<StructuredShellState> = structuredStateMachine.state
+    val transcriptState: StateFlow<CommandTranscriptState> = commandTranscript.state
     val snapshot: StateFlow<SessionSnapshot> = combine(
         state,
         structuredState,
+        transcriptState,
         ::SessionSnapshot,
     ).stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
-        initialValue = SessionSnapshot(state.value, structuredState.value),
+        initialValue = SessionSnapshot(
+            state.value,
+            structuredState.value,
+            transcriptState.value,
+        ),
     )
 
     private var pendingRequest: ConnectionRequest? = null
@@ -124,6 +134,12 @@ class SessionManager(
                     }
                 }
         }
+        scope.launch {
+            for (ignored in transcriptPublishRequests) {
+                delay(TRANSCRIPT_UPDATE_INTERVAL_MILLIS)
+                commandTranscript.publishOutput()
+            }
+        }
     }
 
     fun prepareConnection(request: ConnectionRequest): Boolean = synchronized(pendingLock) {
@@ -146,6 +162,7 @@ class SessionManager(
         } ?: return false
 
         stateMachine.apply(SessionEvent.ConnectRequested(request.profile.displayName))
+        commandTranscript.reset()
         resetStructuredShell()
         terminal.clear()
         connectJob = scope.launch { establish(request) }
@@ -175,7 +192,10 @@ class SessionManager(
         }
     }
 
-    fun sendControlC() = send(byteArrayOf(0x03))
+    fun sendControlC() {
+        commandTranscript.stopRequested()
+        send(byteArrayOf(0x03))
+    }
 
     fun submitCommand(command: String): CommandSubmissionResult = synchronized(structuredLock) {
         val currentState = structuredState.value
@@ -208,10 +228,16 @@ class SessionManager(
         structuredStateMachine.apply(
             StructuredShellEvent.CommandSubmitted(commandId, command),
         )
+        commandTranscript.commandSubmitted(
+            id = commandId,
+            command = command,
+            directoryAtStart = currentState.currentDirectory,
+        )
         if (inputRequests.trySend(SessionInput(session, invocation)).isFailure) {
             structuredStateMachine.apply(
                 StructuredShellEvent.CommandSendRejected(commandId),
             )
+            commandTranscript.commandSendRejected(commandId)
             return@synchronized CommandSubmissionResult.Rejected(
                 CommandSubmissionRejection.INPUT_BACKPRESSURE,
             )
@@ -236,6 +262,7 @@ class SessionManager(
             bootstrapTimeoutJob?.cancelAndJoin()
             val session = liveSession
             liveSession = null
+            commandTranscript.sessionDisconnected()
             resetStructuredShell()
             runCatching { session?.disconnect() }
             stateMachine.apply(SessionEvent.Disconnected)
@@ -253,6 +280,7 @@ class SessionManager(
             bootstrapTimeoutJob?.cancelAndJoin()
             val session = liveSession
             liveSession = null
+            commandTranscript.sessionDisconnected()
             resetStructuredShell()
             runCatching { session?.disconnect() }
             if (state.value !is SessionState.Failed) {
@@ -415,18 +443,29 @@ class SessionManager(
         }
 
         scan.items.forEach { item ->
-            if (item !is ProtocolStreamItem.Lifecycle) return@forEach
-            synchronized(structuredLock) {
-                if (structuredContext !== context) return@synchronized
-                val next = structuredStateMachine.apply(
-                    StructuredShellEvent.Lifecycle(item.event),
-                )
-                if (next !is StructuredShellState.Bootstrapping) {
-                    bootstrapTimeoutJob?.cancel()
-                    bootstrapTimeoutJob = null
+            when (item) {
+                is ProtocolStreamItem.TranscriptBytes -> {
+                    if (commandTranscript.consumeOutput(item.bytes)) {
+                        transcriptPublishRequests.trySend(Unit)
+                    }
                 }
-                if (next is StructuredShellState.Unavailable) {
-                    structuredContext = null
+
+                is ProtocolStreamItem.Lifecycle -> synchronized(structuredLock) {
+                    if (structuredContext !== context) return@synchronized
+                    commandTranscript.lifecycle(item.event)
+                    val next = structuredStateMachine.apply(
+                        StructuredShellEvent.Lifecycle(item.event),
+                    )
+                    if (next is StructuredShellState.Unavailable) {
+                        commandTranscript.structuredShellFailed(item.event.commandId)
+                    }
+                    if (next !is StructuredShellState.Bootstrapping) {
+                        bootstrapTimeoutJob?.cancel()
+                        bootstrapTimeoutJob = null
+                    }
+                    if (next is StructuredShellState.Unavailable) {
+                        structuredContext = null
+                    }
                 }
             }
         }
@@ -439,6 +478,7 @@ class SessionManager(
         synchronized(structuredLock) {
             if (structuredContext !== context) return
             structuredStateMachine.apply(StructuredShellEvent.IntegrationFailed(reason))
+            commandTranscript.structuredShellFailed()
             structuredContext = null
             bootstrapTimeoutJob?.cancel()
             bootstrapTimeoutJob = null
@@ -455,6 +495,7 @@ class SessionManager(
     }
 
     private fun failSession(error: SessionError) {
+        commandTranscript.sessionDisconnected()
         resetStructuredShell()
         stateMachine.apply(SessionEvent.Failed(error))
     }
@@ -473,5 +514,6 @@ class SessionManager(
     private companion object {
         const val INPUT_QUEUE_CAPACITY = 256
         const val DEFAULT_BOOTSTRAP_TIMEOUT_MILLIS = 10_000L
+        const val TRANSCRIPT_UPDATE_INTERVAL_MILLIS = 50L
     }
 }

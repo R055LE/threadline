@@ -119,19 +119,20 @@ fragmented markers in one shell.
 
 - Only the Bash path is implemented. Zsh and generic POSIX compatibility still
   need explicit probes and downgrade behavior.
-- `SessionManager` exposes submission and structured lifecycle state, but the
-  Compose UI remains the raw terminal. Transcript collection and command UI are
-  Phase 2 work.
 - The current-directory field follows the Phase 1 specification and is emitted
   directly. Semicolons are supported because the parser treats the final field
   as a remainder, but a directory containing an OSC terminator control
   character cannot be represented by this version.
-- Transcript text collection and rendering remain Phase 2 work. This slice
-  preserves ordered bytes but does not interpret terminal display operations.
+- The transcript collector is deliberately not a terminal emulator. Unsupported
+  terminal operations mark a turn approximate, and the persistent raw terminal
+  remains the exact rendering fallback.
+- Transcript history is in memory for the current session. Persistence remains
+  Phase 4 work.
 
-## Phase 2 handoff
+## Phase 2 first vertical slice
 
-Phase 2 can treat the structured-shell layer as a stable boundary:
+The first Phase 2 slice now treats the structured-shell layer as a stable
+boundary:
 
 - Every PTY read still reaches the raw terminal unchanged and in order.
 - The transcript path receives an ordered stream of output-byte segments and
@@ -140,25 +141,43 @@ Phase 2 can treat the structured-shell layer as a stable boundary:
   stable ID, start event, end event, exit status, and resulting directory.
 - Structured setup failure leaves the SSH session usable in raw-only mode.
 
-The smallest end-to-end Phase 2 slice should consume that stream into a bounded
-in-memory `CommandTurn`, expose it as immutable UI state, and render one
-streaming command card submitted from a multiline composer. Completion should
-show duration, exit status, and current directory. This proves the new product
-interaction before adding persistence or a broader history model.
+`TranscriptCollector` incrementally decodes UTF-8 and supports LF, CR/CRLF,
+backspace, eight-column tabs, repeated-CR line replacement, and ANSI SGR
+standard, bright, indexed, and truecolor styles. Unsupported control sequences
+are omitted from display text and mark the output approximate. Its mutable
+cells and parser state stay below Compose; the UI receives immutable plain text
+and offset-based styled runs.
 
-Collector behavior belongs below Compose. It should incrementally decode UTF-8,
-handle LF, CR/CRLF, backspace, tabs, repeated-CR progress updates, and ANSI SGR
-style runs. Unsupported terminal operations must mark the rendering
-approximate, while the unchanged raw-terminal stream remains authoritative.
-Transcript updates should be batched, output storage bounded by tested
-constants, and truncation explicit.
+The selected initial bounds are constants with tests:
 
-The first Phase 2 planning discussion should settle:
+- 131,072 rendered UTF-16 code units retained as a tail per command;
+- 100 command turns retained for the current session;
+- 4 KiB maximum pending display escape sequence;
+- eight-column tab stops; and
+- one transcript state publication per 50 ms during streaming.
 
-- whether the initial slice lands plain display text before ANSI styled runs or
-  includes the complete collector contract from its first card;
-- the active-output, completed-output, and UI update-cadence limits;
-- the immutable `CommandTurn` and styled-output representation;
-- when approximate rendering should suggest opening the raw terminal; and
-- whether command history initially lives only for the current session, with
-  Room persistence deferred to Phase 4 as specified.
+`SessionManager` attributes only bytes ordered between a command's
+output-start and end events. Wrapper echo, bootstrap traffic, and the next
+prompt are excluded. Submission and lifecycle changes publish immediately,
+while output-only changes use a conflated 50 ms channel. On completion, the
+turn is published before structured shell readiness, preventing observers from
+seeing a ready shell with a still-running card.
+
+The initial Compose surface is intentionally neutral. It provides a saved
+multiline composer, streaming cards, status, duration after completion, exit
+code, submission directory, ANSI rendering, long-output collapse, explicit
+truncation and approximation notices, stop, copy, edit, rerun, and switching
+to the same persistent raw terminal.
+
+Unit tests cover every UTF-8 and ANSI split, line controls, CR progress,
+indexed and truecolor styles, unsupported operations, truncation, lifecycle
+attribution, history bounds, stop status, and protocol failure. Compose tests
+prove exact multiline submission and semantic completed-card content. The live
+production Android fixture test additionally proves ANSI color, repeated-CR
+progress, Unicode, and successful transcript completion through
+`ConnectBotSshClientAdapter` and `SessionManager`.
+
+Remaining Phase 2 work includes live duration updates, URL interaction,
+interactive-command suggestions, and device-level stress checks for long
+output, scroll following, selection, cancellation, rotation, and background
+transitions. Room transcript persistence remains deferred to Phase 4.
