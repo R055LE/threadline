@@ -65,10 +65,13 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
+import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.service.SshSessionService
 import java.io.ByteArrayOutputStream
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -156,6 +159,9 @@ internal object ConnectionFormTags {
     const val USE_PROFILE_AS_NEW = "connection-use-profile-as-new"
     const val DELETE_PROFILE_PREFIX = "connection-delete-profile-"
     const val CONFIRM_DELETE_PROFILE = "connection-confirm-delete-profile"
+    const val TRUSTED_HOST_PREFIX = "connection-trusted-host-"
+    const val DELETE_TRUST_PREFIX = "connection-delete-trust-"
+    const val CONFIRM_DELETE_TRUST = "connection-confirm-delete-trust"
 }
 
 @Composable
@@ -166,6 +172,8 @@ private fun ThreadlineApp() {
     val importedPrivateKeys by SessionRuntime.importedPrivateKeys.keys
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val hostProfiles by SessionRuntime.hostProfiles.profiles
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val knownHosts by SessionRuntime.knownHosts.hosts
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
@@ -196,6 +204,8 @@ private fun ThreadlineApp() {
             onSaveHostProfile = SessionRuntime.hostProfiles::save,
             onUpdateHostProfile = SessionRuntime.hostProfiles::update,
             onDeleteHostProfile = SessionRuntime.hostProfiles::delete,
+            knownHosts = knownHosts,
+            onDeleteKnownHost = SessionRuntime.knownHosts::delete,
             importedPrivateKeys = importedPrivateKeys,
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
@@ -280,6 +290,10 @@ internal fun HostForm(
     onDeleteHostProfile: suspend (id: String) -> Unit = {
         error("Host-profile storage is unavailable.")
     },
+    knownHosts: List<KnownHostMetadata> = emptyList(),
+    onDeleteKnownHost: suspend (endpointKey: String) -> Unit = {
+        error("Known-host storage is unavailable.")
+    },
     importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
     onSavePrivateKey: suspend (
         displayName: String,
@@ -317,12 +331,14 @@ internal fun HostForm(
     var isPreparing by remember { mutableStateOf(false) }
     var isManagingProfile by remember { mutableStateOf(false) }
     var profilePendingDeletion by remember { mutableStateOf<SavedHostProfile?>(null) }
+    var isManagingKnownHost by remember { mutableStateOf(false) }
+    var knownHostPendingDeletion by remember { mutableStateOf<KnownHostMetadata?>(null) }
     var isManagingKey by remember { mutableStateOf(false) }
     var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
-    val isBusy = isPreparing || isManagingProfile || isManagingKey
+    val isBusy = isPreparing || isManagingProfile || isManagingKnownHost || isManagingKey
 
     fun clearSessionCredentialInputs() {
         password = ""
@@ -431,6 +447,60 @@ internal fun HostForm(
                             ),
                         ) {
                             Text("Delete")
+                        }
+                    }
+                }
+            }
+
+            if (knownHosts.isNotEmpty()) {
+                Text("Trusted servers", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Forgetting a server removes only its saved host-key decision. " +
+                        "A later connection must be verified and accepted again.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                knownHosts.forEach { host ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag(ConnectionFormTags.TRUSTED_HOST_PREFIX + host.endpointKey),
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(12.dp),
+                            ) {
+                                Text(
+                                    "${host.hostname}:${host.port}",
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "${host.algorithm} · ${host.fingerprint}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "First trusted ${formatKnownHostTimestamp(host.firstSeenAtMillis)}; " +
+                                        "last verified ${formatKnownHostTimestamp(host.lastSeenAtMillis)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                knownHostPendingDeletion = host
+                                formError = null
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.testTag(
+                                ConnectionFormTags.DELETE_TRUST_PREFIX + host.endpointKey,
+                            ),
+                        ) {
+                            Text("Forget")
                         }
                     }
                 }
@@ -844,6 +914,63 @@ internal fun HostForm(
         )
     }
 
+    knownHostPendingDeletion?.let { host ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isManagingKnownHost) knownHostPendingDeletion = null
+            },
+            title = { Text("Forget trusted server?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "This removes Threadline's saved host-key decision for " +
+                            "${host.hostname}:${host.port}. It does not change the server. " +
+                            "The next connection must be verified and accepted again.",
+                    )
+                    Text(
+                        "${host.algorithm} · ${host.fingerprint}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isBusy) return@Button
+                        isManagingKnownHost = true
+                        coroutineScope.launch {
+                            try {
+                                onDeleteKnownHost(host.endpointKey)
+                                knownHostPendingDeletion = null
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The trusted server record could not be deleted."
+                                knownHostPendingDeletion = null
+                            } finally {
+                                isManagingKnownHost = false
+                            }
+                        }
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier.testTag(ConnectionFormTags.CONFIRM_DELETE_TRUST),
+                ) {
+                    Text("Forget")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { knownHostPendingDeletion = null },
+                    enabled = !isManagingKnownHost,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     keyPendingRename?.let { key ->
         AlertDialog(
             onDismissRequest = {
@@ -979,6 +1106,11 @@ private fun ErrorCard(error: SessionError) {
             )
             if (error is SessionError.HostKeyChanged) {
                 Text(
+                    text = "Server: ${error.endpoint.hostname}:${error.endpoint.port}",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
                     text = "Saved: ${error.previousFingerprint}",
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
@@ -986,6 +1118,12 @@ private fun ErrorCard(error: SessionError) {
                 Text(
                     text = "Presented: ${error.presentedFingerprint}",
                     fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "To replace this trust record, forget the matching trusted server below, " +
+                        "reconnect, verify the new fingerprint through a trusted channel, " +
+                        "and explicitly accept it.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -1086,6 +1224,11 @@ private fun selectedPrivateKeyName(uri: Uri): String =
         ?.substringAfterLast('/')
         ?.takeIf(String::isNotBlank)
         ?: "Imported private key"
+
+private fun formatKnownHostTimestamp(timestampMillis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(
+        Date(timestampMillis),
+    )
 
 private fun ConnectionFormDraft.toHostProfileOrNull(): HostProfile? {
     val parsedPort = port.toIntOrNull()

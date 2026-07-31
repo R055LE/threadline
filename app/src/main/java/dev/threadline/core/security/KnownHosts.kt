@@ -1,6 +1,9 @@
 package dev.threadline.core.security
 
 import dev.threadline.core.model.HostEndpoint
+import java.security.MessageDigest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 data class KnownHostKey(
     val algorithm: String,
@@ -41,6 +44,14 @@ interface KnownHostStore {
 class KnownHostStoreException(
     cause: Throwable,
 ) : Exception("Known-host storage failed", cause)
+
+@OptIn(ExperimentalEncodingApi::class)
+internal object HostKeyFingerprint {
+    fun sha256(encoded: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(encoded)
+        return "SHA256:${Base64.Default.encode(digest).trimEnd('=')}"
+    }
+}
 
 sealed interface KnownHostMatch {
     data object Unknown : KnownHostMatch

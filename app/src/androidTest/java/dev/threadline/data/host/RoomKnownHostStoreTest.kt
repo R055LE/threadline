@@ -7,14 +7,17 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.SessionError
+import dev.threadline.core.security.HostKeyFingerprint
 import dev.threadline.core.security.KnownHostKey
 import dev.threadline.core.security.KnownHostRecord
 import dev.threadline.core.security.StrictHostKeyGate
 import dev.threadline.data.db.ThreadlineDatabase
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -148,6 +151,63 @@ class RoomKnownHostStoreTest {
     }
 
     @Test
+    fun deletionIsRecordScopedAndReplacementRequiresFreshAcceptance() = runBlocking {
+        val endpoint = HostEndpoint("changed.test", 22)
+        val otherEndpoint = HostEndpoint("other.test", 2200)
+        val trusted = KnownHostKey("ssh-ed25519", byteArrayOf(1, 2, 3))
+        val replacement = KnownHostKey("ssh-ed25519", byteArrayOf(9, 9, 9))
+        val otherKey = KnownHostKey("ssh-rsa", byteArrayOf(4, 5, 6))
+        val store = store()
+        store.save(record(endpoint, trusted, 10))
+        store.save(record(otherEndpoint, otherKey, 20))
+
+        val metadata = store.hosts.first()
+        assertEquals(listOf("changed.test:22", "other.test:2200"), metadata.map { it.endpointKey })
+        assertEquals(
+            HostKeyFingerprint.sha256(trusted.encoded),
+            metadata.first().fingerprint,
+        )
+
+        var prompted = false
+        val changedGate = StrictHostKeyGate(
+            endpoint = endpoint,
+            store = store,
+            requestDecision = {
+                prompted = true
+                HostKeyDecision.ACCEPT_AND_SAVE
+            },
+        )
+        assertFalse(changedGate.verify(replacement.algorithm, replacement.encoded))
+        assertFalse(prompted)
+        val changed = changedGate.rejection as SessionError.HostKeyChanged
+        assertEquals(endpoint, changed.endpoint)
+
+        store.delete(endpoint.storageKey)
+        assertNull(store.find(endpoint))
+        assertEquals(otherKey, store.find(otherEndpoint)?.key)
+
+        val replacementGate = StrictHostKeyGate(
+            endpoint = endpoint,
+            store = store,
+            requestDecision = {
+                prompted = true
+                HostKeyDecision.ACCEPT_AND_SAVE
+            },
+            currentTimeMillis = { 30 },
+        )
+        assertTrue(replacementGate.verify(replacement.algorithm, replacement.encoded))
+        assertTrue(prompted)
+        assertEquals(replacement, store.find(endpoint)?.key)
+    }
+
+    @Test
+    fun deletingMissingTrustRecordFailsExplicitly() = runBlocking {
+        val failure = runCatching { store().delete("missing.test:22") }.exceptionOrNull()
+
+        assertTrue(failure is KnownHostUnavailableException)
+    }
+
+    @Test
     fun recordSurvivesDatabaseReopen() = runBlocking {
         database.close()
         val endpoint = HostEndpoint("persistent.test", 22)
@@ -174,6 +234,17 @@ class RoomKnownHostStoreTest {
         dao = database.knownHosts(),
         legacyPreferences = legacyPreferences(),
         currentTimeMillis = currentTimeMillis,
+    )
+
+    private fun record(
+        endpoint: HostEndpoint,
+        key: KnownHostKey,
+        seenAtMillis: Long,
+    ) = KnownHostRecord(
+        endpoint = endpoint,
+        key = key,
+        firstSeenAtMillis = seenAtMillis,
+        lastSeenAtMillis = seenAtMillis,
     )
 
     private fun legacyPreferences() = context.getSharedPreferences(

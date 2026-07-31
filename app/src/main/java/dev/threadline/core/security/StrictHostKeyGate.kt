@@ -4,10 +4,7 @@ import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
 import dev.threadline.core.model.SessionError
-import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 class StrictHostKeyGate(
     private val endpoint: HostEndpoint,
@@ -31,8 +28,9 @@ class StrictHostKeyGate(
             KnownHostMatch.Unknown -> verifyUnknown(candidate)
             is KnownHostMatch.Changed -> {
                 rejection = SessionError.HostKeyChanged(
-                    previousFingerprint = fingerprint(match.previous.encoded),
-                    presentedFingerprint = fingerprint(candidate.encoded),
+                    endpoint = endpoint,
+                    previousFingerprint = HostKeyFingerprint.sha256(match.previous.encoded),
+                    presentedFingerprint = HostKeyFingerprint.sha256(candidate.encoded),
                 )
                 false
             }
@@ -45,7 +43,7 @@ class StrictHostKeyGate(
     }
 
     private suspend fun verifyUnknown(candidate: KnownHostKey): Boolean {
-        val candidateFingerprint = fingerprint(candidate.encoded)
+        val candidateFingerprint = HostKeyFingerprint.sha256(candidate.encoded)
         val decision = requestDecision(
             HostKeyPrompt(
                 endpoint = endpoint,
@@ -68,11 +66,5 @@ class StrictHostKeyGate(
             ),
         )
         return true
-    }
-
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun fingerprint(encoded: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(encoded)
-        return "SHA256:${Base64.Default.encode(digest).trimEnd('=')}"
     }
 }

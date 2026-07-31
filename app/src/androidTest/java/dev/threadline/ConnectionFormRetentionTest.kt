@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.AnnotatedString
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
+import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
 import org.junit.Assert.assertEquals
@@ -307,6 +309,59 @@ class ConnectionFormRetentionTest {
             .assertIsNotSelected()
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
             .assertEditableTextEquals("")
+    }
+
+    @Test
+    fun changedHostTrustCanOnlyBeForgottenAfterExplicitConfirmation() {
+        val trustedHost = KnownHostMetadata(
+            endpointKey = "changed.example:22",
+            hostname = "changed.example",
+            port = 22,
+            algorithm = "ssh-ed25519",
+            fingerprint = "SHA256:trusted",
+            firstSeenAtMillis = 1,
+            lastSeenAtMillis = 2,
+        )
+        val hosts = mutableStateOf(listOf(trustedHost))
+        var deletedEndpointKey: String? = null
+
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = dev.threadline.core.model.SessionError.HostKeyChanged(
+                        endpoint = HostEndpoint("changed.example", 22),
+                        previousFingerprint = "SHA256:trusted",
+                        presentedFingerprint = "SHA256:presented",
+                    ),
+                    knownHosts = hosts.value,
+                    onDeleteKnownHost = { endpointKey ->
+                        deletedEndpointKey = endpointKey
+                        hosts.value = emptyList()
+                    },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("To replace this trust record", substring = true).assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.DELETE_TRUST_PREFIX + trustedHost.endpointKey)
+            .performClick()
+        assertNull(deletedEndpointKey)
+        compose.onNodeWithText("Forget trusted server?").assertExists()
+        compose.onAllNodesWithText("ssh-ed25519 · SHA256:trusted").assertCountEquals(2)
+
+        compose.onNodeWithTag(ConnectionFormTags.CONFIRM_DELETE_TRUST).performClick()
+        compose.waitForIdle()
+
+        assertEquals(trustedHost.endpointKey, deletedEndpointKey)
+        compose.onAllNodesWithTag(
+            ConnectionFormTags.TRUSTED_HOST_PREFIX + trustedHost.endpointKey,
+        ).assertCountEquals(0)
     }
 }
 

@@ -24,6 +24,8 @@ terminal with mobile modifier and navigation keys.
   non-credential host profiles
 - Explicit confirmation and Room persistence for unknown host keys
 - Default blocking for changed host keys
+- Trusted-server listing with fingerprints and timestamps, confirmation-gated
+  forgetting, and no one-tap changed-key replacement
 - Idempotent migration from the dependency spike's private known-host
   preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
@@ -131,6 +133,13 @@ one fills those fields and clears any password, private-key passphrase, saved
 key choice, or pending file import. Authentication mode and credentials are not
 linked to profiles. Edit the fields and choose **Update profile**, or choose
 **Use as new** to preserve the fields while creating a separate profile.
+
+Accepted host keys appear under **Trusted servers** with their algorithm,
+fingerprint, first-trusted time, and last-verified time. **Forget** removes only
+that trust decision after confirmation. A changed key is still blocked without
+prompting: deliberate replacement requires forgetting the exact old record,
+reconnecting, verifying the newly presented fingerprint through a trusted
+channel, and explicitly accepting it as unknown.
 
 ## Architecture
 
@@ -316,9 +325,24 @@ the two credential-gated cases skipped as designed. Both production fixture
 cases then passed against OpenSSH in 4.795 seconds. See the
 [host-profile persistence investigation](docs/investigations/2026-07-31-host-profile-persistence.md).
 
-Room persistence for transcripts, known-host management, optional
-device-credential or biometric gating, ephemeral sessions, sanitized
-diagnostics, and retention controls remain in Phase 4.
+The known-host management follow-up exposes Room trust metadata without
+exposing raw encoded keys to Compose. Each record shows its normalized
+endpoint, algorithm, canonical SHA-256 fingerprint, and trust timestamps.
+Forgetting is exact-row and confirmation-gated. Changed-key errors now identify
+the endpoint and explain the multi-step replacement ceremony; the verifier
+still refuses to prompt or mutate trust when a changed key is presented.
+
+Room and Compose tests prove sorted metadata, shared fingerprint calculation,
+record isolation, missing-record failure, unchanged blocking before deletion,
+and a fresh unknown-host decision after deletion. The complete API 35 run
+finished 46 tests: 44 passed and the two credential-gated cases skipped as
+designed. Both production fixture cases then passed against OpenSSH in 5.602
+seconds. See the
+[known-host management investigation](docs/investigations/2026-07-31-known-host-management.md).
+
+Room persistence for transcripts, optional device-credential or biometric
+gating, ephemeral sessions, sanitized diagnostics, and retention controls
+remain in Phase 4.
 
 ## License
 

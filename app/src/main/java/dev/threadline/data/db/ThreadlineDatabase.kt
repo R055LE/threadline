@@ -33,6 +33,14 @@ internal data class KnownHostEntity(
 
 @Dao
 internal interface KnownHostDao {
+    @Query(
+        """
+        SELECT * FROM known_hosts
+        ORDER BY hostname COLLATE NOCASE, port, algorithm, endpoint_key
+        """,
+    )
+    fun observeAll(): Flow<List<KnownHostEntity>>
+
     @Query("SELECT * FROM known_hosts WHERE endpoint_key = :endpointKey")
     suspend fun find(endpointKey: String): KnownHostEntity?
 
@@ -61,6 +69,9 @@ internal interface KnownHostDao {
         encodedKey: ByteArray,
         seenAtMillis: Long,
     ): Int
+
+    @Query("DELETE FROM known_hosts WHERE endpoint_key = :endpointKey")
+    suspend fun delete(endpointKey: String): Int
 }
 
 @Entity(tableName = "imported_private_keys")

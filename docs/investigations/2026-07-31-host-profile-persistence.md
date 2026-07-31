@@ -82,8 +82,11 @@ under schema version 3.
 
 ## Remaining Phase 4 boundary
 
-Known-host trust, encrypted imported keys, saved-key management, and host
-profiles now have Room-backed production paths. Remaining work includes
-known-host management, bounded transcript persistence, ephemeral sessions,
+At this slice boundary, known-host trust, encrypted imported keys, saved-key
+management, and host profiles had Room-backed production paths. The subsequent
+[known-host management slice](2026-07-31-known-host-management.md) added trust
+listing and confirmation-gated deletion while preserving changed-key blocking.
+
+Remaining work includes bounded transcript persistence, ephemeral sessions,
 optional device-credential or biometric gating, sanitized diagnostics, and
 retention controls. Passwords and private-key passphrases remain session-only.

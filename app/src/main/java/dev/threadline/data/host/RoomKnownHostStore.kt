@@ -3,6 +3,7 @@ package dev.threadline.data.host
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import dev.threadline.core.model.HostEndpoint
+import dev.threadline.core.security.HostKeyFingerprint
 import dev.threadline.core.security.KnownHostKey
 import dev.threadline.core.security.KnownHostRecord
 import dev.threadline.core.security.KnownHostStore
@@ -10,6 +11,10 @@ import dev.threadline.core.security.KnownHostStoreException
 import dev.threadline.data.db.KnownHostDao
 import dev.threadline.data.db.KnownHostEntity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.io.encoding.Base64
@@ -25,6 +30,13 @@ internal class RoomKnownHostStore(
 
     @Volatile
     private var legacyMigrationAttempted = false
+
+    val hosts: Flow<List<KnownHostMetadata>> = flow {
+        storageOperation { ensureLegacyMigrated() }
+        emitAll(dao.observeAll())
+    }.map { entities ->
+        entities.map(KnownHostEntity::toMetadata)
+    }
 
     override suspend fun find(endpoint: HostEndpoint): KnownHostRecord? = storageOperation {
         ensureLegacyMigrated()
@@ -52,6 +64,14 @@ internal class RoomKnownHostStore(
         ) {
             "Trusted host record changed before its timestamp could be updated"
         }
+    }
+
+    suspend fun delete(endpointKey: String) {
+        val deleted = storageOperation {
+            ensureLegacyMigrated()
+            dao.delete(endpointKey)
+        }
+        if (deleted != 1) throw KnownHostUnavailableException()
     }
 
     private suspend fun ensureLegacyMigrated() {
@@ -82,6 +102,20 @@ internal class RoomKnownHostStore(
             throw KnownHostStoreException(failure)
         }
 }
+
+internal data class KnownHostMetadata(
+    val endpointKey: String,
+    val hostname: String,
+    val port: Int,
+    val algorithm: String,
+    val fingerprint: String,
+    val firstSeenAtMillis: Long,
+    val lastSeenAtMillis: Long,
+)
+
+internal class KnownHostUnavailableException : Exception(
+    "The trusted server record is no longer available.",
+)
 
 @OptIn(ExperimentalEncodingApi::class)
 private class LegacyKnownHostRecords(
@@ -136,6 +170,16 @@ private class LegacyKnownHostRecords(
 private fun KnownHostEntity.toRecord(): KnownHostRecord = KnownHostRecord(
     endpoint = HostEndpoint(hostname, port),
     key = KnownHostKey(algorithm, encodedKey.copyOf()),
+    firstSeenAtMillis = firstSeenAtMillis,
+    lastSeenAtMillis = lastSeenAtMillis,
+)
+
+private fun KnownHostEntity.toMetadata(): KnownHostMetadata = KnownHostMetadata(
+    endpointKey = endpointKey,
+    hostname = hostname,
+    port = port,
+    algorithm = algorithm,
+    fingerprint = HostKeyFingerprint.sha256(encodedKey),
     firstSeenAtMillis = firstSeenAtMillis,
     lastSeenAtMillis = lastSeenAtMillis,
 )

@@ -105,6 +105,7 @@ sealed interface SessionError {
     }
 
     data class HostKeyChanged(
+        val endpoint: HostEndpoint,
         val previousFingerprint: String,
         val presentedFingerprint: String,
     ) : SessionError {

@@ -25,6 +25,9 @@ object SessionRuntime {
     internal lateinit var importedPrivateKeys: EncryptedImportedPrivateKeyStore
         private set
 
+    internal lateinit var knownHosts: RoomKnownHostStore
+        private set
+
     internal lateinit var hostProfiles: RoomHostProfileStore
         private set
 
@@ -42,15 +45,16 @@ object SessionRuntime {
             cipher = AndroidKeystorePrivateKeyCipher(),
         )
         val hostProfileStore = RoomHostProfileStore(threadlineDatabase.hostProfiles())
+        val knownHostStore = RoomKnownHostStore(
+            dao = threadlineDatabase.knownHosts(),
+            legacyPreferences = context.getSharedPreferences(
+                "known_hosts",
+                Context.MODE_PRIVATE,
+            ),
+        )
         val sessionManager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
-            knownHostStore = RoomKnownHostStore(
-                dao = threadlineDatabase.knownHosts(),
-                legacyPreferences = context.getSharedPreferences(
-                    "known_hosts",
-                    Context.MODE_PRIVATE,
-                ),
-            ),
+            knownHostStore = knownHostStore,
             terminal = bridge,
         )
         bridge.bind(
@@ -60,6 +64,7 @@ object SessionRuntime {
 
         database = threadlineDatabase
         importedPrivateKeys = importedKeyStore
+        knownHosts = knownHostStore
         hostProfiles = hostProfileStore
         terminal = bridge
         manager = sessionManager

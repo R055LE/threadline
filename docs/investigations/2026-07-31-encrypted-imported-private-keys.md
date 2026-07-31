@@ -153,5 +153,8 @@ The later
 [host-profile persistence slice](2026-07-31-host-profile-persistence.md) also
 added explicit connection-metadata records without linking credentials.
 Remaining work includes optional device-credential or biometric gating,
-known-host management, bounded transcript persistence, ephemeral sessions,
-sanitized diagnostics, and retention controls. Passwords remain session-only.
+bounded transcript persistence, ephemeral sessions, sanitized diagnostics, and
+retention controls. The later
+[known-host management slice](2026-07-31-known-host-management.md) added trust
+listing and deliberate replacement through delete plus fresh acceptance.
+Passwords remain session-only.

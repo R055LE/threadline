@@ -68,6 +68,9 @@ were proven. The subsequent
 [host-profile persistence slice](2026-07-31-host-profile-persistence.md) added
 explicit Room-backed connection records without linking them to credentials.
 
-Remaining work includes optional device-credential or biometric gating,
-known-host management, bounded transcript persistence, ephemeral sessions,
-sanitized diagnostics, and retention controls. Passwords remain session-only.
+The later
+[known-host management slice](2026-07-31-known-host-management.md) also added
+trust listing and confirmation-gated deletion without weakening changed-key
+blocking. Remaining work includes optional device-credential or biometric
+gating, bounded transcript persistence, ephemeral sessions, sanitized
+diagnostics, and retention controls. Passwords remain session-only.

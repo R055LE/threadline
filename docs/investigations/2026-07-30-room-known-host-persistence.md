@@ -111,11 +111,13 @@ This was the Room and known-host persistence foundation, not completion of
 Phase 4. Subsequent slices added
 [encrypted imported keys](2026-07-31-encrypted-imported-private-keys.md),
 [saved-key management](2026-07-31-saved-key-management.md), and
-[host-profile persistence](2026-07-31-host-profile-persistence.md).
+[host-profile persistence](2026-07-31-host-profile-persistence.md). The later
+[known-host management slice](2026-07-31-known-host-management.md) completed
+trust listing, deletion, and deliberate replacement through a fresh acceptance
+ceremony.
 Remaining deliverables include:
 
 - bounded transcript history;
-- known-host listing, deletion, and deliberate changed-key replacement;
 - ephemeral sessions;
 - sanitized diagnostics; and
 - transcript deletion and retention controls.
