@@ -696,6 +696,11 @@ If password persistence is added:
 - Support optional biometric/device-credential gating.
 - Never expose the password through general app state or logs.
 
+Implementation decision (2026-07-31): passwords and passphrases remain
+session-only. Device-credential and biometric gating are deferred optional
+hardening decisions, not Phase 4 exit blockers. Biometrics require a concrete
+threat-model justification before reconsideration; see `docs/BACKLOG.md`.
+
 ### 12.3 Known hosts
 
 Store:
@@ -1001,6 +1006,10 @@ Deliverables:
 Exit criterion:
 
 > The app can be handed to a technical alpha tester without knowingly unsafe defaults.
+
+Implementation status (2026-07-31): the required deliverables are implemented.
+Device-credential and biometric gating remain optional backlog decisions rather
+than phase exit criteria.
 
 ### Phase 5 — Alpha polish
 

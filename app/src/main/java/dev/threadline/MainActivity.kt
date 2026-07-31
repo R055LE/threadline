@@ -65,6 +65,10 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
+import dev.threadline.core.diagnostics.DiagnosticInventory
+import dev.threadline.core.diagnostics.DiagnosticReportInput
+import dev.threadline.core.diagnostics.diagnosticSessionSnapshot
+import dev.threadline.core.diagnostics.generateDiagnosticReport
 import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
@@ -190,6 +194,9 @@ private fun ThreadlineApp() {
         mutableStateOf(ConnectionFormDraft.fixtureDefaults())
     }
     var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var diagnosticGeneratedAtMillis by remember { mutableStateOf<Long?>(null) }
+    val diagnosticEnvironment = remember(context) { androidDiagnosticEnvironment(context) }
+    val openDiagnostics = { diagnosticGeneratedAtMillis = System.currentTimeMillis() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -226,6 +233,7 @@ private fun ThreadlineApp() {
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
             onDeletePrivateKey = SessionRuntime.importedPrivateKeys::delete,
+            onOpenDiagnostics = openDiagnostics,
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
 
@@ -251,24 +259,28 @@ private fun ThreadlineApp() {
             onSubmit = manager::submitCommand,
             onControlC = manager::sendControlC,
             onDisconnect = manager::disconnect,
+            onOpenDiagnostics = openDiagnostics,
         )
 
         is SessionState.Connecting -> ProgressScreen(
             title = current.displayName,
             status = current.stage.name.lowercase().replaceFirstChar(Char::uppercase),
             onCancel = manager::disconnect,
+            onOpenDiagnostics = openDiagnostics,
         )
 
         is SessionState.AwaitingHostKey -> ProgressScreen(
             title = current.displayName,
             status = "Waiting for host-key confirmation",
             onCancel = manager::disconnect,
+            onOpenDiagnostics = openDiagnostics,
         )
 
         is SessionState.Disconnecting -> ProgressScreen(
             title = current.displayName ?: "Threadline",
             status = "Disconnecting",
             onCancel = null,
+            onOpenDiagnostics = openDiagnostics,
         )
     }
 
@@ -276,6 +288,42 @@ private fun ThreadlineApp() {
         HostKeyDialog(
             prompt = state.prompt,
             onDecision = manager::resolveHostKey,
+        )
+    }
+
+    diagnosticGeneratedAtMillis?.let { generatedAtMillis ->
+        DiagnosticReportDialog(
+            reportFactory = { includeSensitiveDetails ->
+                generateDiagnosticReport(
+                    DiagnosticReportInput(
+                        generatedAtMillis = generatedAtMillis,
+                        environment = diagnosticEnvironment,
+                        inventory = DiagnosticInventory(
+                            savedProfiles = hostProfiles.size,
+                            trustedServers = knownHosts.size,
+                            importedPrivateKeys = importedPrivateKeys.size,
+                            savedTranscriptSessions = transcriptSessions.size,
+                        ),
+                        session = diagnosticSessionSnapshot(
+                            connection = snapshot.connection,
+                            structuredShell = snapshot.structuredShell,
+                            transcript = snapshot.transcript,
+                            transcriptSaveFailed = transcriptSaveFailed,
+                        ),
+                        sensitiveDetails = if (includeSensitiveDetails) {
+                            sensitiveDiagnosticDetails(
+                                draft = connectionDraft,
+                                structuredShell = snapshot.structuredShell,
+                                transcript = snapshot.transcript,
+                            )
+                        } else {
+                            null
+                        },
+                    ),
+                )
+            },
+            onDismiss = { diagnosticGeneratedAtMillis = null },
+            onShare = { shareDiagnosticReport(context, it) },
         )
     }
 }
@@ -343,6 +391,7 @@ internal fun HostForm(
     onDeletePrivateKey: suspend (id: String) -> Unit = {
         error("Encrypted private-key storage is unavailable.")
     },
+    onOpenDiagnostics: () -> Unit = {},
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -385,11 +434,25 @@ internal fun HostForm(
     Scaffold(
         topBar = {
             Column {
-                Text(
-                    text = "Threadline",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                )
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "Threadline",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    )
+                    TextButton(
+                        onClick = onOpenDiagnostics,
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .testTag(DiagnosticTags.OPEN),
+                    ) {
+                        Text("Diagnostics")
+                    }
+                }
                 HorizontalDivider()
             }
         },
@@ -1195,6 +1258,7 @@ private fun ProgressScreen(
     title: String,
     status: String,
     onCancel: (() -> Unit)?,
+    onOpenDiagnostics: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -1211,6 +1275,12 @@ private fun ProgressScreen(
             Text(status)
             onCancel?.let {
                 OutlinedButton(onClick = it) { Text("Cancel") }
+            }
+            TextButton(
+                onClick = onOpenDiagnostics,
+                modifier = Modifier.testTag(DiagnosticTags.OPEN),
+            ) {
+                Text("Diagnostics")
             }
         }
     }

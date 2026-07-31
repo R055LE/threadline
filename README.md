@@ -4,7 +4,7 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 4: security and persistence is in progress.** The app opens on a
+**Phase 4: security and persistence is implemented.** The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
@@ -31,6 +31,10 @@ terminal with mobile modifier and navigation keys.
   confirmation-gated per-session deletion, and clear-all
 - An explicit ephemeral-session option that never hands commands or output to
   the transcript archive
+- A selectable, bounded diagnostic preview that redacts host fields,
+  usernames, directories, commands, output, credentials, and host-key material
+  by default, with explicit opt-in only for host fields, directories, and recent
+  command text before Android sharing
 - Idempotent migration from the dependency spike's private known-host
   preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
@@ -383,8 +387,28 @@ large-output tail, and interrupted status. The final JVM, lint, debug, and
 release gate passed. See the
 [bounded transcript persistence investigation](docs/investigations/2026-07-31-bounded-transcript-persistence.md).
 
-Optional device-credential or biometric gating and sanitized diagnostics
-remain in Phase 4.
+The sanitized-diagnostics slice exposes stable error/state codes, app and
+device compatibility fields, transcript/output-size summaries, and local record
+counts without serializing raw exceptions or session content. Its sensitive
+detail switch is off by default and warns before adding bounded host fields,
+directories, and the newest 20 commands. Command output, credentials, private
+keys, host keys, and fingerprints cannot enter either report form. The exact
+selectable preview is the only text sent to Android's share chooser; no report
+is saved or submitted automatically. See the
+[sanitized diagnostics investigation](docs/investigations/2026-07-31-sanitized-diagnostics.md).
+
+JVM and Compose tests cover hostile redaction samples, every typed session
+error, report bounds, explicit opt-in, preview-to-share identity, and visible
+share failure. The complete API 35 run finished 56 tests: 54 passed and the two
+credential-injected cases skipped as designed. Both live Docker/OpenSSH cases
+then passed in 5.094 seconds. The final JVM, lint, debug, and release gate also
+passed.
+
+Phase 4's required deliverables are now implemented. Device-credential and
+biometric gating are optional decisions recorded in the
+[backlog](docs/BACKLOG.md), not Phase 4 blockers. Biometrics require a concrete
+threat-model justification before reconsideration. Passwords and passphrases
+remain session-only.
 
 ## License
 

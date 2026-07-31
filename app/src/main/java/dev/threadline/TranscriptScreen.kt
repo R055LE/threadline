@@ -116,6 +116,7 @@ internal fun ConnectedSessionScreen(
     onSubmit: (String) -> CommandSubmissionResult,
     onControlC: () -> Unit,
     onDisconnect: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {},
     rawTerminal: @Composable (Modifier) -> Unit = { RawTerminal(it) },
 ) {
     var rawModeRequested by rememberSaveable { mutableStateOf(false) }
@@ -149,6 +150,12 @@ internal fun ConnectedSessionScreen(
                     }
                     if (showingRawTerminal) {
                         TextButton(onClick = onControlC) { Text("Ctrl-C") }
+                    }
+                    TextButton(
+                        onClick = onOpenDiagnostics,
+                        modifier = Modifier.testTag(DiagnosticTags.OPEN),
+                    ) {
+                        Text("Diagnostics")
                     }
                     TextButton(onClick = onDisconnect) { Text("Disconnect") }
                 },

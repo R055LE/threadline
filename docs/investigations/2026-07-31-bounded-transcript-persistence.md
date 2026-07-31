@@ -125,6 +125,7 @@ The final repository gate passed `test`, `lint`, `assembleDebug`, and
 
 Phase 4 now has strict host-key persistence and management, encrypted imported
 keys and management, host profiles, bounded transcript persistence, retention
-controls, and ephemeral sessions. Sanitized exportable diagnostics remain.
-Optional device-credential or biometric gating also remains a possible
-hardening slice. Passwords and private-key passphrases remain session-only.
+controls, ephemeral sessions, and sanitized exportable diagnostics.
+Device-credential and biometric gating are optional hardening decisions tracked
+in `docs/BACKLOG.md`, not Phase 4 blockers. Passwords and private-key
+passphrases remain session-only.
