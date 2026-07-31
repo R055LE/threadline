@@ -143,8 +143,13 @@ harness rather than weakening production state rules.
 
 ## Remaining Phase 4 boundary
 
-Encrypted imported-key persistence is now proven, but credential management is
-not complete. Remaining work includes saved-key deletion and naming UX,
-optional device-credential or biometric gating, host-profile persistence,
-known-host management, bounded transcript persistence, ephemeral sessions,
-sanitized diagnostics, and retention controls. Passwords remain session-only.
+At this slice boundary, encrypted imported-key persistence was proven but
+credential management was not complete. The subsequent
+[saved-key management follow-up](2026-07-31-saved-key-management.md) added
+label-only rename and confirmation-gated local deletion while preserving the
+cryptographic boundary described above.
+
+Remaining work includes optional device-credential or biometric gating,
+host-profile persistence, known-host management, bounded transcript
+persistence, ephemeral sessions, sanitized diagnostics, and retention
+controls. Passwords remain session-only.

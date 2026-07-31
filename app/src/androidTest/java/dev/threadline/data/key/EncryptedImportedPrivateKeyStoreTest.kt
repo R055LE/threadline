@@ -13,6 +13,7 @@ import org.connectbot.sshlib.SshKeys
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +58,44 @@ class EncryptedImportedPrivateKeyStoreTest {
         original.fill(0)
     }
 
+    @Test
+    fun renamePreservesCiphertextAndDeleteMakesCredentialUnavailable() = runBlocking {
+        val dao = FakeImportedPrivateKeyDao()
+        val cipher = RecordingPrivateKeyCipher()
+        val store = EncryptedImportedPrivateKeyStore(
+            dao = dao,
+            cipher = cipher,
+            ioDispatcher = Dispatchers.Unconfined,
+            currentTimeMillis = { 456L },
+            newId = { "managed-key" },
+        )
+        val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(1024) }
+            .generateKeyPair()
+        val keyBytes = SshKeys.encodePemPrivateKey(keyPair, null).encodeToByteArray()
+        val metadata = store.save("Before", keyBytes, null)
+        val originalCiphertext = requireNotNull(dao.entity).ciphertext.copyOf()
+        val originalIv = requireNotNull(dao.entity).initializationVector.copyOf()
+
+        store.rename(metadata.id, "  After  ")
+
+        val renamed = requireNotNull(dao.entity)
+        assertEquals("After", renamed.displayName)
+        assertArrayEquals(originalCiphertext, renamed.ciphertext)
+        assertArrayEquals(originalIv, renamed.initializationVector)
+        val credential = store.credential(metadata.id, null)
+        assertArrayEquals(keyBytes, credential.keyBytes)
+        credential.clear()
+
+        store.delete(metadata.id)
+
+        assertNull(dao.entity)
+        val failure = runCatching { store.credential(metadata.id, null) }.exceptionOrNull()
+        assertTrue(failure is ImportedPrivateKeyUnavailableException)
+        keyBytes.fill(0)
+        originalCiphertext.fill(0)
+        originalIv.fill(0)
+    }
+
     private class FakeImportedPrivateKeyDao : ImportedPrivateKeyDao {
         private val entities = MutableStateFlow<List<ImportedPrivateKeyMetadataRow>>(emptyList())
         var entity: ImportedPrivateKeyEntity? = null
@@ -79,6 +118,25 @@ class EncryptedImportedPrivateKeyStoreTest {
                     createdAtMillis = entity.createdAtMillis,
                 ),
             )
+        }
+
+        override suspend fun rename(
+            id: String,
+            displayName: String,
+        ): Int {
+            val current = entity?.takeIf { it.id == id } ?: return 0
+            entity = current.copy(displayName = displayName)
+            entities.value = entities.value.map { row ->
+                if (row.id == id) row.copy(displayName = displayName) else row
+            }
+            return 1
+        }
+
+        override suspend fun delete(id: String): Int {
+            if (entity?.id != id) return 0
+            entity = null
+            entities.value = emptyList()
+            return 1
         }
     }
 

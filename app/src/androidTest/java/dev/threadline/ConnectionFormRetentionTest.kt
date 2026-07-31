@@ -8,9 +8,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
@@ -18,6 +22,7 @@ import dev.threadline.core.model.SessionCredential
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -155,6 +160,62 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
             .assertEditableTextEquals("")
         preparedCredential?.clear()
+    }
+
+    @Test
+    fun savedKeyRenameAndDeleteRequireExplicitConfirmation() {
+        val savedKey = ImportedPrivateKeyMetadata(
+            id = "managed-id",
+            displayName = "Old name",
+            format = "OpenSSH",
+            keyType = "ssh-ed25519",
+            publicKeyFingerprint = "SHA256:managed-fixture",
+            createdAtMillis = 1,
+        )
+        var renamed: Pair<String, String>? = null
+        var deletedId: String? = null
+
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = null,
+                    importedPrivateKeys = listOf(savedKey),
+                    onRenamePrivateKey = { id, name -> renamed = id to name },
+                    onDeletePrivateKey = { id -> deletedId = id },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_NAME)
+            .performTextReplacement("New name")
+        compose.onNodeWithTag(ConnectionFormTags.CONFIRM_RENAME_KEY).performClick()
+        compose.waitForIdle()
+        assertEquals(savedKey.id to "New name", renamed)
+
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .performTextReplacement("delete-me")
+        compose.onNodeWithTag(ConnectionFormTags.DELETE_KEY_PREFIX + savedKey.id).performClick()
+        assertNull(deletedId)
+        compose.onNodeWithText("Delete saved key?").assertExists()
+        compose.onAllNodesWithText("ssh-ed25519 · SHA256:managed-fixture")
+            .assertCountEquals(2)
+        compose.onNodeWithTag(ConnectionFormTags.CONFIRM_DELETE_KEY).performClick()
+        compose.waitForIdle()
+
+        assertEquals(savedKey.id, deletedId)
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
+            .assertIsNotSelected()
+        compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .assertEditableTextEquals("")
     }
 }
 

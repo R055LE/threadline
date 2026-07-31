@@ -18,7 +18,8 @@ terminal with mobile modifier and navigation keys.
   modern ECDSA/RSA-SHA2 compatibility fallback
 - ConnectBot's libvterm-backed Compose terminal component
 - Password and imported OpenSSH private-key authentication, with an explicit
-  option to save keys under Android Keystore-backed AES-GCM encryption
+  option to save keys under Android Keystore-backed AES-GCM encryption and to
+  rename or confirmation-delete saved records
 - Explicit confirmation and Room persistence for unknown host keys
 - Default blocking for changed host keys
 - Idempotent migration from the dependency spike's private known-host
@@ -118,7 +119,9 @@ key** in the app, and select it through Android's file picker. Check **Save
 encrypted on this device** before connecting to retain an encrypted copy. A
 saved key appears by name and public fingerprint on later connections; its
 passphrase, if any, must still be entered for each connection and is never
-saved.
+saved. Saved-key labels can be renamed without decrypting or re-encrypting the
+credential. Delete shows the key fingerprint for confirmation, removes only
+that encrypted local record, and does not revoke its public key on a server.
 
 ## Architecture
 
@@ -270,9 +273,25 @@ The final JVM/lint/debug/release gate passed, followed by 33 green routine API
 35 tests; the two credential-gated fixture cases skipped in that routine run as
 designed.
 
-Room persistence for host profiles and transcripts, saved-key deletion and
-management, known-host management, ephemeral sessions, sanitized diagnostics,
-and retention controls remain in Phase 4.
+The saved-key management follow-up adds label-only rename and explicit local
+deletion beside each fingerprinted record. Rename leaves ciphertext and its IV
+unchanged. Delete removes exactly one Room row, leaves the app-scoped wrapping
+key available to every other and future record, and clears the selected key and
+its memory-only passphrase when applicable. Storage failures remain typed and
+surface only non-secret messages. Deletion is logical database deletion; it is
+not represented as secure physical erasure of prior SQLite pages.
+
+Room, encrypted-store, and Compose tests cover single-record isolation,
+ciphertext preservation, unavailable-after-delete behavior, confirmation, and
+selection/passphrase cleanup. The complete API 35 run finished 38 tests with
+only the two expected credential-gated cases skipped. Both credential-gated
+production fixture cases then passed in 5.478 seconds, including encrypted-key
+authentication after a database reopen. See the
+[saved-key management investigation](docs/investigations/2026-07-31-saved-key-management.md).
+
+Room persistence for host profiles and transcripts, known-host management,
+optional device-credential or biometric gating, ephemeral sessions, sanitized
+diagnostics, and retention controls remain in Phase 4.
 
 ## License
 

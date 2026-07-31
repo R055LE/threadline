@@ -114,6 +114,15 @@ internal interface ImportedPrivateKeyDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entity: ImportedPrivateKeyEntity)
+
+    @Query("UPDATE imported_private_keys SET display_name = :displayName WHERE id = :id")
+    suspend fun rename(
+        id: String,
+        displayName: String,
+    ): Int
+
+    @Query("DELETE FROM imported_private_keys WHERE id = :id")
+    suspend fun delete(id: String): Int
 }
 
 @Database(

@@ -144,6 +144,11 @@ internal object ConnectionFormTags {
     const val SAVE_PRIVATE_KEY = "connection-save-private-key"
     const val CONNECT = "connection-connect"
     const val SAVED_KEY_PREFIX = "connection-saved-key-"
+    const val RENAME_KEY_PREFIX = "connection-rename-key-"
+    const val DELETE_KEY_PREFIX = "connection-delete-key-"
+    const val RENAME_KEY_NAME = "connection-rename-key-name"
+    const val CONFIRM_RENAME_KEY = "connection-confirm-rename-key"
+    const val CONFIRM_DELETE_KEY = "connection-confirm-delete-key"
 }
 
 @Composable
@@ -178,6 +183,8 @@ private fun ThreadlineApp() {
             importedPrivateKeys = importedPrivateKeys,
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
+            onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
+            onDeletePrivateKey = SessionRuntime.importedPrivateKeys::delete,
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
 
@@ -259,6 +266,15 @@ internal fun HostForm(
     ) -> SessionCredential.PrivateKey = { _, _ ->
         error("Encrypted private-key storage is unavailable.")
     },
+    onRenamePrivateKey: suspend (
+        id: String,
+        displayName: String,
+    ) -> Unit = { _, _ ->
+        error("Encrypted private-key storage is unavailable.")
+    },
+    onDeletePrivateKey: suspend (id: String) -> Unit = {
+        error("Encrypted private-key storage is unavailable.")
+    },
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -271,6 +287,10 @@ internal fun HostForm(
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var isPreparing by remember { mutableStateOf(false) }
+    var isManagingKey by remember { mutableStateOf(false) }
+    var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
+    var renameDraft by remember { mutableStateOf("") }
+    var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
 
     val keyPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
@@ -406,28 +426,64 @@ internal fun HostForm(
                     if (importedPrivateKeys.isNotEmpty()) {
                         Text("Saved keys", style = MaterialTheme.typography.labelLarge)
                         importedPrivateKeys.forEach { key ->
-                            FilterChip(
-                                selected = selectedSavedKeyId == key.id,
-                                onClick = {
-                                    selectedSavedKeyId = key.id
-                                    selectedKeyUri = null
-                                    savePrivateKey = false
-                                    formError = null
-                                },
-                                label = {
-                                    Column {
-                                        Text(key.displayName)
-                                        Text(
-                                            "${key.keyType} · ${key.publicKeyFingerprint}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontFamily = FontFamily.Monospace,
-                                        )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                FilterChip(
+                                    selected = selectedSavedKeyId == key.id,
+                                    onClick = {
+                                        selectedSavedKeyId = key.id
+                                        selectedKeyUri = null
+                                        savePrivateKey = false
+                                        formError = null
+                                    },
+                                    enabled = !isPreparing && !isManagingKey,
+                                    label = {
+                                        Column {
+                                            Text(key.displayName)
+                                            Text(
+                                                "${key.keyType} · ${key.publicKeyFingerprint}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(
+                                            ConnectionFormTags.SAVED_KEY_PREFIX + key.id,
+                                        ),
+                                )
+                                Column(horizontalAlignment = Alignment.End) {
+                                    TextButton(
+                                        onClick = {
+                                            keyPendingRename = key
+                                            renameDraft = key.displayName
+                                            formError = null
+                                        },
+                                        enabled = !isPreparing && !isManagingKey,
+                                        modifier = Modifier.testTag(
+                                            ConnectionFormTags.RENAME_KEY_PREFIX + key.id,
+                                        ),
+                                    ) {
+                                        Text("Rename")
                                     }
-                                },
-                                modifier = Modifier.testTag(
-                                    ConnectionFormTags.SAVED_KEY_PREFIX + key.id,
-                                ).fillMaxWidth(),
-                            )
+                                    TextButton(
+                                        onClick = {
+                                            keyPendingDeletion = key
+                                            formError = null
+                                        },
+                                        enabled = !isPreparing && !isManagingKey,
+                                        modifier = Modifier.testTag(
+                                            ConnectionFormTags.DELETE_KEY_PREFIX + key.id,
+                                        ),
+                                    ) {
+                                        Text("Delete")
+                                    }
+                                }
+                            }
                         }
                     }
                     OutlinedButton(onClick = { keyPicker.launch("*/*") }) {
@@ -472,7 +528,7 @@ internal fun HostForm(
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
-                    if (isPreparing) return@Button
+                    if (isPreparing || isManagingKey) return@Button
                     formError = null
                     val parsedPort = draft.port.toIntOrNull()
                     if (
@@ -565,7 +621,7 @@ internal fun HostForm(
                         }
                     }
                 },
-                enabled = !isPreparing,
+                enabled = !isPreparing && !isManagingKey,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(ConnectionFormTags.CONNECT),
@@ -574,6 +630,127 @@ internal fun HostForm(
                 Text(if (isPreparing) "Preparing securely…" else "Connect securely")
             }
         }
+    }
+
+    keyPendingRename?.let { key ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isManagingKey) keyPendingRename = null
+            },
+            title = { Text("Rename saved key") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        label = { Text("Key name") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.RENAME_KEY_NAME),
+                    )
+                    Text(
+                        "${key.keyType} · ${key.publicKeyFingerprint}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isManagingKey) return@Button
+                        isManagingKey = true
+                        coroutineScope.launch {
+                            try {
+                                onRenamePrivateKey(key.id, renameDraft)
+                                keyPendingRename = null
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The saved private key could not be renamed."
+                                keyPendingRename = null
+                            } finally {
+                                isManagingKey = false
+                            }
+                        }
+                    },
+                    enabled = !isManagingKey && renameDraft.isNotBlank(),
+                    modifier = Modifier.testTag(ConnectionFormTags.CONFIRM_RENAME_KEY),
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { keyPendingRename = null },
+                    enabled = !isManagingKey,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    keyPendingDeletion?.let { key ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isManagingKey) keyPendingDeletion = null
+            },
+            title = { Text("Delete saved key?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "This removes the encrypted copy of ${key.displayName} from this " +
+                            "device. It does not revoke the public key on any server.",
+                    )
+                    Text(
+                        "${key.keyType} · ${key.publicKeyFingerprint}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isManagingKey) return@Button
+                        isManagingKey = true
+                        coroutineScope.launch {
+                            try {
+                                onDeletePrivateKey(key.id)
+                                if (selectedSavedKeyId == key.id) {
+                                    selectedSavedKeyId = null
+                                    keyPassphrase = ""
+                                }
+                                keyPendingDeletion = null
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The saved private key could not be deleted."
+                                keyPendingDeletion = null
+                            } finally {
+                                isManagingKey = false
+                            }
+                        }
+                    },
+                    enabled = !isManagingKey,
+                    modifier = Modifier.testTag(ConnectionFormTags.CONFIRM_DELETE_KEY),
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { keyPendingDeletion = null },
+                    enabled = !isManagingKey,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

@@ -13,6 +13,7 @@ import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.util.UUID
 import javax.security.auth.Destroyable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -46,7 +47,7 @@ internal class EncryptedImportedPrivateKeyStore(
         keyBytes: ByteArray,
         passphrase: CharArray?,
     ): ImportedPrivateKeyMetadata = withContext(ioDispatcher) {
-        require(displayName.isNotBlank()) { "Give the imported key a name." }
+        val normalizedDisplayName = normalizeDisplayName(displayName)
         require(keyBytes.isNotEmpty()) { "The selected private key is empty." }
 
         val inspected = inspectPrivateKey(keyBytes, passphrase)
@@ -65,7 +66,7 @@ internal class EncryptedImportedPrivateKeyStore(
         }
         val entity = ImportedPrivateKeyEntity(
             id = id,
-            displayName = displayName.trim(),
+            displayName = normalizedDisplayName,
             format = inspected.format,
             keyType = inspected.keyType,
             publicKeyFingerprint = inspected.publicKeyFingerprint,
@@ -74,7 +75,9 @@ internal class EncryptedImportedPrivateKeyStore(
             createdAtMillis = createdAtMillis,
             cryptoVersion = CRYPTO_VERSION,
         )
-        dao.insert(entity)
+        protectStorage("The private key could not be saved securely.") {
+            dao.insert(entity)
+        }
         entity.toMetadata()
     }
 
@@ -82,7 +85,9 @@ internal class EncryptedImportedPrivateKeyStore(
         id: String,
         passphrase: CharArray?,
     ): SessionCredential.PrivateKey = withContext(ioDispatcher) {
-        val entity = dao.find(id)
+        val entity = protectStorage("The saved private key could not be read securely.") {
+            dao.find(id)
+        }
             ?: throw ImportedPrivateKeyUnavailableException()
         require(entity.cryptoVersion == CRYPTO_VERSION) {
             "This saved private key uses an unsupported encryption version."
@@ -109,6 +114,24 @@ internal class EncryptedImportedPrivateKeyStore(
         } finally {
             plaintext.fill(0)
         }
+    }
+
+    suspend fun rename(
+        id: String,
+        displayName: String,
+    ) = withContext(ioDispatcher) {
+        val normalizedDisplayName = normalizeDisplayName(displayName)
+        val updated = protectStorage("The saved private key could not be renamed.") {
+            dao.rename(id, normalizedDisplayName)
+        }
+        if (updated != 1) throw ImportedPrivateKeyUnavailableException()
+    }
+
+    suspend fun delete(id: String) = withContext(ioDispatcher) {
+        val deleted = protectStorage("The saved private key could not be deleted.") {
+            dao.delete(id)
+        }
+        if (deleted != 1) throw ImportedPrivateKeyUnavailableException()
     }
 
     private fun inspectPrivateKey(
@@ -187,6 +210,22 @@ internal class EncryptedImportedPrivateKeyStore(
     }
 }
 
+private fun normalizeDisplayName(displayName: String): String =
+    displayName.trim().also { normalized ->
+        require(normalized.isNotEmpty()) { "Give the imported key a name." }
+    }
+
+private suspend inline fun <T> protectStorage(
+    message: String,
+    crossinline operation: suspend () -> T,
+): T = try {
+    operation()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (failure: Exception) {
+    throw ImportedPrivateKeyStorageException(message, failure)
+}
+
 internal class InvalidImportedPrivateKeyException(
     cause: Throwable,
 ) : Exception("The private key format or passphrase is not valid.", cause)
@@ -194,6 +233,11 @@ internal class InvalidImportedPrivateKeyException(
 internal class ImportedPrivateKeyUnavailableException : Exception(
     "The saved private key is no longer available.",
 )
+
+internal class ImportedPrivateKeyStorageException(
+    message: String,
+    cause: Throwable,
+) : Exception(message, cause)
 
 private fun ImportedPrivateKeyEntity.toMetadata() = ImportedPrivateKeyMetadata(
     id = id,
