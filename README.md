@@ -26,6 +26,11 @@ terminal with mobile modifier and navigation keys.
 - Default blocking for changed host keys
 - Trusted-server listing with fingerprints and timestamps, confirmation-gated
   forgetting, and no one-tap changed-key replacement
+- Bounded Room-backed transcript history with a default 20-session retention
+  window, newest-50-turn session snapshots, chunked 65,536-character output tails,
+  confirmation-gated per-session deletion, and clear-all
+- An explicit ephemeral-session option that never hands commands or output to
+  the transcript archive
 - Idempotent migration from the dependency spike's private known-host
   preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
@@ -141,6 +146,22 @@ prompting: deliberate replacement requires forgetting the exact old record,
 reconnecting, verifying the newly presented fingerprint through a trusted
 channel, and explicitly accepting it as unknown.
 
+Completed transcript sessions are retained locally by default. **Saved
+transcripts** opens selectable plain-text history, including command status,
+exit code, and truncation notices. Threadline retains at most 20 sessions, the
+newest 50 turns in each saved session, the first 16,384 characters of each
+command, and the last 65,536 characters of plain output per turn. Saved output
+does not retain ANSI styling and does not create active links. Per-session delete and clear-all are both
+confirmation-gated; they are logical SQLite deletion, not guaranteed forensic
+erasure.
+
+Transcript commands and output may themselves contain sensitive values. The
+history database is local and excluded from backup and device transfer, but it
+is not encrypted. Select **Ephemeral session** before connecting when commands
+and output should not be archived after disconnect. A finalized saved session
+survives database reopen; an abrupt process kill can still lose the current
+unfinished session because archive writes happen at session finalization.
+
 ## Architecture
 
 ```text
@@ -152,6 +173,7 @@ SessionManager ─────────────── Foreground SshSessi
         ├── StrictHostKeyGate ── Room known-host store
         ├── Imported-key store ─ Room ciphertext + Android Keystore AES key
         ├── Host-profile store ─ Room connection metadata
+        ├── Transcript store ─── Room sessions, turns, and output chunks
         ├── SshClientAdapter ─── ConnectBot sshlib
         └── TerminalBridge ───── ConnectBot termlib/libvterm
 ```
@@ -340,8 +362,28 @@ designed. Both production fixture cases then passed against OpenSSH in 5.602
 seconds. See the
 [known-host management investigation](docs/investigations/2026-07-31-known-host-management.md).
 
-Room persistence for transcripts, optional device-credential or biometric
-gating, ephemeral sessions, sanitized diagnostics, and retention controls
+The transcript-persistence slice advances Room to schema version 4 with
+session, turn, and output-chunk tables. A connected session archives at most
+once when it ends; failed connection attempts, empty/raw-only sessions, and
+explicitly ephemeral sessions create no history. Saved data is capped at 20
+sessions, 50 turns per session, 16,384 characters per command, and a
+65,536-character output tail per turn. Unicode-safe 16 KiB chunks avoid
+repeated large-field rewrites, while transactional pruning and foreign-key
+cascades keep retention and deletion atomic. The viewer renders restored output
+as selectable, inert plain text.
+
+JVM tests prove durable, ephemeral, and archive-failure lifecycle boundaries.
+Migration, Room, and Compose tests prove schema 3→4 preservation, database
+reopen, ordered Unicode-safe chunks, every cap, exact deletion, clear-all, and
+the UI confirmations. The complete API 35 run finished 52 tests: 50 passed and
+the two credential-gated cases skipped as designed. Both production fixture
+cases then passed against OpenSSH in 5.219 seconds; the password-auth path also
+archived and restored its real structured turns, bounded 65,536-character
+large-output tail, and interrupted status. The final JVM, lint, debug, and
+release gate passed. See the
+[bounded transcript persistence investigation](docs/investigations/2026-07-31-bounded-transcript-persistence.md).
+
+Optional device-credential or biometric gating and sanitized diagnostics
 remain in Phase 4.
 
 ## License

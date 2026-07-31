@@ -64,8 +64,10 @@ sealed class SessionCredential {
 class ConnectionRequest(
     val profile: HostProfile,
     val credential: SessionCredential,
+    val ephemeral: Boolean = false,
 ) {
-    override fun toString(): String = "ConnectionRequest(profile=$profile, credential=$credential)"
+    override fun toString(): String =
+        "ConnectionRequest(profile=$profile, credential=$credential, ephemeral=$ephemeral)"
 }
 
 data class TerminalSize(

@@ -22,6 +22,8 @@ import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
+import dev.threadline.core.transcript.TranscriptArchiveSink
+import dev.threadline.core.transcript.TranscriptSessionArchive
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -286,6 +288,170 @@ class SessionManagerIoTest {
         }
 
     @Test
+    fun `durable session archives one completed snapshot on disconnect`() = runBlocking {
+        val session = RecordingSession()
+        val archiveSink = RecordingTranscriptArchiveSink()
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val commandIds = ArrayDeque(
+            listOf(CommandId("bootstrap-probe"), CommandId("saved-command")),
+        )
+        var now = 100L
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { nonce },
+            commandIdFactory = { commandIds.removeFirst() },
+            transcriptArchiveSink = archiveSink,
+            transcriptSessionIdFactory = { "saved-session" },
+            clockMillis = { now },
+        )
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Connected>().first()
+        }
+        session.output.send(
+            lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/home/threadline"),
+        )
+        withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+        }
+        now = 125L
+        assertEquals(
+            CommandSubmissionResult.Accepted(CommandId("saved-command")),
+            manager.submitCommand("printf saved"),
+        )
+        session.output.send(
+            lifecycleBytes(
+                nonce = nonce,
+                commandId = CommandId("saved-command"),
+                exitStatus = 0,
+                currentDirectory = "/home/threadline",
+                output = "saved output\r\n",
+            ),
+        )
+        withTimeout(2_000) {
+            manager.transcriptState.first {
+                it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
+            }
+        }
+
+        now = 200L
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+
+        val archived = archiveSink.archives.single()
+        assertEquals("saved-session", archived.id)
+        assertEquals(100L, archived.startedAtMillis)
+        assertEquals(200L, archived.endedAtMillis)
+        assertEquals("Fixture", archived.profile.displayName)
+        assertEquals("printf saved", archived.transcript.turns.single().command)
+        assertEquals("saved output\n", archived.transcript.turns.single().output.plainText)
+        assertTrue(!manager.transcriptSaveFailed.value)
+    }
+
+    @Test
+    fun `ephemeral session never reaches transcript archive sink`() = runBlocking {
+        val session = RecordingSession()
+        val archiveSink = RecordingTranscriptArchiveSink()
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val commandIds = ArrayDeque(
+            listOf(CommandId("bootstrap-probe"), CommandId("ephemeral-command")),
+        )
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { nonce },
+            commandIdFactory = { commandIds.removeFirst() },
+            transcriptArchiveSink = archiveSink,
+        )
+
+        manager.prepareConnection(fixtureRequest(ephemeral = true))
+        manager.connectPrepared()
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Connected>().first()
+        }
+        session.output.send(
+            lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"),
+        )
+        withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+        }
+        manager.submitCommand("printf private")
+        session.output.send(
+            lifecycleBytes(
+                nonce,
+                CommandId("ephemeral-command"),
+                0,
+                "/tmp",
+                "private output",
+            ),
+        )
+        withTimeout(2_000) {
+            manager.transcriptState.first {
+                it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
+            }
+        }
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+
+        assertTrue(archiveSink.archives.isEmpty())
+    }
+
+    @Test
+    fun `archive failure is surfaced without preventing disconnect`() = runBlocking {
+        val session = RecordingSession()
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val commandIds = ArrayDeque(
+            listOf(CommandId("bootstrap-probe"), CommandId("saved-command")),
+        )
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { nonce },
+            commandIdFactory = { commandIds.removeFirst() },
+            transcriptArchiveSink = TranscriptArchiveSink {
+                error("database-path-with-private-output")
+            },
+        )
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Connected>().first()
+        }
+        session.output.send(lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"))
+        withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+        }
+        manager.submitCommand("printf private")
+        session.output.send(
+            lifecycleBytes(nonce, CommandId("saved-command"), 0, "/tmp", "private output"),
+        )
+        withTimeout(2_000) {
+            manager.transcriptState.first {
+                it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
+            }
+        }
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+
+        assertTrue(manager.transcriptSaveFailed.value)
+    }
+
+    @Test
     fun `bootstrap timeout downgrades to raw mode without failing connection`() = runBlocking {
         val session = RecordingSession()
         val manager = SessionManager(
@@ -368,14 +534,23 @@ class SessionManagerIoTest {
     }
 }
 
-private fun fixtureRequest() = ConnectionRequest(
+private fun fixtureRequest(ephemeral: Boolean = false) = ConnectionRequest(
     profile = HostProfile(
         displayName = "Fixture",
         endpoint = HostEndpoint("fixture.test", 2222),
         username = "threadline",
     ),
     credential = SessionCredential.Password.from("test".toCharArray()),
+    ephemeral = ephemeral,
 )
+
+private class RecordingTranscriptArchiveSink : TranscriptArchiveSink {
+    val archives = CopyOnWriteArrayList<TranscriptSessionArchive>()
+
+    override suspend fun save(archive: TranscriptSessionArchive) {
+        archives += archive
+    }
+}
 
 private class ImmediateAdapter(
     private val session: LiveSshSession,

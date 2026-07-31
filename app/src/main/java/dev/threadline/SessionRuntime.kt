@@ -11,6 +11,7 @@ import dev.threadline.data.host.RoomKnownHostStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
 import dev.threadline.data.profile.RoomHostProfileStore
+import dev.threadline.data.transcript.RoomTranscriptHistoryStore
 
 object SessionRuntime {
     lateinit var manager: SessionManager
@@ -31,6 +32,9 @@ object SessionRuntime {
     internal lateinit var hostProfiles: RoomHostProfileStore
         private set
 
+    internal lateinit var transcriptHistory: RoomTranscriptHistoryStore
+        private set
+
     @Synchronized
     fun initialize(context: Context) {
         if (::manager.isInitialized) return
@@ -45,6 +49,9 @@ object SessionRuntime {
             cipher = AndroidKeystorePrivateKeyCipher(),
         )
         val hostProfileStore = RoomHostProfileStore(threadlineDatabase.hostProfiles())
+        val transcriptHistoryStore = RoomTranscriptHistoryStore(
+            threadlineDatabase.transcriptArchives(),
+        )
         val knownHostStore = RoomKnownHostStore(
             dao = threadlineDatabase.knownHosts(),
             legacyPreferences = context.getSharedPreferences(
@@ -56,6 +63,7 @@ object SessionRuntime {
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = knownHostStore,
             terminal = bridge,
+            transcriptArchiveSink = transcriptHistoryStore,
         )
         bridge.bind(
             onInput = sessionManager::send,
@@ -66,6 +74,7 @@ object SessionRuntime {
         importedPrivateKeys = importedKeyStore
         knownHosts = knownHostStore
         hostProfiles = hostProfileStore
+        transcriptHistory = transcriptHistoryStore
         terminal = bridge
         manager = sessionManager
     }

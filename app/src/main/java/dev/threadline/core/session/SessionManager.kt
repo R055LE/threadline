@@ -1,6 +1,7 @@
 package dev.threadline.core.session
 
 import dev.threadline.core.model.ConnectionRequest
+import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
 import dev.threadline.core.model.SessionError
@@ -26,6 +27,10 @@ import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
 import dev.threadline.core.transcript.CommandTranscript
 import dev.threadline.core.transcript.CommandTranscriptState
+import dev.threadline.core.transcript.NoOpTranscriptArchiveSink
+import dev.threadline.core.transcript.TranscriptArchiveSink
+import dev.threadline.core.transcript.TranscriptSessionArchive
+import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +44,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -55,6 +61,9 @@ class SessionManager(
     private val sessionNonceFactory: () -> SessionNonce = { SessionNonce.random() },
     private val commandIdFactory: () -> CommandId = { CommandId.random() },
     private val bootstrapTimeoutMillis: Long = DEFAULT_BOOTSTRAP_TIMEOUT_MILLIS,
+    private val transcriptArchiveSink: TranscriptArchiveSink = NoOpTranscriptArchiveSink,
+    private val transcriptSessionIdFactory: () -> String = { UUID.randomUUID().toString() },
+    private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
     // This scope is owned by the application process. A connection exists only
     // while SshSessionService is in the foreground; the service calls disconnect
@@ -62,10 +71,11 @@ class SessionManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val stateMachine = SessionStateMachine()
     private val structuredStateMachine = StructuredShellStateMachine()
-    private val commandTranscript = CommandTranscript()
+    private val commandTranscript = CommandTranscript(clockMillis = clockMillis)
     private val pendingLock = Any()
     private val decisionLock = Any()
     private val structuredLock = Any()
+    private val transcriptArchiveLock = Any()
     private val resizeRequests = MutableSharedFlow<TerminalSize>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -76,6 +86,8 @@ class SessionManager(
     val state: StateFlow<SessionState> = stateMachine.state
     val structuredState: StateFlow<StructuredShellState> = structuredStateMachine.state
     val transcriptState: StateFlow<CommandTranscriptState> = commandTranscript.state
+    private val mutableTranscriptSaveFailed = MutableStateFlow(false)
+    val transcriptSaveFailed: StateFlow<Boolean> = mutableTranscriptSaveFailed
     val snapshot: StateFlow<SessionSnapshot> = combine(
         state,
         structuredState,
@@ -98,6 +110,7 @@ class SessionManager(
     private var disconnectMonitorJob: Job? = null
     private var disconnectJob: Job? = null
     private var bootstrapTimeoutJob: Job? = null
+    private var activeTranscriptSession: ActiveTranscriptSession? = null
 
     @Volatile
     private var liveSession: LiveSshSession? = null
@@ -161,6 +174,13 @@ class SessionManager(
             pendingRequest.also { pendingRequest = null }
         } ?: return false
 
+        synchronized(transcriptArchiveLock) {
+            activeTranscriptSession = ActiveTranscriptSession(
+                id = transcriptSessionIdFactory(),
+                profile = request.profile,
+                ephemeral = request.ephemeral,
+            )
+        }
         stateMachine.apply(SessionEvent.ConnectRequested(request.profile.displayName))
         commandTranscript.reset()
         resetStructuredShell()
@@ -263,8 +283,10 @@ class SessionManager(
             val session = liveSession
             liveSession = null
             commandTranscript.sessionDisconnected()
+            val archive = closeTranscriptSession()
             resetStructuredShell()
             runCatching { session?.disconnect() }
+            persistTranscriptArchive(archive)
             stateMachine.apply(SessionEvent.Disconnected)
         }
     }
@@ -281,8 +303,10 @@ class SessionManager(
             val session = liveSession
             liveSession = null
             commandTranscript.sessionDisconnected()
+            val archive = closeTranscriptSession()
             resetStructuredShell()
             runCatching { session?.disconnect() }
+            persistTranscriptArchive(archive)
             if (state.value !is SessionState.Failed) {
                 stateMachine.apply(SessionEvent.Disconnected)
             }
@@ -304,6 +328,7 @@ class SessionManager(
                 onStage = { stage -> stateMachine.apply(SessionEvent.StageChanged(stage)) },
             )
             liveSession = session
+            markTranscriptSessionConnected()
             stateMachine.apply(SessionEvent.ShellReady(terminal.size))
             startSessionJobs(session)
             startStructuredShell(session)
@@ -496,8 +521,49 @@ class SessionManager(
 
     private fun failSession(error: SessionError) {
         commandTranscript.sessionDisconnected()
+        val archive = closeTranscriptSession()
+        scope.launch { persistTranscriptArchive(archive) }
         resetStructuredShell()
         stateMachine.apply(SessionEvent.Failed(error))
+    }
+
+    private fun markTranscriptSessionConnected() = synchronized(transcriptArchiveLock) {
+        activeTranscriptSession = activeTranscriptSession?.copy(
+            startedAtMillis = activeTranscriptSession?.startedAtMillis ?: clockMillis(),
+        )
+    }
+
+    private fun closeTranscriptSession(): TranscriptSessionArchive? =
+        synchronized(transcriptArchiveLock) {
+            val active = activeTranscriptSession ?: return@synchronized null
+            activeTranscriptSession = null
+            val startedAtMillis = active.startedAtMillis
+            if (
+                active.ephemeral ||
+                startedAtMillis == null ||
+                commandTranscript.state.value.turns.isEmpty()
+            ) {
+                return@synchronized null
+            }
+            TranscriptSessionArchive(
+                id = active.id,
+                profile = active.profile,
+                startedAtMillis = startedAtMillis,
+                endedAtMillis = clockMillis(),
+                transcript = commandTranscript.state.value,
+            )
+        }
+
+    private suspend fun persistTranscriptArchive(archive: TranscriptSessionArchive?) {
+        if (archive == null) return
+        try {
+            transcriptArchiveSink.save(archive)
+            mutableTranscriptSaveFailed.value = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            mutableTranscriptSaveFailed.value = true
+        }
     }
 
     private data class SessionInput(
@@ -509,6 +575,13 @@ class SessionManager(
         val parser: ThreadlineOscParser,
         val integration: BashShellIntegration,
         val probeCommandId: CommandId,
+    )
+
+    private data class ActiveTranscriptSession(
+        val id: String,
+        val profile: HostProfile,
+        val ephemeral: Boolean,
+        val startedAtMillis: Long? = null,
     )
 
     private companion object {

@@ -100,6 +100,50 @@ class ThreadlineDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromThreePreservesProfilesAndCreatesTranscriptTables() {
+        helper.createDatabase(DATABASE_NAME, 3).apply {
+            execSQL(
+                """
+                INSERT INTO host_profiles (
+                    id, display_name, hostname, port, username,
+                    created_at_millis, updated_at_millis
+                ) VALUES (
+                    'profile-id', 'Fixture', 'fixture.test', 2222, 'threadline', 40, 50
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            DATABASE_NAME,
+            4,
+            true,
+            ThreadlineDatabase.MIGRATION_3_4,
+        )
+
+        migrated.query("SELECT id, hostname FROM host_profiles").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("profile-id", cursor.getString(0))
+            assertEquals("fixture.test", cursor.getString(1))
+        }
+        migrated.query("SELECT COUNT(*) FROM transcript_sessions").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM transcript_turns").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM transcript_output_chunks").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val DATABASE_NAME = "threadline-migration-test"
     }

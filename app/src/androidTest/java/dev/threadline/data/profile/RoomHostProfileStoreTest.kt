@@ -123,6 +123,7 @@ class RoomHostProfileStoreTest {
     ).addMigrations(
         ThreadlineDatabase.MIGRATION_1_2,
         ThreadlineDatabase.MIGRATION_2_3,
+        ThreadlineDatabase.MIGRATION_3_4,
     ).build()
 
     private fun profile(

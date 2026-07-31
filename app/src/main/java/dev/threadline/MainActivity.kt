@@ -68,6 +68,8 @@ import dev.threadline.core.model.SessionState
 import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
+import dev.threadline.data.transcript.SavedTranscriptSession
+import dev.threadline.data.transcript.SavedTranscriptSessionSummary
 import dev.threadline.service.SshSessionService
 import java.io.ByteArrayOutputStream
 import java.text.DateFormat
@@ -103,6 +105,7 @@ internal data class ConnectionFormDraft(
     val port: String,
     val username: String,
     val authenticationMode: AuthenticationMode,
+    val ephemeral: Boolean,
 ) {
     companion object {
         fun fixtureDefaults() = ConnectionFormDraft(
@@ -111,6 +114,7 @@ internal data class ConnectionFormDraft(
             port = "2222",
             username = "threadline",
             authenticationMode = AuthenticationMode.PASSWORD,
+            ephemeral = false,
         )
 
         val Saver: Saver<ConnectionFormDraft, Any> = listSaver(
@@ -121,6 +125,7 @@ internal data class ConnectionFormDraft(
                     it.port,
                     it.username,
                     it.authenticationMode.name,
+                    it.ephemeral.toString(),
                 )
             },
             restore = {
@@ -130,6 +135,7 @@ internal data class ConnectionFormDraft(
                     port = it[2],
                     username = it[3],
                     authenticationMode = AuthenticationMode.valueOf(it[4]),
+                    ephemeral = it[5].toBooleanStrict(),
                 )
             },
         )
@@ -146,6 +152,7 @@ internal object ConnectionFormTags {
     const val PASSWORD = "connection-password"
     const val KEY_PASSPHRASE = "connection-key-passphrase"
     const val SAVE_PRIVATE_KEY = "connection-save-private-key"
+    const val EPHEMERAL = "connection-ephemeral"
     const val CONNECT = "connection-connect"
     const val SAVED_KEY_PREFIX = "connection-saved-key-"
     const val RENAME_KEY_PREFIX = "connection-rename-key-"
@@ -175,6 +182,9 @@ private fun ThreadlineApp() {
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val knownHosts by SessionRuntime.knownHosts.hosts
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val transcriptSessions by SessionRuntime.transcriptHistory.sessions
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val transcriptSaveFailed by manager.transcriptSaveFailed.collectAsStateWithLifecycle()
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
         mutableStateOf(ConnectionFormDraft.fixtureDefaults())
@@ -206,6 +216,11 @@ private fun ThreadlineApp() {
             onDeleteHostProfile = SessionRuntime.hostProfiles::delete,
             knownHosts = knownHosts,
             onDeleteKnownHost = SessionRuntime.knownHosts::delete,
+            transcriptSessions = transcriptSessions,
+            transcriptSaveFailed = transcriptSaveFailed,
+            onLoadTranscript = SessionRuntime.transcriptHistory::load,
+            onDeleteTranscript = SessionRuntime.transcriptHistory::delete,
+            onClearTranscriptHistory = SessionRuntime.transcriptHistory::clearAll,
             importedPrivateKeys = importedPrivateKeys,
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
@@ -293,6 +308,17 @@ internal fun HostForm(
     knownHosts: List<KnownHostMetadata> = emptyList(),
     onDeleteKnownHost: suspend (endpointKey: String) -> Unit = {
         error("Known-host storage is unavailable.")
+    },
+    transcriptSessions: List<SavedTranscriptSessionSummary> = emptyList(),
+    transcriptSaveFailed: Boolean = false,
+    onLoadTranscript: suspend (id: String) -> SavedTranscriptSession = {
+        error("Transcript history is unavailable.")
+    },
+    onDeleteTranscript: suspend (id: String) -> Unit = {
+        error("Transcript history is unavailable.")
+    },
+    onClearTranscriptHistory: suspend () -> Unit = {
+        error("Transcript history is unavailable.")
     },
     importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
     onSavePrivateKey: suspend (
@@ -395,6 +421,14 @@ internal fun HostForm(
                     )
                 }
             }
+
+            TranscriptHistorySection(
+                sessions = transcriptSessions,
+                saveFailed = transcriptSaveFailed,
+                onLoad = onLoadTranscript,
+                onDelete = onDeleteTranscript,
+                onClearAll = onClearTranscriptHistory,
+            )
 
             if (hostProfiles.isNotEmpty()) {
                 Text("Saved profiles", style = MaterialTheme.typography.labelLarge)
@@ -757,6 +791,30 @@ internal fun HostForm(
                 }
             }
 
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Checkbox(
+                    checked = draft.ephemeral,
+                    onCheckedChange = { onDraftChange(draft.copy(ephemeral = it)) },
+                    enabled = !isBusy,
+                    modifier = Modifier.testTag(ConnectionFormTags.EPHEMERAL),
+                )
+                Column {
+                    Text("Ephemeral session")
+                    Text(
+                        "Do not retain commands or output after disconnect.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Text(
+                "Otherwise, command text and up to 65,536 characters of output per turn " +
+                    "are kept in the local, unencrypted app database. Device backups are disabled.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
@@ -826,6 +884,7 @@ internal fun HostForm(
                             val request = ConnectionRequest(
                                 profile = profile,
                                 credential = credential,
+                                ephemeral = draft.ephemeral,
                             )
                             if (onPrepared(request)) {
                                 password = ""

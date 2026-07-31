@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -23,9 +24,16 @@ import androidx.compose.ui.text.AnnotatedString
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
+import dev.threadline.core.shell.CommandId
+import dev.threadline.core.transcript.CommandOutput
+import dev.threadline.core.transcript.CommandStatus
+import dev.threadline.core.transcript.CommandTurn
 import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
+import dev.threadline.data.transcript.SavedTranscriptSession
+import dev.threadline.data.transcript.SavedTranscriptSessionSummary
+import dev.threadline.data.transcript.SavedTranscriptTurn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -116,6 +124,108 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH).assertIsSelected()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
             .assertEditableTextEquals("")
+    }
+
+    @Test
+    fun ephemeralChoiceIsExplicitAndReachesPreparedRequest() {
+        var preparedEphemeral: Boolean? = null
+
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = null,
+                    onPrepared = { request ->
+                        preparedEphemeral = request.ephemeral
+                        true
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.EPHEMERAL)
+            .performScrollTo()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ToggleableState,
+                    ToggleableState.Off,
+                ),
+            )
+            .performClick()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ToggleableState,
+                    ToggleableState.On,
+                ),
+            )
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performTextReplacement("session-only")
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+
+        assertEquals(true, preparedEphemeral)
+    }
+
+    @Test
+    fun savedTranscriptCanBeOpenedAndOnlyExplicitlyDeletedOrCleared() {
+        val summaries = mutableStateOf(
+            listOf(
+                transcriptSummary("session-1", "First"),
+                transcriptSummary("session-2", "Second"),
+            ),
+        )
+        var deletedId: String? = null
+        var clearCount = 0
+
+        compose.setContent {
+            MaterialTheme {
+                TranscriptHistorySection(
+                    sessions = summaries.value,
+                    saveFailed = false,
+                    onLoad = { id -> transcriptSession(id) },
+                    onDelete = { id ->
+                        deletedId = id
+                        summaries.value = summaries.value.filterNot { it.id == id }
+                    },
+                    onClearAll = {
+                        clearCount += 1
+                        summaries.value = emptyList()
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TranscriptHistoryTags.OPEN).performClick()
+        compose.onNodeWithTag(TranscriptHistoryTags.SESSION_PREFIX + "session-1")
+            .performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("printf saved").assertExists()
+        compose.onNodeWithTag(TranscriptHistoryTags.OUTPUT_PREFIX + "command-session-1")
+            .assertExists()
+        compose.onNodeWithText("Back").performClick()
+
+        compose.onNodeWithTag(TranscriptHistoryTags.DELETE_PREFIX + "session-1")
+            .performClick()
+        assertNull(deletedId)
+        compose.onNodeWithText("Delete saved transcript?").assertExists()
+        compose.onNodeWithTag(TranscriptHistoryTags.CONFIRM_DELETE).performClick()
+        compose.waitForIdle()
+        assertEquals("session-1", deletedId)
+
+        compose.onNodeWithTag(TranscriptHistoryTags.OPEN).performClick()
+        compose.onNodeWithTag(TranscriptHistoryTags.CLEAR_ALL).performClick()
+        assertEquals(0, clearCount)
+        compose.onNodeWithText("Clear all transcript history?").assertExists()
+        compose.onNodeWithTag(TranscriptHistoryTags.CONFIRM_CLEAR_ALL).performClick()
+        compose.waitForIdle()
+        assertEquals(1, clearCount)
+        compose.onAllNodesWithTag(TranscriptHistoryTags.OPEN).assertCountEquals(0)
     }
 
     @Test
@@ -364,6 +474,42 @@ class ConnectionFormRetentionTest {
         ).assertCountEquals(0)
     }
 }
+
+private fun transcriptSummary(
+    id: String,
+    name: String,
+) = SavedTranscriptSessionSummary(
+    id = id,
+    displayName = name,
+    hostname = "fixture.test",
+    port = 2222,
+    username = "threadline",
+    startedAtMillis = 1,
+    endedAtMillis = 2,
+    turnsTruncated = false,
+    turnCount = 1,
+)
+
+private fun transcriptSession(id: String) = SavedTranscriptSession(
+    summary = transcriptSummary(id, if (id == "session-1") "First" else "Second"),
+    turns = listOf(
+        SavedTranscriptTurn(
+            turn = CommandTurn(
+                id = CommandId("command-$id"),
+                command = "printf saved",
+                directoryAtStart = "/tmp",
+                submittedAtMillis = 1,
+                startedAtMillis = 1,
+                completedAtMillis = 2,
+                status = CommandStatus.SUCCEEDED,
+                exitStatus = 0,
+                currentDirectory = "/tmp",
+                output = CommandOutput("saved output"),
+            ),
+            commandTruncated = false,
+        ),
+    ),
+)
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertEditableTextEquals(
     expected: String,

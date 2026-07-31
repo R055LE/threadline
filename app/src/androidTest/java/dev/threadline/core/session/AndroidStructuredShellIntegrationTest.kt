@@ -28,6 +28,7 @@ import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
+import dev.threadline.data.transcript.RoomTranscriptHistoryStore
 import java.io.File
 import java.security.KeyStore
 import kotlinx.coroutines.flow.filterIsInstance
@@ -179,6 +180,9 @@ class AndroidStructuredShellIntegrationTest {
             dao = database.knownHosts(),
             legacyPreferences = legacyPreferences,
         )
+        val transcriptHistoryStore = RoomTranscriptHistoryStore(
+            database.transcriptArchives(),
+        )
 
         val hostKeyAlgorithms = HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
             AndroidSshCryptoProvider.install(),
@@ -187,6 +191,8 @@ class AndroidStructuredShellIntegrationTest {
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = knownHostStore,
             terminal = NoOpTerminal,
+            transcriptArchiveSink = transcriptHistoryStore,
+            transcriptSessionIdFactory = { "production-fixture-session" },
         )
         val profile = HostProfile(
             displayName = "Android integration fixture",
@@ -348,6 +354,29 @@ class AndroidStructuredShellIntegrationTest {
             val persisted = requireNotNull(knownHostStore.find(profile.endpoint))
             assertEquals("ssh-ed25519", persisted.key.algorithm)
             assertTrue(persisted.lastSeenAtMillis >= persisted.firstSeenAtMillis)
+            val savedSession = transcriptHistoryStore.sessions.first().single()
+            assertEquals("production-fixture-session", savedSession.id)
+            val savedTranscript = transcriptHistoryStore.load(savedSession.id)
+            val savedRenderedTurn = savedTranscript.turns
+                .first { it.turn.id == renderedSubmission.commandId }
+                .turn
+            assertEquals(renderedTurn.output.plainText, savedRenderedTurn.output.plainText)
+            assertTrue(savedRenderedTurn.output.styledRuns.isEmpty())
+            val savedVolumeTurn = savedTranscript.turns
+                .first { it.turn.id == volumeSubmission.commandId }
+                .turn
+            assertTrue(savedVolumeTurn.output.truncated)
+            assertEquals(
+                RoomTranscriptHistoryStore.MAXIMUM_OUTPUT_CHARACTERS_PER_TURN,
+                savedVolumeTurn.output.plainText.length,
+            )
+            assertTrue(savedVolumeTurn.output.plainText.endsWith("0123456789\n"))
+            assertEquals(
+                CommandStatus.INTERRUPTED,
+                savedTranscript.turns
+                    .first { it.turn.id == cancellationSubmission.commandId }
+                    .turn.status,
+            )
 
             val reconnectManager = SessionManager(
                 adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
@@ -465,7 +494,11 @@ private fun persistentEncryptedKeyDatabase(context: Context): ThreadlineDatabase
         context,
         ThreadlineDatabase::class.java,
         "android-encrypted-key-test.db",
-    ).addMigrations(ThreadlineDatabase.MIGRATION_1_2).build()
+    ).addMigrations(
+        ThreadlineDatabase.MIGRATION_1_2,
+        ThreadlineDatabase.MIGRATION_2_3,
+        ThreadlineDatabase.MIGRATION_3_4,
+    ).build()
 
 private fun deleteKeystoreAlias(alias: String) {
     KeyStore.getInstance("AndroidKeyStore").apply {
