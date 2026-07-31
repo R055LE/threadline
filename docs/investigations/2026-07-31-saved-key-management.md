@@ -63,8 +63,11 @@ cleanup.
 
 ## Remaining Phase 4 boundary
 
-Saved encrypted-key persistence and basic management are now proven. Remaining
-work includes optional device-credential or biometric gating, host-profile
-persistence, known-host management, bounded transcript persistence, ephemeral
-sessions, sanitized diagnostics, and retention controls. Passwords remain
-session-only.
+At this slice boundary, saved encrypted-key persistence and basic management
+were proven. The subsequent
+[host-profile persistence slice](2026-07-31-host-profile-persistence.md) added
+explicit Room-backed connection records without linking them to credentials.
+
+Remaining work includes optional device-credential or biometric gating,
+known-host management, bounded transcript persistence, ephemeral sessions,
+sanitized diagnostics, and retention controls. Passwords remain session-only.

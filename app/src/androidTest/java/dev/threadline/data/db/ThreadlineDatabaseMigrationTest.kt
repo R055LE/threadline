@@ -61,6 +61,45 @@ class ThreadlineDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromTwoPreservesEncryptedKeysAndCreatesHostProfileTable() {
+        helper.createDatabase(DATABASE_NAME, 2).apply {
+            execSQL(
+                """
+                INSERT INTO imported_private_keys (
+                    id, display_name, format, key_type, public_key_fingerprint,
+                    ciphertext, initialization_vector, created_at_millis, crypto_version
+                ) VALUES (
+                    'key-id', 'Fixture key', 'OpenSSH', 'ssh-ed25519', 'fixture-fingerprint',
+                    X'010203', X'040506', 30, 1
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            DATABASE_NAME,
+            3,
+            true,
+            ThreadlineDatabase.MIGRATION_2_3,
+        )
+
+        migrated.query(
+            "SELECT id, ciphertext FROM imported_private_keys",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("key-id", cursor.getString(0))
+            assertTrue(byteArrayOf(1, 2, 3).contentEquals(cursor.getBlob(1)))
+        }
+        migrated.query("SELECT COUNT(*) FROM host_profiles").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val DATABASE_NAME = "threadline-migration-test"
     }

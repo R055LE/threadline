@@ -10,6 +10,7 @@ import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
+import dev.threadline.data.profile.RoomHostProfileStore
 
 object SessionRuntime {
     lateinit var manager: SessionManager
@@ -22,6 +23,9 @@ object SessionRuntime {
         private set
 
     internal lateinit var importedPrivateKeys: EncryptedImportedPrivateKeyStore
+        private set
+
+    internal lateinit var hostProfiles: RoomHostProfileStore
         private set
 
     @Synchronized
@@ -37,6 +41,7 @@ object SessionRuntime {
             dao = threadlineDatabase.importedPrivateKeys(),
             cipher = AndroidKeystorePrivateKeyCipher(),
         )
+        val hostProfileStore = RoomHostProfileStore(threadlineDatabase.hostProfiles())
         val sessionManager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = RoomKnownHostStore(
@@ -55,6 +60,7 @@ object SessionRuntime {
 
         database = threadlineDatabase
         importedPrivateKeys = importedKeyStore
+        hostProfiles = hostProfileStore
         terminal = bridge
         manager = sessionManager
     }

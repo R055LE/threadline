@@ -66,6 +66,7 @@ import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
+import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.service.SshSessionService
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CancellationException
@@ -149,6 +150,12 @@ internal object ConnectionFormTags {
     const val RENAME_KEY_NAME = "connection-rename-key-name"
     const val CONFIRM_RENAME_KEY = "connection-confirm-rename-key"
     const val CONFIRM_DELETE_KEY = "connection-confirm-delete-key"
+    const val SAVED_PROFILE_PREFIX = "connection-saved-profile-"
+    const val SAVE_PROFILE = "connection-save-profile"
+    const val UPDATE_PROFILE = "connection-update-profile"
+    const val USE_PROFILE_AS_NEW = "connection-use-profile-as-new"
+    const val DELETE_PROFILE_PREFIX = "connection-delete-profile-"
+    const val CONFIRM_DELETE_PROFILE = "connection-confirm-delete-profile"
 }
 
 @Composable
@@ -158,10 +165,13 @@ private fun ThreadlineApp() {
     val snapshot by manager.snapshot.collectAsStateWithLifecycle()
     val importedPrivateKeys by SessionRuntime.importedPrivateKeys.keys
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val hostProfiles by SessionRuntime.hostProfiles.profiles
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
         mutableStateOf(ConnectionFormDraft.fixtureDefaults())
     }
+    var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -180,6 +190,12 @@ private fun ThreadlineApp() {
             draft = connectionDraft,
             onDraftChange = { connectionDraft = it },
             sessionError = (current as? SessionState.Failed)?.error,
+            hostProfiles = hostProfiles,
+            selectedHostProfileId = selectedHostProfileId,
+            onSelectedHostProfileChange = { selectedHostProfileId = it },
+            onSaveHostProfile = SessionRuntime.hostProfiles::save,
+            onUpdateHostProfile = SessionRuntime.hostProfiles::update,
+            onDeleteHostProfile = SessionRuntime.hostProfiles::delete,
             importedPrivateKeys = importedPrivateKeys,
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
@@ -252,6 +268,18 @@ internal fun HostForm(
     draft: ConnectionFormDraft,
     onDraftChange: (ConnectionFormDraft) -> Unit,
     sessionError: SessionError?,
+    hostProfiles: List<SavedHostProfile> = emptyList(),
+    selectedHostProfileId: String? = null,
+    onSelectedHostProfileChange: (String?) -> Unit = {},
+    onSaveHostProfile: suspend (HostProfile) -> SavedHostProfile = {
+        error("Host-profile storage is unavailable.")
+    },
+    onUpdateHostProfile: suspend (id: String, profile: HostProfile) -> Unit = { _, _ ->
+        error("Host-profile storage is unavailable.")
+    },
+    onDeleteHostProfile: suspend (id: String) -> Unit = {
+        error("Host-profile storage is unavailable.")
+    },
     importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
     onSavePrivateKey: suspend (
         displayName: String,
@@ -287,10 +315,22 @@ internal fun HostForm(
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var isPreparing by remember { mutableStateOf(false) }
+    var isManagingProfile by remember { mutableStateOf(false) }
+    var profilePendingDeletion by remember { mutableStateOf<SavedHostProfile?>(null) }
     var isManagingKey by remember { mutableStateOf(false) }
     var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
+    val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
+    val isBusy = isPreparing || isManagingProfile || isManagingKey
+
+    fun clearSessionCredentialInputs() {
+        password = ""
+        keyPassphrase = ""
+        selectedKeyUri = null
+        selectedSavedKeyId = null
+        savePrivateKey = false
+    }
 
     val keyPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
@@ -340,6 +380,62 @@ internal fun HostForm(
                 }
             }
 
+            if (hostProfiles.isNotEmpty()) {
+                Text("Saved profiles", style = MaterialTheme.typography.labelLarge)
+                hostProfiles.forEach { profile ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        FilterChip(
+                            selected = selectedHostProfileId == profile.id,
+                            onClick = {
+                                onSelectedHostProfileChange(profile.id)
+                                onDraftChange(
+                                    draft.copy(
+                                        displayName = profile.displayName,
+                                        hostname = profile.hostname,
+                                        port = profile.port.toString(),
+                                        username = profile.username,
+                                    ),
+                                )
+                                clearSessionCredentialInputs()
+                                formError = null
+                            },
+                            enabled = !isBusy,
+                            label = {
+                                Column {
+                                    Text(profile.displayName)
+                                    Text(
+                                        "${profile.username}@${profile.hostname}:${profile.port}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag(
+                                    ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id,
+                                ),
+                        )
+                        TextButton(
+                            onClick = {
+                                profilePendingDeletion = profile
+                                formError = null
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.testTag(
+                                ConnectionFormTags.DELETE_PROFILE_PREFIX + profile.id,
+                            ),
+                        ) {
+                            Text("Delete")
+                        }
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = draft.displayName,
                 onValueChange = { onDraftChange(draft.copy(displayName = it)) },
@@ -385,6 +481,66 @@ internal fun HostForm(
                 )
             }
 
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = {
+                        if (isBusy) return@Button
+                        val profile = draft.toHostProfileOrNull()
+                        if (profile == null) {
+                            formError = INVALID_HOST_PROFILE_MESSAGE
+                            return@Button
+                        }
+                        formError = null
+                        isManagingProfile = true
+                        coroutineScope.launch {
+                            try {
+                                val selectedId = selectedHostProfile?.id
+                                if (selectedId == null) {
+                                    val saved = onSaveHostProfile(profile)
+                                    onSelectedHostProfileChange(saved.id)
+                                } else {
+                                    onUpdateHostProfile(selectedId, profile)
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The host profile could not be saved."
+                            } finally {
+                                isManagingProfile = false
+                            }
+                        }
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier.testTag(
+                        if (selectedHostProfile == null) {
+                            ConnectionFormTags.SAVE_PROFILE
+                        } else {
+                            ConnectionFormTags.UPDATE_PROFILE
+                        },
+                    ),
+                ) {
+                    Text(if (selectedHostProfile == null) "Save profile" else "Update profile")
+                }
+                if (selectedHostProfile != null) {
+                    TextButton(
+                        onClick = {
+                            onSelectedHostProfileChange(null)
+                            clearSessionCredentialInputs()
+                            formError = null
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier.testTag(ConnectionFormTags.USE_PROFILE_AS_NEW),
+                    ) {
+                        Text("Use as new")
+                    }
+                }
+            }
+
             Text("Authentication", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(
@@ -394,6 +550,7 @@ internal fun HostForm(
                             draft.copy(authenticationMode = AuthenticationMode.PASSWORD),
                         )
                     },
+                    enabled = !isBusy,
                     label = { Text("Password") },
                     modifier = Modifier.testTag(ConnectionFormTags.PASSWORD_AUTH),
                 )
@@ -404,6 +561,7 @@ internal fun HostForm(
                             draft.copy(authenticationMode = AuthenticationMode.PRIVATE_KEY),
                         )
                     },
+                    enabled = !isBusy,
                     label = { Text("Private key") },
                     modifier = Modifier.testTag(ConnectionFormTags.PRIVATE_KEY_AUTH),
                 )
@@ -439,7 +597,7 @@ internal fun HostForm(
                                         savePrivateKey = false
                                         formError = null
                                     },
-                                    enabled = !isPreparing && !isManagingKey,
+                                    enabled = !isBusy,
                                     label = {
                                         Column {
                                             Text(key.displayName)
@@ -463,7 +621,7 @@ internal fun HostForm(
                                             renameDraft = key.displayName
                                             formError = null
                                         },
-                                        enabled = !isPreparing && !isManagingKey,
+                                        enabled = !isBusy,
                                         modifier = Modifier.testTag(
                                             ConnectionFormTags.RENAME_KEY_PREFIX + key.id,
                                         ),
@@ -475,7 +633,7 @@ internal fun HostForm(
                                             keyPendingDeletion = key
                                             formError = null
                                         },
-                                        enabled = !isPreparing && !isManagingKey,
+                                        enabled = !isBusy,
                                         modifier = Modifier.testTag(
                                             ConnectionFormTags.DELETE_KEY_PREFIX + key.id,
                                         ),
@@ -486,7 +644,10 @@ internal fun HostForm(
                             }
                         }
                     }
-                    OutlinedButton(onClick = { keyPicker.launch("*/*") }) {
+                    OutlinedButton(
+                        onClick = { keyPicker.launch("*/*") },
+                        enabled = !isBusy,
+                    ) {
                         Text(
                             selectedKeyUri?.let { it.toUri().lastPathSegment }
                                 ?: "Choose OpenSSH private key",
@@ -500,6 +661,7 @@ internal fun HostForm(
                             Checkbox(
                                 checked = savePrivateKey,
                                 onCheckedChange = { savePrivateKey = it },
+                                enabled = !isBusy,
                                 modifier = Modifier.testTag(
                                     ConnectionFormTags.SAVE_PRIVATE_KEY,
                                 ),
@@ -528,17 +690,11 @@ internal fun HostForm(
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
-                    if (isPreparing || isManagingKey) return@Button
+                    if (isBusy) return@Button
                     formError = null
-                    val parsedPort = draft.port.toIntOrNull()
-                    if (
-                        draft.displayName.isBlank() ||
-                        draft.hostname.isBlank() ||
-                        draft.username.isBlank() ||
-                        parsedPort == null ||
-                        parsedPort !in 1..65535
-                    ) {
-                        formError = "Enter a display name, host, valid port, and username."
+                    val profile = draft.toHostProfileOrNull()
+                    if (profile == null) {
+                        formError = INVALID_HOST_PROFILE_MESSAGE
                         return@Button
                     }
 
@@ -598,11 +754,7 @@ internal fun HostForm(
                             }
 
                             val request = ConnectionRequest(
-                                profile = HostProfile(
-                                    displayName = draft.displayName.trim(),
-                                    endpoint = HostEndpoint(draft.hostname.trim(), parsedPort),
-                                    username = draft.username.trim(),
-                                ),
+                                profile = profile,
                                 credential = credential,
                             )
                             if (onPrepared(request)) {
@@ -621,7 +773,7 @@ internal fun HostForm(
                         }
                     }
                 },
-                enabled = !isPreparing && !isManagingKey,
+                enabled = !isBusy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(ConnectionFormTags.CONNECT),
@@ -630,6 +782,66 @@ internal fun HostForm(
                 Text(if (isPreparing) "Preparing securely…" else "Connect securely")
             }
         }
+    }
+
+    profilePendingDeletion?.let { profile ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isManagingProfile) profilePendingDeletion = null
+            },
+            title = { Text("Delete saved profile?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "This removes the saved connection details for ${profile.displayName}. " +
+                            "Known-host trust and saved private keys are not changed.",
+                    )
+                    Text(
+                        "${profile.username}@${profile.hostname}:${profile.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isBusy) return@Button
+                        isManagingProfile = true
+                        coroutineScope.launch {
+                            try {
+                                onDeleteHostProfile(profile.id)
+                                if (selectedHostProfileId == profile.id) {
+                                    onSelectedHostProfileChange(null)
+                                    clearSessionCredentialInputs()
+                                }
+                                profilePendingDeletion = null
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The host profile could not be deleted."
+                                profilePendingDeletion = null
+                            } finally {
+                                isManagingProfile = false
+                            }
+                        }
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier.testTag(ConnectionFormTags.CONFIRM_DELETE_PROFILE),
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { profilePendingDeletion = null },
+                    enabled = !isManagingProfile,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 
     keyPendingRename?.let { key ->
@@ -875,6 +1087,24 @@ private fun selectedPrivateKeyName(uri: Uri): String =
         ?.takeIf(String::isNotBlank)
         ?: "Imported private key"
 
+private fun ConnectionFormDraft.toHostProfileOrNull(): HostProfile? {
+    val parsedPort = port.toIntOrNull()
+    if (
+        displayName.isBlank() ||
+        hostname.isBlank() ||
+        username.isBlank() ||
+        parsedPort == null ||
+        parsedPort !in 1..65535
+    ) {
+        return null
+    }
+    return HostProfile(
+        displayName = displayName.trim(),
+        endpoint = HostEndpoint(hostname.trim(), parsedPort),
+        username = username.trim(),
+    )
+}
+
 private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
     fun clear() {
         buf.fill(0)
@@ -883,3 +1113,5 @@ private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
 }
 
 private const val MAX_PRIVATE_KEY_BYTES = 1024 * 1024
+private const val INVALID_HOST_PROFILE_MESSAGE =
+    "Enter a display name, host, valid port, and username."

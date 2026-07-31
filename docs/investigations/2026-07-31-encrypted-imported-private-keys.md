@@ -149,7 +149,9 @@ credential management was not complete. The subsequent
 label-only rename and confirmation-gated local deletion while preserving the
 cryptographic boundary described above.
 
+The later
+[host-profile persistence slice](2026-07-31-host-profile-persistence.md) also
+added explicit connection-metadata records without linking credentials.
 Remaining work includes optional device-credential or biometric gating,
-host-profile persistence, known-host management, bounded transcript
-persistence, ephemeral sessions, sanitized diagnostics, and retention
-controls. Passwords remain session-only.
+known-host management, bounded transcript persistence, ephemeral sessions,
+sanitized diagnostics, and retention controls. Passwords remain session-only.

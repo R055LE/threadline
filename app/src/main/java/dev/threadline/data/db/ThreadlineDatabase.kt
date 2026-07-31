@@ -125,14 +125,74 @@ internal interface ImportedPrivateKeyDao {
     suspend fun delete(id: String): Int
 }
 
+@Entity(tableName = "host_profiles")
+internal data class HostProfileEntity(
+    @PrimaryKey
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    val hostname: String,
+    val port: Int,
+    val username: String,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+    @ColumnInfo(name = "updated_at_millis")
+    val updatedAtMillis: Long,
+)
+
+@Dao
+internal interface HostProfileDao {
+    @Query(
+        """
+        SELECT * FROM host_profiles
+        ORDER BY display_name COLLATE NOCASE, hostname COLLATE NOCASE, port, username, id
+        """,
+    )
+    fun observeAll(): Flow<List<HostProfileEntity>>
+
+    @Query("SELECT * FROM host_profiles WHERE id = :id")
+    suspend fun find(id: String): HostProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(entity: HostProfileEntity)
+
+    @Query(
+        """
+        UPDATE host_profiles
+        SET display_name = :displayName,
+            hostname = :hostname,
+            port = :port,
+            username = :username,
+            updated_at_millis = :updatedAtMillis
+        WHERE id = :id
+        """,
+    )
+    suspend fun update(
+        id: String,
+        displayName: String,
+        hostname: String,
+        port: Int,
+        username: String,
+        updatedAtMillis: Long,
+    ): Int
+
+    @Query("DELETE FROM host_profiles WHERE id = :id")
+    suspend fun delete(id: String): Int
+}
+
 @Database(
-    entities = [KnownHostEntity::class, ImportedPrivateKeyEntity::class],
-    version = 2,
+    entities = [
+        KnownHostEntity::class,
+        ImportedPrivateKeyEntity::class,
+        HostProfileEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
 )
 internal abstract class ThreadlineDatabase : RoomDatabase() {
     abstract fun knownHosts(): KnownHostDao
     abstract fun importedPrivateKeys(): ImportedPrivateKeyDao
+    abstract fun hostProfiles(): HostProfileDao
 
     companion object {
         private const val DATABASE_NAME = "threadline.db"
@@ -142,7 +202,7 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 context.applicationContext,
                 ThreadlineDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
 
         internal val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -158,6 +218,25 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                         `initialization_vector` BLOB NOT NULL,
                         `created_at_millis` INTEGER NOT NULL,
                         `crypto_version` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `host_profiles` (
+                        `id` TEXT NOT NULL,
+                        `display_name` TEXT NOT NULL,
+                        `hostname` TEXT NOT NULL,
+                        `port` INTEGER NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `created_at_millis` INTEGER NOT NULL,
+                        `updated_at_millis` INTEGER NOT NULL,
                         PRIMARY KEY(`id`)
                     )
                     """.trimIndent(),

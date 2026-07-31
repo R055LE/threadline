@@ -20,6 +20,8 @@ terminal with mobile modifier and navigation keys.
 - Password and imported OpenSSH private-key authentication, with an explicit
   option to save keys under Android Keystore-backed AES-GCM encryption and to
   rename or confirmation-delete saved records
+- Explicit Room-backed save, select, update, copy, and confirmation-delete for
+  non-credential host profiles
 - Explicit confirmation and Room persistence for unknown host keys
 - Default blocking for changed host keys
 - Idempotent migration from the dependency spike's private known-host
@@ -123,6 +125,13 @@ saved. Saved-key labels can be renamed without decrypting or re-encrypting the
 credential. Delete shows the key fingerprint for confirmation, removes only
 that encrypted local record, and does not revoke its public key on a server.
 
+Connection details can be saved explicitly as a host profile. A profile stores
+only its name, hostname, port, username, stable ID, and timestamps. Selecting
+one fills those fields and clears any password, private-key passphrase, saved
+key choice, or pending file import. Authentication mode and credentials are not
+linked to profiles. Edit the fields and choose **Update profile**, or choose
+**Use as new** to preserve the fields while creating a separate profile.
+
 ## Architecture
 
 ```text
@@ -133,6 +142,7 @@ SessionManager ─────────────── Foreground SshSessi
         │
         ├── StrictHostKeyGate ── Room known-host store
         ├── Imported-key store ─ Room ciphertext + Android Keystore AES key
+        ├── Host-profile store ─ Room connection metadata
         ├── SshClientAdapter ─── ConnectBot sshlib
         └── TerminalBridge ───── ConnectBot termlib/libvterm
 ```
@@ -289,8 +299,25 @@ production fixture cases then passed in 5.478 seconds, including encrypted-key
 authentication after a database reopen. See the
 [saved-key management investigation](docs/investigations/2026-07-31-saved-key-management.md).
 
-Room persistence for host profiles and transcripts, known-host management,
-optional device-credential or biometric gating, ephemeral sessions, sanitized
+The host-profile slice advances Room to schema version 3 with stable,
+explicitly managed connection records. Profile selection fills only display
+name, hostname, port, and username while wiping session-only credential inputs;
+neither authentication mode nor a credential reference enters the table.
+Update targets one stable ID, **Use as new** breaks that association before a
+new save, and delete confirms the exact endpoint without changing known-host
+trust or encrypted private keys. Low-level writes become typed, non-secret
+errors and preserve coroutine cancellation.
+
+The exact Room 2→3 migration preserves an encrypted-key row. Store tests cover
+normalization, targeted update/delete, sanitized failures, and survival across
+a database reopen; Compose covers save, select, update, explicit delete, and
+credential clearing. The complete API 35 run finished 43 tests: 41 passed and
+the two credential-gated cases skipped as designed. Both production fixture
+cases then passed against OpenSSH in 4.795 seconds. See the
+[host-profile persistence investigation](docs/investigations/2026-07-31-host-profile-persistence.md).
+
+Room persistence for transcripts, known-host management, optional
+device-credential or biometric gating, ephemeral sessions, sanitized
 diagnostics, and retention controls remain in Phase 4.
 
 ## License

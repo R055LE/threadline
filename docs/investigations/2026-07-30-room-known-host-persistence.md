@@ -107,12 +107,15 @@ deliberately absent.
 
 ## Remaining Phase 4 boundary
 
-This is the Room and known-host persistence foundation, not completion of Phase
-4. Remaining deliverables include:
+This was the Room and known-host persistence foundation, not completion of
+Phase 4. Subsequent slices added
+[encrypted imported keys](2026-07-31-encrypted-imported-private-keys.md),
+[saved-key management](2026-07-31-saved-key-management.md), and
+[host-profile persistence](2026-07-31-host-profile-persistence.md).
+Remaining deliverables include:
 
-- persisted host profiles and bounded transcript history;
+- bounded transcript history;
 - known-host listing, deletion, and deliberate changed-key replacement;
-- Android Keystore-backed encryption for imported client keys;
 - ephemeral sessions;
 - sanitized diagnostics; and
 - transcript deletion and retention controls.

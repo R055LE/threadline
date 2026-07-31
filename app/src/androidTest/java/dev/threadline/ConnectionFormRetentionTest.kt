@@ -16,10 +16,14 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
+import dev.threadline.core.model.HostEndpoint
+import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
+import dev.threadline.data.profile.SavedHostProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -152,7 +156,9 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id).performClick()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
             .performTextReplacement("session-only")
-        compose.onNodeWithTag(ConnectionFormTags.CONNECT).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
         compose.waitForIdle()
 
         assertNotNull(preparedCredential)
@@ -215,6 +221,91 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
             .assertIsNotSelected()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .assertEditableTextEquals("")
+    }
+
+    @Test
+    fun hostProfileSaveSelectUpdateAndDeleteKeepCredentialsSessionOnly() {
+        val original = SavedHostProfile(
+            id = "profile-id",
+            displayName = "Lab",
+            hostname = "lab.example",
+            port = 2200,
+            username = "operator",
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+        )
+        val profiles = mutableStateOf(emptyList<SavedHostProfile>())
+        val selectedId = mutableStateOf<String?>(null)
+        val draftState = mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+        var savedProfile: HostProfile? = null
+        var updatedProfile: Pair<String, HostProfile>? = null
+        var deletedId: String? = null
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = draftState.value,
+                    onDraftChange = { draftState.value = it },
+                    sessionError = null,
+                    hostProfiles = profiles.value,
+                    selectedHostProfileId = selectedId.value,
+                    onSelectedHostProfileChange = { selectedId.value = it },
+                    onSaveHostProfile = { profile ->
+                        savedProfile = profile
+                        profiles.value = listOf(original)
+                        original
+                    },
+                    onUpdateHostProfile = { id, profile ->
+                        updatedProfile = id to profile
+                    },
+                    onDeleteHostProfile = { id -> deletedId = id },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.SAVE_PROFILE).performClick()
+        compose.waitForIdle()
+        assertEquals("Local fixture", savedProfile?.displayName)
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
+            .assertIsSelected()
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performTextReplacement("session-only")
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
+            .assertEditableTextEquals("Lab")
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
+            .assertEditableTextEquals("lab.example")
+        compose.onNodeWithTag(ConnectionFormTags.PORT)
+            .assertEditableTextEquals("2200")
+        compose.onNodeWithTag(ConnectionFormTags.USERNAME)
+            .assertEditableTextEquals("operator")
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .assertEditableTextEquals("")
+
+        compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
+            .performTextReplacement("  Renamed lab  ")
+        compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE).performClick()
+        compose.waitForIdle()
+        assertEquals(original.id, updatedProfile?.first)
+        assertEquals("Renamed lab", updatedProfile?.second?.displayName)
+        assertEquals(HostEndpoint("lab.example", 2200), updatedProfile?.second?.endpoint)
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performTextReplacement("delete-me")
+        compose.onNodeWithTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + original.id).performClick()
+        assertNull(deletedId)
+        compose.onNodeWithText("Delete saved profile?").assertExists()
+        compose.onAllNodesWithText("operator@lab.example:2200").assertCountEquals(2)
+        compose.onNodeWithTag(ConnectionFormTags.CONFIRM_DELETE_PROFILE).performClick()
+        compose.waitForIdle()
+
+        assertEquals(original.id, deletedId)
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
+            .assertIsNotSelected()
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
             .assertEditableTextEquals("")
     }
 }
