@@ -48,7 +48,17 @@ adapter and `SessionManager` together:
 
 The script reads the disposable password from the running container, holds it
 only in memory, installs the app and test APKs, and passes it directly to the
-instrumentation runner. The test proves bootstrap, one-active-command
+instrumentation runner. It also streams the ignored disposable private key
+into the debug app's private files with `run-as`, removes that plaintext file
+as soon as the test reads it, and removes it again on script exit.
+
+The encrypted-key case verifies the imported public fingerprint against
+`ssh-keygen`, saves only Android Keystore-backed AES-GCM ciphertext to Room,
+closes and reopens the database, decrypts the record, authenticates to the real
+fixture with the production adapter, runs a structured proof command, and
+confirms the session credential bytes were cleared after authentication.
+
+The password case proves bootstrap, one-active-command
 enforcement, persistent `cd` and `export`, success and failure exit statuses,
 multiline input, ANSI/progress/Unicode transcript rendering, exact bounded-tail
 retention under 20,000 lines of output, a real `less` process detected as
@@ -59,9 +69,9 @@ Room store; after the first session disconnects, the test reconnects to the
 same real server from that stored record without supplying another host-key
 decision. The script treats runner failures or an unrecognized result as a
 nonzero exit even though
-`adb shell am instrument` itself can return zero after a test failure. The test
-is skipped during ordinary connected-test runs because no fixture password
-argument is supplied.
+`adb shell am instrument` itself can return zero after a test failure. These
+cases are skipped during ordinary connected-test runs because neither fixture
+credential is supplied.
 
 Run `threadline-test-output` in the remote shell for mixed raw output. It also
 accepts `ansi`, `progress`, `unicode`, and `volume`.

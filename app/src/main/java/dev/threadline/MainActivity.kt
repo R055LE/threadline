@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -41,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -63,8 +65,13 @@ import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
+import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.service.SshSessionService
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +141,9 @@ internal object ConnectionFormTags {
     const val PRIVATE_KEY_AUTH = "connection-private-key-auth"
     const val PASSWORD = "connection-password"
     const val KEY_PASSPHRASE = "connection-key-passphrase"
+    const val SAVE_PRIVATE_KEY = "connection-save-private-key"
+    const val CONNECT = "connection-connect"
+    const val SAVED_KEY_PREFIX = "connection-saved-key-"
 }
 
 @Composable
@@ -141,6 +151,8 @@ private fun ThreadlineApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val manager = SessionRuntime.manager
     val snapshot by manager.snapshot.collectAsStateWithLifecycle()
+    val importedPrivateKeys by SessionRuntime.importedPrivateKeys.keys
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
         mutableStateOf(ConnectionFormDraft.fixtureDefaults())
@@ -163,6 +175,9 @@ private fun ThreadlineApp() {
             draft = connectionDraft,
             onDraftChange = { connectionDraft = it },
             sessionError = (current as? SessionState.Failed)?.error,
+            importedPrivateKeys = importedPrivateKeys,
+            onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
+            onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
 
@@ -230,19 +245,38 @@ internal fun HostForm(
     draft: ConnectionFormDraft,
     onDraftChange: (ConnectionFormDraft) -> Unit,
     sessionError: SessionError?,
+    importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
+    onSavePrivateKey: suspend (
+        displayName: String,
+        keyBytes: ByteArray,
+        passphrase: CharArray?,
+    ) -> ImportedPrivateKeyMetadata = { _, _, _ ->
+        error("Encrypted private-key storage is unavailable.")
+    },
+    onLoadPrivateKey: suspend (
+        id: String,
+        passphrase: CharArray?,
+    ) -> SessionCredential.PrivateKey = { _, _ ->
+        error("Encrypted private-key storage is unavailable.")
+    },
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     // Secrets deliberately use remember rather than rememberSaveable.
     var password by remember { mutableStateOf("") }
     var keyPassphrase by remember { mutableStateOf("") }
     var selectedKeyUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
+    var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
+    var isPreparing by remember { mutableStateOf(false) }
 
     val keyPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri ->
         selectedKeyUri = uri?.toString()
+        if (uri != null) selectedSavedKeyId = null
         formError = null
     }
 
@@ -369,11 +403,53 @@ internal fun HostForm(
                 )
 
                 AuthenticationMode.PRIVATE_KEY -> {
+                    if (importedPrivateKeys.isNotEmpty()) {
+                        Text("Saved keys", style = MaterialTheme.typography.labelLarge)
+                        importedPrivateKeys.forEach { key ->
+                            FilterChip(
+                                selected = selectedSavedKeyId == key.id,
+                                onClick = {
+                                    selectedSavedKeyId = key.id
+                                    selectedKeyUri = null
+                                    savePrivateKey = false
+                                    formError = null
+                                },
+                                label = {
+                                    Column {
+                                        Text(key.displayName)
+                                        Text(
+                                            "${key.keyType} · ${key.publicKeyFingerprint}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.testTag(
+                                    ConnectionFormTags.SAVED_KEY_PREFIX + key.id,
+                                ).fillMaxWidth(),
+                            )
+                        }
+                    }
                     OutlinedButton(onClick = { keyPicker.launch("*/*") }) {
                         Text(
                             selectedKeyUri?.let { it.toUri().lastPathSegment }
                                 ?: "Choose OpenSSH private key",
                         )
+                    }
+                    if (selectedKeyUri != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Checkbox(
+                                checked = savePrivateKey,
+                                onCheckedChange = { savePrivateKey = it },
+                                modifier = Modifier.testTag(
+                                    ConnectionFormTags.SAVE_PRIVATE_KEY,
+                                ),
+                            )
+                            Text("Save encrypted on this device")
+                        }
                     }
                     OutlinedTextField(
                         value = keyPassphrase,
@@ -386,12 +462,17 @@ internal fun HostForm(
                             .fillMaxWidth()
                             .testTag(ConnectionFormTags.KEY_PASSPHRASE),
                     )
+                    Text(
+                        "Passphrases stay in memory for this connection and are never saved.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
 
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
+                    if (isPreparing) return@Button
                     formError = null
                     val parsedPort = draft.port.toIntOrNull()
                     if (
@@ -405,55 +486,92 @@ internal fun HostForm(
                         return@Button
                     }
 
-                    val credential = runCatching {
-                        when (draft.authenticationMode) {
-                            AuthenticationMode.PASSWORD -> {
-                                if (password.isEmpty()) {
-                                    error("Enter the fixture password.")
+                    isPreparing = true
+                    coroutineScope.launch {
+                        try {
+                            val credential = when (draft.authenticationMode) {
+                                AuthenticationMode.PASSWORD -> {
+                                    if (password.isEmpty()) {
+                                        error("Enter the fixture password.")
+                                    }
+                                    val characters = password.toCharArray()
+                                    try {
+                                        SessionCredential.Password.from(characters)
+                                    } finally {
+                                        characters.fill('\u0000')
+                                    }
                                 }
-                                SessionCredential.Password.from(password.toCharArray())
+
+                                AuthenticationMode.PRIVATE_KEY -> {
+                                    val passphrase = keyPassphrase
+                                        .takeIf(String::isNotEmpty)
+                                        ?.toCharArray()
+                                    try {
+                                        val savedId = selectedSavedKeyId
+                                        if (savedId != null) {
+                                            onLoadPrivateKey(savedId, passphrase)
+                                        } else {
+                                            val uri = selectedKeyUri?.toUri()
+                                                ?: error("Choose a private key.")
+                                            val keyBytes = withContext(Dispatchers.IO) {
+                                                readPrivateKey(context, uri)
+                                            }
+                                            try {
+                                                if (savePrivateKey) {
+                                                    val saved = onSavePrivateKey(
+                                                        selectedPrivateKeyName(uri),
+                                                        keyBytes,
+                                                        passphrase,
+                                                    )
+                                                    selectedSavedKeyId = saved.id
+                                                    selectedKeyUri = null
+                                                    savePrivateKey = false
+                                                }
+                                                SessionCredential.PrivateKey.from(
+                                                    keyBytes = keyBytes,
+                                                    passphrase = passphrase,
+                                                )
+                                            } finally {
+                                                keyBytes.fill(0)
+                                            }
+                                        }
+                                    } finally {
+                                        passphrase?.fill('\u0000')
+                                    }
+                                }
                             }
 
-                            AuthenticationMode.PRIVATE_KEY -> {
-                                val uri = selectedKeyUri?.toUri()
-                                    ?: error("Choose a private key.")
-                                val keyBytes = readPrivateKey(context, uri)
-                                try {
-                                    SessionCredential.PrivateKey.from(
-                                        keyBytes = keyBytes,
-                                        passphrase = keyPassphrase
-                                            .takeIf(String::isNotEmpty)
-                                            ?.toCharArray(),
-                                    )
-                                } finally {
-                                    keyBytes.fill(0)
-                                }
+                            val request = ConnectionRequest(
+                                profile = HostProfile(
+                                    displayName = draft.displayName.trim(),
+                                    endpoint = HostEndpoint(draft.hostname.trim(), parsedPort),
+                                    username = draft.username.trim(),
+                                ),
+                                credential = credential,
+                            )
+                            if (onPrepared(request)) {
+                                password = ""
+                                keyPassphrase = ""
+                            } else {
+                                formError = "Another SSH session is already active."
                             }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            formError = failure.message
+                                ?: "Could not prepare the selected private key."
+                        } finally {
+                            isPreparing = false
                         }
-                    }.getOrElse {
-                        formError = it.message ?: "Could not read the selected private key."
-                        return@Button
-                    }
-
-                    val request = ConnectionRequest(
-                        profile = HostProfile(
-                            displayName = draft.displayName.trim(),
-                            endpoint = HostEndpoint(draft.hostname.trim(), parsedPort),
-                            username = draft.username.trim(),
-                        ),
-                        credential = credential,
-                    )
-                    if (onPrepared(request)) {
-                        password = ""
-                        keyPassphrase = ""
-                    } else {
-                        formError = "Another SSH session is already active."
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                enabled = !isPreparing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.CONNECT),
                 contentPadding = PaddingValues(vertical = 14.dp),
             ) {
-                Text("Connect securely")
+                Text(if (isPreparing) "Preparing securely…" else "Connect securely")
             }
         }
     }
@@ -553,19 +671,37 @@ private fun readPrivateKey(
     val input = context.contentResolver.openInputStream(uri)
         ?: error("The selected private key could not be opened.")
     input.use { stream ->
-        val output = ByteArrayOutputStream()
+        val output = ClearingByteArrayOutputStream()
         val buffer = ByteArray(8192)
-        var total = 0
-        while (true) {
-            val count = stream.read(buffer)
-            if (count < 0) break
-            total += count
-            require(total <= MAX_PRIVATE_KEY_BYTES) {
-                "Private keys larger than 1 MiB are not accepted."
+        try {
+            var total = 0
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= MAX_PRIVATE_KEY_BYTES) {
+                    "Private keys larger than 1 MiB are not accepted."
+                }
+                output.write(buffer, 0, count)
             }
-            output.write(buffer, 0, count)
+            return output.toByteArray()
+        } finally {
+            buffer.fill(0)
+            output.clear()
         }
-        return output.toByteArray()
+    }
+}
+
+private fun selectedPrivateKeyName(uri: Uri): String =
+    uri.lastPathSegment
+        ?.substringAfterLast('/')
+        ?.takeIf(String::isNotBlank)
+        ?: "Imported private key"
+
+private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
+    fun clear() {
+        buf.fill(0)
+        reset()
     }
 }
 

@@ -17,7 +17,8 @@ terminal with mobile modifier and navigation keys.
 - A bundled Conscrypt provider with an Android Ed25519 capability probe and
   modern ECDSA/RSA-SHA2 compatibility fallback
 - ConnectBot's libvterm-backed Compose terminal component
-- Password and imported OpenSSH private-key authentication
+- Password and imported OpenSSH private-key authentication, with an explicit
+  option to save keys under Android Keystore-backed AES-GCM encryption
 - Explicit confirmation and Room persistence for unknown host keys
 - Default blocking for changed host keys
 - Idempotent migration from the dependency spike's private known-host
@@ -27,8 +28,9 @@ terminal with mobile modifier and navigation keys.
 - Docker-based OpenSSH fixture with password and generated Ed25519-key auth
 - Unit tests for session transitions, host-key decisions, credential wiping,
   safe shell quoting, bootstrap generation, and the incremental marker parser
-- Android tests for the exact Ed25519 decode/sign/verify path and selective
-  connection-form retention
+- Android tests for the exact Ed25519 decode/sign/verify path, selective
+  connection-form retention, Room migration, and Android Keystore tamper
+  detection
 - A bounded, ordered input queue so rapid IME and paste events cannot reorder
   bytes on the SSH channel
 - A bounded incremental transcript collector for UTF-8, line controls,
@@ -112,7 +114,11 @@ docker compose exec openssh \
 ```
 
 For key auth, copy the generated private key to the emulator, choose **Private
-key** in the app, and select it through Android's file picker.
+key** in the app, and select it through Android's file picker. Check **Save
+encrypted on this device** before connecting to retain an encrypted copy. A
+saved key appears by name and public fingerprint on later connections; its
+passphrase, if any, must still be entered for each connection and is never
+saved.
 
 ## Architecture
 
@@ -123,6 +129,7 @@ Compose host/terminal UI
 SessionManager ─────────────── Foreground SshSessionService
         │
         ├── StrictHostKeyGate ── Room known-host store
+        ├── Imported-key store ─ Room ciphertext + Android Keystore AES key
         ├── SshClientAdapter ─── ConnectBot sshlib
         └── TerminalBridge ───── ConnectBot termlib/libvterm
 ```
@@ -130,7 +137,10 @@ SessionManager ─────────────── Foreground SshSessi
 `TerminalBridge` is process-owned rather than composable-owned. It receives the
 PTY byte stream even while the Activity is absent. The foreground service owns
 the live-session policy, and its destruction cancels or closes session jobs.
-Passwords, passphrases, and imported key bytes are not persisted.
+Passwords and private-key passphrases are not persisted. A private key is
+memory-only unless the user explicitly saves it; saved keys are persisted only
+as authenticated ciphertext plus non-secret format and public-fingerprint
+metadata.
 
 The dependency choice and its open questions are recorded in
 [ADR 0001](docs/adr/0001-ssh-and-terminal-libraries.md).
@@ -239,9 +249,30 @@ and reconnected from the stored key without a second approval in 3.755 seconds.
 The full gate then passed with all 27 routine device tests green. See the
 [Phase 4 persistence investigation](docs/investigations/2026-07-30-room-known-host-persistence.md).
 
-Room persistence for host profiles and transcripts, known-host management,
-encrypted imported keys, ephemeral sessions, sanitized diagnostics, and
-retention controls remain in Phase 4.
+The encrypted-key slice advances the database to schema version 2 and adds an
+explicit save/use path for imported private keys. A non-exportable app-scoped
+AES-256 key in Android Keystore protects each record with AES-GCM, a fresh IV,
+and authenticated metadata binding the record ID, format, public fingerprint,
+and crypto version. Metadata lists do not load ciphertext, and decrypt happens
+on an I/O dispatcher immediately before the existing self-clearing session
+credential is prepared. Missing Keystore material, modified ciphertext, and
+modified metadata all fail closed.
+
+API 35 tests cover the exact Room 1→2 migration, encryption randomness,
+ciphertext and metadata tampering, missing Keystore material, encrypted-store
+round trips, and saved-key UI/passphrase handling. The production fixture
+matched the imported Ed25519 fingerprint to `ssh-keygen`, closed and reopened
+Room, decrypted with Android Keystore, authenticated through the production SSH
+adapter, ran a structured proof command, and confirmed the credential bytes
+were zeroed after authentication. See the
+[encrypted imported-key investigation](docs/investigations/2026-07-31-encrypted-imported-private-keys.md).
+The final JVM/lint/debug/release gate passed, followed by 33 green routine API
+35 tests; the two credential-gated fixture cases skipped in that routine run as
+designed.
+
+Room persistence for host profiles and transcripts, saved-key deletion and
+management, known-host management, ephemeral sessions, sanitized diagnostics,
+and retention controls remain in Phase 4.
 
 ## License
 

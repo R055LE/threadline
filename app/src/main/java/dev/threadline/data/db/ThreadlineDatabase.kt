@@ -11,6 +11,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "known_hosts")
 internal data class KnownHostEntity(
@@ -60,13 +63,67 @@ internal interface KnownHostDao {
     ): Int
 }
 
+@Entity(tableName = "imported_private_keys")
+internal data class ImportedPrivateKeyEntity(
+    @PrimaryKey
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    val format: String,
+    @ColumnInfo(name = "key_type")
+    val keyType: String,
+    @ColumnInfo(name = "public_key_fingerprint")
+    val publicKeyFingerprint: String,
+    @ColumnInfo(name = "ciphertext", typeAffinity = ColumnInfo.BLOB)
+    val ciphertext: ByteArray,
+    @ColumnInfo(name = "initialization_vector", typeAffinity = ColumnInfo.BLOB)
+    val initializationVector: ByteArray,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+    @ColumnInfo(name = "crypto_version")
+    val cryptoVersion: Int,
+)
+
+internal data class ImportedPrivateKeyMetadataRow(
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    val format: String,
+    @ColumnInfo(name = "key_type")
+    val keyType: String,
+    @ColumnInfo(name = "public_key_fingerprint")
+    val publicKeyFingerprint: String,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+)
+
+@Dao
+internal interface ImportedPrivateKeyDao {
+    @Query(
+        """
+        SELECT id, display_name, format, key_type, public_key_fingerprint,
+               created_at_millis
+        FROM imported_private_keys
+        ORDER BY display_name COLLATE NOCASE, created_at_millis, id
+        """,
+    )
+    fun observeAll(): Flow<List<ImportedPrivateKeyMetadataRow>>
+
+    @Query("SELECT * FROM imported_private_keys WHERE id = :id")
+    suspend fun find(id: String): ImportedPrivateKeyEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(entity: ImportedPrivateKeyEntity)
+}
+
 @Database(
-    entities = [KnownHostEntity::class],
-    version = 1,
+    entities = [KnownHostEntity::class, ImportedPrivateKeyEntity::class],
+    version = 2,
     exportSchema = true,
 )
 internal abstract class ThreadlineDatabase : RoomDatabase() {
     abstract fun knownHosts(): KnownHostDao
+    abstract fun importedPrivateKeys(): ImportedPrivateKeyDao
 
     companion object {
         private const val DATABASE_NAME = "threadline.db"
@@ -76,6 +133,27 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 context.applicationContext,
                 ThreadlineDatabase::class.java,
                 DATABASE_NAME,
-            ).build()
+            ).addMigrations(MIGRATION_1_2).build()
+
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `imported_private_keys` (
+                        `id` TEXT NOT NULL,
+                        `display_name` TEXT NOT NULL,
+                        `format` TEXT NOT NULL,
+                        `key_type` TEXT NOT NULL,
+                        `public_key_fingerprint` TEXT NOT NULL,
+                        `ciphertext` BLOB NOT NULL,
+                        `initialization_vector` BLOB NOT NULL,
+                        `created_at_millis` INTEGER NOT NULL,
+                        `crypto_version` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
     }
 }

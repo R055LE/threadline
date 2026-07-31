@@ -23,6 +23,7 @@ fi
 
 cd "$script_dir"
 fixture_password=$(docker compose exec -T openssh printenv THREADLINE_TEST_PASSWORD)
+fixture_key_fingerprint=$(ssh-keygen -lf .state/client_ed25519.pub | awk '{print $2}')
 
 cd "$repository_dir"
 ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
@@ -31,9 +32,20 @@ cd "$repository_dir"
 "$adb_command" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
     >/dev/null
 
+fixture_key_file=files/threadline-fixture-private-key
+cleanup_fixture_key() {
+    "$adb_command" shell run-as dev.threadline rm -f "$fixture_key_file" \
+        >/dev/null 2>&1 || true
+}
+trap cleanup_fixture_key EXIT INT TERM
+"$adb_command" shell run-as dev.threadline mkdir -p files
+"$adb_command" exec-in run-as dev.threadline sh -c "cat > $fixture_key_file" \
+    < "$script_dir/.state/client_ed25519"
+
 instrumentation_output=$("$adb_command" shell am instrument -w \
     -e class dev.threadline.core.session.AndroidStructuredShellIntegrationTest \
     -e threadlineFixturePassword "$fixture_password" \
+    -e threadlineFixtureKeyFingerprint "$fixture_key_fingerprint" \
     dev.threadline.test/androidx.test.runner.AndroidJUnitRunner)
 printf '%s\n' "$instrumentation_output"
 

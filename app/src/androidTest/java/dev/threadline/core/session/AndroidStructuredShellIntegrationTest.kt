@@ -26,6 +26,10 @@ import dev.threadline.core.transcript.StyledRun
 import dev.threadline.core.transcript.TranscriptStyle
 import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
+import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
+import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
+import java.io.File
+import java.security.KeyStore
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -39,6 +43,119 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AndroidStructuredShellIntegrationTest {
+    @Test
+    fun encryptedImportedKeyAuthenticatesAfterDatabaseReopen() = runBlocking {
+        val arguments = InstrumentationRegistry.getArguments()
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val keyFile = File(targetContext.filesDir, FIXTURE_PRIVATE_KEY_FILE)
+        assumeTrue(
+            "No runtime fixture private key supplied; skipping encrypted-key integration test",
+            keyFile.isFile,
+        )
+        val expectedFingerprint = arguments.getString(KEY_FINGERPRINT_ARGUMENT)
+        assumeTrue(
+            "No runtime fixture key fingerprint supplied; skipping encrypted-key integration test",
+            !expectedFingerprint.isNullOrBlank(),
+        )
+        val fixtureKeyFingerprint = requireNotNull(expectedFingerprint)
+        val keyBytes = keyFile.readBytes()
+        assertTrue(keyFile.delete())
+        targetContext.deleteDatabase(ENCRYPTED_KEY_DATABASE)
+        deleteKeystoreAlias(ENCRYPTED_KEYSTORE_ALIAS)
+        val legacyPreferences = targetContext.getSharedPreferences(
+            ENCRYPTED_KEY_LEGACY_PREFERENCES,
+            Context.MODE_PRIVATE,
+        )
+        legacyPreferences.edit().clear().commit()
+        var database: ThreadlineDatabase? = null
+        var manager: SessionManager? = null
+
+        try {
+            val hostKeyAlgorithms = HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
+                AndroidSshCryptoProvider.install(),
+            )
+            database = persistentEncryptedKeyDatabase(targetContext)
+            val initialStore = EncryptedImportedPrivateKeyStore(
+                dao = database.importedPrivateKeys(),
+                cipher = AndroidKeystorePrivateKeyCipher(ENCRYPTED_KEYSTORE_ALIAS),
+            )
+            val metadata = initialStore.save("Fixture Ed25519", keyBytes, null)
+            assertEquals("OpenSSH", metadata.format)
+            assertEquals("ssh-ed25519", metadata.keyType)
+            assertEquals(fixtureKeyFingerprint, metadata.publicKeyFingerprint)
+            val encrypted = requireNotNull(database.importedPrivateKeys().find(metadata.id))
+            assertTrue(!encrypted.ciphertext.contentEquals(keyBytes))
+            assertTrue(!encrypted.ciphertext.decodeToString().contains("PRIVATE KEY"))
+            database.close()
+            database = null
+            keyBytes.fill(0)
+
+            database = persistentEncryptedKeyDatabase(targetContext)
+            val reloadedStore = EncryptedImportedPrivateKeyStore(
+                dao = database.importedPrivateKeys(),
+                cipher = AndroidKeystorePrivateKeyCipher(ENCRYPTED_KEYSTORE_ALIAS),
+            )
+            val credential = reloadedStore.credential(metadata.id, null)
+            val profile = HostProfile(
+                displayName = "Encrypted key fixture",
+                endpoint = HostEndpoint(
+                    hostname = arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
+                    port = arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT,
+                ),
+                username = arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER,
+            )
+            manager = SessionManager(
+                adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
+                knownHostStore = RoomKnownHostStore(
+                    dao = database.knownHosts(),
+                    legacyPreferences = legacyPreferences,
+                ),
+                terminal = NoOpTerminal,
+            )
+            assertTrue(
+                manager.prepareConnection(
+                    ConnectionRequest(profile = profile, credential = credential),
+                ),
+            )
+            assertTrue(manager.connectPrepared())
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+            }
+            assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.filterIsInstance<SessionState.Connected>().first()
+            }
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+            }
+            assertTrue(credential.keyBytes.all { it == 0.toByte() })
+
+            val submission = accepted(
+                manager.submitCommand("printf 'encrypted-key-reload-ok\\n'"),
+            )
+            val completed = awaitCompletion(manager, submission.commandId)
+            assertEquals(0, completed.exitStatus)
+            val turn = requireNotNull(
+                manager.transcriptState.value.turns
+                    .firstOrNull { it.id == submission.commandId },
+            )
+            assertEquals("encrypted-key-reload-ok\n", turn.output.plainText)
+        } finally {
+            keyBytes.fill(0)
+            keyFile.delete()
+            manager?.let { activeManager ->
+                activeManager.disconnect()
+                withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                    activeManager.state.first { it is SessionState.Disconnected }
+                }
+            }
+            database?.close()
+            targetContext.deleteDatabase(ENCRYPTED_KEY_DATABASE)
+            legacyPreferences.edit().clear().commit()
+            deleteKeystoreAlias(ENCRYPTED_KEYSTORE_ALIAS)
+        }
+    }
+
     @Test
     fun productionSessionRetainsStateAndReportsCommandLifecycle() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
@@ -325,6 +442,7 @@ class AndroidStructuredShellIntegrationTest {
 
     private companion object {
         const val PASSWORD_ARGUMENT = "threadlineFixturePassword"
+        const val KEY_FINGERPRINT_ARGUMENT = "threadlineFixtureKeyFingerprint"
         const val HOST_ARGUMENT = "threadlineFixtureHost"
         const val PORT_ARGUMENT = "threadlineFixturePort"
         const val USER_ARGUMENT = "threadlineFixtureUser"
@@ -335,6 +453,24 @@ class AndroidStructuredShellIntegrationTest {
         const val COMMAND_TIMEOUT_MILLIS = 20_000L
         const val MAXIMUM_RENDERED_CHARACTERS = 128 * 1024
         const val PRODUCTION_LEGACY_PREFERENCES = "android_structured_known_hosts"
+        const val ENCRYPTED_KEY_LEGACY_PREFERENCES = "android_encrypted_key_known_hosts"
+        const val ENCRYPTED_KEY_DATABASE = "android-encrypted-key-test.db"
+        const val ENCRYPTED_KEYSTORE_ALIAS = "threadline.test.encrypted-fixture-key"
+        const val FIXTURE_PRIVATE_KEY_FILE = "threadline-fixture-private-key"
+    }
+}
+
+private fun persistentEncryptedKeyDatabase(context: Context): ThreadlineDatabase =
+    Room.databaseBuilder(
+        context,
+        ThreadlineDatabase::class.java,
+        "android-encrypted-key-test.db",
+    ).addMigrations(ThreadlineDatabase.MIGRATION_1_2).build()
+
+private fun deleteKeystoreAlias(alias: String) {
+    KeyStore.getInstance("AndroidKeyStore").apply {
+        load(null)
+        deleteEntry(alias)
     }
 }
 

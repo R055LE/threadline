@@ -8,6 +8,8 @@ import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
 import dev.threadline.core.terminal.TerminalBridge
 import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
+import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
+import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
 
 object SessionRuntime {
     lateinit var manager: SessionManager
@@ -19,6 +21,9 @@ object SessionRuntime {
     internal lateinit var database: ThreadlineDatabase
         private set
 
+    internal lateinit var importedPrivateKeys: EncryptedImportedPrivateKeyStore
+        private set
+
     @Synchronized
     fun initialize(context: Context) {
         if (::manager.isInitialized) return
@@ -28,6 +33,10 @@ object SessionRuntime {
         )
         val bridge = TerminalBridge()
         val threadlineDatabase = ThreadlineDatabase.create(context)
+        val importedKeyStore = EncryptedImportedPrivateKeyStore(
+            dao = threadlineDatabase.importedPrivateKeys(),
+            cipher = AndroidKeystorePrivateKeyCipher(),
+        )
         val sessionManager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = RoomKnownHostStore(
@@ -45,6 +54,7 @@ object SessionRuntime {
         )
 
         database = threadlineDatabase
+        importedPrivateKeys = importedKeyStore
         terminal = bridge
         manager = sessionManager
     }
