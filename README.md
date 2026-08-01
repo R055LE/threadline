@@ -4,7 +4,7 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 5: alpha hardening is in progress.** Phase 4 security and persistence is
+**[Phase 5 — Alpha polish](docs/STATUS.md) is in progress.** Phase 4 security and persistence is
 implemented. The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
@@ -205,240 +205,17 @@ risks are recorded in
 
 ## Project status
 
-This is a deliberately playful proof of concept, not a production SSH client.
-Password auth, imported Ed25519 client-key auth, Ed25519 host verification,
-changed-host blocking, a PTY shell, ordered rapid input, ANSI color, Unicode,
-carriage-return progress have now been proven on an Android 15 emulator. A
-100,000-line stream also drains without a crash or lost SSH session, and the
-same PTY visibly returns a follow-up marker. What first looked like a
-multi-minute termlib backlog was the bottom half of a 59-row terminal hidden
-behind the software keyboard. Applying the IME inset to the terminal host fixed
-its PTY and Canvas size without dropping or sampling output bytes. The
-remaining rotation, background, and disconnect checks also pass, so
-[ADR 0001](docs/adr/0001-ssh-and-terminal-libraries.md) is accepted and Phase 1
-may proceed.
+Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its first
+accessibility and connection-error slice is implemented; manual TalkBack and physical-device
+validation, profiling, onboarding, and a signed internal APK remain.
 
-Phase 1 now has random session nonces, typed command lifecycle events, and a
-bounded incremental OSC parser. Safe shell-word quoting and the temporary Bash
-bootstrap have also passed the live OpenSSH fixture with persistent `cd` and
-`export` state, success and failure statuses, and multiline input. The parser
-preserves byte/event ordering across arbitrary buffer splits, removes only
-valid same-session Threadline markers from transcript output, and passes
-unknown or malformed sequences through unchanged. Android's `SessionManager`
-now bootstraps this path, exposes immutable structured-shell state, enforces one
-active command, records exit status and directory, and downgrades failures to
-the still-connected raw terminal.
+Use these records according to their purpose:
 
-The Phase 1 exit cases—persistent `cd` and `export`, success, failure,
-multiline input, fragmented markers, and one active command—pass through the
-production Android adapter and `SessionManager` against the Docker fixture.
-Phase 2's first vertical slice now consumes that lifecycle into bounded
-session-local command turns. The collector supports incremental UTF-8, LF,
-CR/CRLF, backspace, tabs, repeated-CR progress replacement, standard/indexed/
-truecolor ANSI SGR runs, and explicit approximation for unsupported terminal
-operations. Output publication is capped at 20 updates per second, each card
-retains at most 131,072 rendered UTF-16 code units, and a session retains at
-most 100 turns. The production Android fixture test proves ANSI, progress,
-Unicode, and completed transcript status through the real SSH adapter and
-`SessionManager`.
-
-The next interaction-hardening slice adds once-per-second live duration,
-idempotent Stop state, a three-second grace period before offering explicit
-session disconnect, and reliable initial/output-follow scrolling that yields
-when the user drags away from the tail. The Android fixture now also proves a
-20,000-line command retains exactly the configured 131,072-character tail and
-that Ctrl-C returns exit 130 and an `Interrupted` turn through the same PTY.
-The Bash wrapper temporarily catches INT so it can emit the end marker, then
-restores the shell's prior INT trap.
-
-The composer/history follow-up uses the bounded session turns as its single
-history source. Older navigation saves the exact unfinished draft, history
-entries preserve multiline commands, and Newer returns to that draft after the
-latest entry. Typing, editing a card, or accepting any submission leaves
-history-navigation mode deliberately. Composer text, history position, and the
-saved draft survive Android saved-state recreation.
-
-The output-interaction follow-up keeps rendered command output selectable while
-underlining only conservative HTTP(S) detections. Remote text remains plain,
-untrusted text: unsupported schemes, malformed or credential-bearing URLs, and
-oversized candidates stay inert. Tapping a detected link first shows the exact
-address in a confirmation dialog; only an explicit Open action hands it to
-Android, and a missing handler becomes a visible error rather than a crash.
-
-Phase 3 builds mostly on already-proven infrastructure: the raw terminal uses
-the same SSH channel and PTY, its emulator remains process-owned while hidden,
-manual switching and return already work, and terminal measurements already
-resize the remote PTY. The first missing slice added bounded, incremental
-interactive hints for strong terminal control sequences. A running card says
-only that the command *may* need input and requires an explicit Open terminal
-action.
-
-The completion slice adds a mobile extra-key row. Ctrl and Alt are explicit
-one-shot modifiers shared by normal IME input and the row; they clear after the
-next input and whenever the raw view is entered or left. Navigation keys use
-conventional xterm modifier parameters, and Ctrl never rewrites a multi-byte
-IME callback. A production Android fixture run launched real `less`, `top`, and
-`vim` in sequence, observed an interactive hint for each, sent their exit input
-through the same manager and PTY, and received exit 0 for every structured
-command in 2.737 seconds. JVM tests, lint, the debug build, and all 22 routine
-device tests also pass. The boundary and acceptance evidence are recorded in the
-[Phase 3 investigation](docs/investigations/2026-07-30-seamless-raw-fallback.md).
-
-Phase 3 is complete. Phase 4 is security and persistence. Deferred transcript
-hardening still includes history deletion and retention controls, user-scrolled
-streaming behavior, and focused rotation and background-transition checks.
-
-The first Phase 4 slice establishes a versioned Room database and exported
-schema for known-host trust. Records contain the normalized endpoint, exact key
-algorithm and bytes, and first-seen plus last-trusted-seen timestamps. Existing
-accepted keys migrate idempotently from the Phase 0 private preference store;
-an older legacy record can never overwrite a Room decision. Database failures
-block verification with a typed, non-secret error, and coroutine cancellation
-is preserved.
-
-Five focused API 35 tests prove Room read/write, monotonic last-seen behavior,
-legacy import, stale-record non-overwrite, changed-key immutability, and
-survival across database reopen. The production Android fixture accepted the
-real OpenSSH key into Room, completed the existing session suite, disconnected,
-and reconnected from the stored key without a second approval in 3.755 seconds.
-The full gate then passed with all 27 routine device tests green. See the
-[Phase 4 persistence investigation](docs/investigations/2026-07-30-room-known-host-persistence.md).
-
-The encrypted-key slice advances the database to schema version 2 and adds an
-explicit save/use path for imported private keys. A non-exportable app-scoped
-AES-256 key in Android Keystore protects each record with AES-GCM, a fresh IV,
-and authenticated metadata binding the record ID, format, public fingerprint,
-and crypto version. Metadata lists do not load ciphertext, and decrypt happens
-on an I/O dispatcher immediately before the existing self-clearing session
-credential is prepared. Missing Keystore material, modified ciphertext, and
-modified metadata all fail closed.
-
-API 35 tests cover the exact Room 1→2 migration, encryption randomness,
-ciphertext and metadata tampering, missing Keystore material, encrypted-store
-round trips, and saved-key UI/passphrase handling. The production fixture
-matched the imported Ed25519 fingerprint to `ssh-keygen`, closed and reopened
-Room, decrypted with Android Keystore, authenticated through the production SSH
-adapter, ran a structured proof command, and confirmed the credential bytes
-were zeroed after authentication. See the
-[encrypted imported-key investigation](docs/investigations/2026-07-31-encrypted-imported-private-keys.md).
-The final JVM/lint/debug/release gate passed, followed by 33 green routine API
-35 tests; the two credential-gated fixture cases skipped in that routine run as
-designed.
-
-The saved-key management follow-up adds label-only rename and explicit local
-deletion beside each fingerprinted record. Rename leaves ciphertext and its IV
-unchanged. Delete removes exactly one Room row, leaves the app-scoped wrapping
-key available to every other and future record, and clears the selected key and
-its memory-only passphrase when applicable. Storage failures remain typed and
-surface only non-secret messages. Deletion is logical database deletion; it is
-not represented as secure physical erasure of prior SQLite pages.
-
-Room, encrypted-store, and Compose tests cover single-record isolation,
-ciphertext preservation, unavailable-after-delete behavior, confirmation, and
-selection/passphrase cleanup. The complete API 35 run finished 38 tests with
-only the two expected credential-gated cases skipped. Both credential-gated
-production fixture cases then passed in 5.478 seconds, including encrypted-key
-authentication after a database reopen. See the
-[saved-key management investigation](docs/investigations/2026-07-31-saved-key-management.md).
-
-The host-profile slice advances Room to schema version 3 with stable,
-explicitly managed connection records. Profile selection fills only display
-name, hostname, port, and username while wiping session-only credential inputs;
-neither authentication mode nor a credential reference enters the table.
-Update targets one stable ID, **Use as new** breaks that association before a
-new save, and delete confirms the exact endpoint without changing known-host
-trust or encrypted private keys. Low-level writes become typed, non-secret
-errors and preserve coroutine cancellation.
-
-The exact Room 2→3 migration preserves an encrypted-key row. Store tests cover
-normalization, targeted update/delete, sanitized failures, and survival across
-a database reopen; Compose covers save, select, update, explicit delete, and
-credential clearing. The complete API 35 run finished 43 tests: 41 passed and
-the two credential-gated cases skipped as designed. Both production fixture
-cases then passed against OpenSSH in 4.795 seconds. See the
-[host-profile persistence investigation](docs/investigations/2026-07-31-host-profile-persistence.md).
-
-The known-host management follow-up exposes Room trust metadata without
-exposing raw encoded keys to Compose. Each record shows its normalized
-endpoint, algorithm, canonical SHA-256 fingerprint, and trust timestamps.
-Forgetting is exact-row and confirmation-gated. Changed-key errors now identify
-the endpoint and explain the multi-step replacement ceremony; the verifier
-still refuses to prompt or mutate trust when a changed key is presented.
-
-Room and Compose tests prove sorted metadata, shared fingerprint calculation,
-record isolation, missing-record failure, unchanged blocking before deletion,
-and a fresh unknown-host decision after deletion. The complete API 35 run
-finished 46 tests: 44 passed and the two credential-gated cases skipped as
-designed. Both production fixture cases then passed against OpenSSH in 5.602
-seconds. See the
-[known-host management investigation](docs/investigations/2026-07-31-known-host-management.md).
-
-The transcript-persistence slice advances Room to schema version 4 with
-session, turn, and output-chunk tables. A connected session archives at most
-once when it ends; failed connection attempts, empty/raw-only sessions, and
-explicitly ephemeral sessions create no history. Saved data is capped at 20
-sessions, 50 turns per session, 16,384 characters per command, and a
-65,536-character output tail per turn. Unicode-safe 16 KiB chunks avoid
-repeated large-field rewrites, while transactional pruning and foreign-key
-cascades keep retention and deletion atomic. The viewer renders restored output
-as selectable, inert plain text.
-
-JVM tests prove durable, ephemeral, and archive-failure lifecycle boundaries.
-Migration, Room, and Compose tests prove schema 3→4 preservation, database
-reopen, ordered Unicode-safe chunks, every cap, exact deletion, clear-all, and
-the UI confirmations. The complete API 35 run finished 52 tests: 50 passed and
-the two credential-gated cases skipped as designed. Both production fixture
-cases then passed against OpenSSH in 5.219 seconds; the password-auth path also
-archived and restored its real structured turns, bounded 65,536-character
-large-output tail, and interrupted status. The final JVM, lint, debug, and
-release gate passed. See the
-[bounded transcript persistence investigation](docs/investigations/2026-07-31-bounded-transcript-persistence.md).
-
-The sanitized-diagnostics slice exposes stable error/state codes, app and
-device compatibility fields, transcript/output-size summaries, and local record
-counts without serializing raw exceptions or session content. Its sensitive
-detail switch is off by default and warns before adding bounded host fields,
-directories, and the newest 20 commands. Command output, credentials, private
-keys, host keys, and fingerprints cannot enter either report form. The exact
-selectable preview is the only text sent to Android's share chooser; no report
-is saved or submitted automatically. See the
-[sanitized diagnostics investigation](docs/investigations/2026-07-31-sanitized-diagnostics.md).
-
-JVM and Compose tests cover hostile redaction samples, every typed session
-error, report bounds, explicit opt-in, preview-to-share identity, and visible
-share failure. The complete API 35 run finished 56 tests: 54 passed and the two
-credential-injected cases skipped as designed. Both live Docker/OpenSSH cases
-then passed in 5.094 seconds. The final JVM, lint, debug, and release gate also
-passed.
-
-Phase 4's required deliverables are now implemented. Device-credential and
-biometric gating are optional decisions recorded in the
-[backlog](docs/BACKLOG.md), not Phase 4 blockers. Biometrics require a concrete
-threat-model justification before reconsideration. Passwords and passphrases
-remain session-only.
-
-The first Phase 5 slice gives every typed session failure an exhaustive title,
-safe message, recovery instruction, and optional action. The SSH adapter now
-distinguishes DNS resolution, timeout, refusal, and unreachable-network failures
-by exception type through a bounded cause chain; it never parses or displays
-the low-level message. Authentication recovery states that passwords and
-passphrases were cleared, then focuses the active credential field. Network
-recovery focuses the retained hostname, while notification recovery opens the
-app's Android settings only after a tap.
-
-Accessibility semantics now include assertive connection/submission errors,
-useful headings, a labeled progress indicator, and full spoken names for
-symbol-only terminal keys. Connected-session actions moved below the title into
-a horizontally scrollable row and remain reachable at 200% font scale. The
-focused 29-test Compose run passed; the full API 35 run finished 61 tests with
-59 passed and the two expected credential-injected skips. Both live
-Docker/OpenSSH cases passed in 5.36 seconds. See the
-[Phase 5 accessibility and error investigation](docs/investigations/2026-07-31-phase5-accessibility-error-ux.md).
-The final JVM, lint, debug, and release gate passed.
-
-Manual TalkBack and physical Samsung/Pixel validation remain, along with
-performance profiling, further large-output work, onboarding, and a signed
-internal APK.
+- [Current status](docs/STATUS.md) — the canonical active phase and remaining boundaries
+- [Milestone history](docs/HISTORY.md) — a compact chronology
+- [Investigation index](docs/investigations/README.md) — dated technical decisions and acceptance
+  evidence
+- [Backlog](docs/BACKLOG.md) — deliberately deferred decisions that are not current blockers
 
 ## License
 
