@@ -42,6 +42,9 @@ terminal with mobile modifier and navigation keys.
 - Assertive error announcements, navigable headings, full spoken terminal-key
   labels, and a connected-session action row proven reachable at 200% system
   font scale
+- A repeatable Android/OpenSSH performance runner for styled Unicode volume,
+  long lines, progress rewrites, interruption under sustained output, bounded
+  memory, and post-load recovery
 - Idempotent migration from the dependency spike's private known-host
   preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
@@ -205,9 +208,9 @@ risks are recorded in
 
 ## Project status
 
-Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its first
-accessibility and connection-error slice is implemented; manual TalkBack and physical-device
-validation, profiling, onboarding, and a signed internal APK remain.
+Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
+accessibility/error, large-output performance, and Samsung physical-validation slices are
+implemented; Pixel validation, onboarding, and a signed internal APK remain.
 
 Use these records according to their purpose:
 

@@ -1028,10 +1028,14 @@ Exit criterion:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
-Implementation status (2026-07-31): the first accessibility and
+Implementation status (2026-08-01): the accessibility and
 connection/authentication-error pass is implemented, including typed network
 failures, recovery actions, screen-reader semantics, and 200% font-scale action
-reachability. Manual TalkBack and physical-device validation remain. Exportable
+reachability. Production-path large-output profiling now covers styled Unicode
+volume, long lines, progress rewrites, sustained-output interruption, bounded
+memory, and post-load recovery. A Galaxy S25 Ultra running Android 16 / One UI
+8.5 has passed the physical lifecycle, large-font, raw-terminal, persistence,
+and manual TalkBack checks; Pixel-specific validation remains. Exportable
 sanitized diagnostics were completed during Phase 4.
 
 ---

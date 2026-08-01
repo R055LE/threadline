@@ -23,3 +23,5 @@ technical claim.
 | 2026-07-31 | 4 | [Bounded transcript persistence](2026-07-31-bounded-transcript-persistence.md) | retention, no-write ephemeral mode, deletion, and crash boundary |
 | 2026-07-31 | 4 | [Sanitized diagnostics](2026-07-31-sanitized-diagnostics.md) | bounded diagnostic schema, opt-in fields, and preview-to-share identity |
 | 2026-07-31 | 5 | [Accessibility and connection-error UX](2026-07-31-phase5-accessibility-error-ux.md) | typed recovery, semantics, focus, and large-font action reachability |
+| 2026-07-31 | 5 | [Large-output performance](2026-07-31-phase5-large-output-performance.md) | production-path load, bounded memory, recovery latency, and builtin-loop interruption |
+| 2026-08-01 | 5 | [Samsung physical-device validation](2026-08-01-phase5-samsung-physical-validation.md) | Android 16/One UI 8.5 lifecycle, rendering, raw fallback, large font, and TalkBack |

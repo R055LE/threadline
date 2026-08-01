@@ -1,5 +1,6 @@
 package dev.threadline
 
+import android.os.SystemClock
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
@@ -420,6 +421,76 @@ class TranscriptScreenTest {
     }
 
     @Test
+    fun boundedLargeOutputCanExpandAndSwitchViewsWithinFiveSeconds() {
+        val output = buildString {
+            while (length < 128 * 1024) {
+                append("0123456789 lambda π 日本語\n")
+            }
+        }.takeLast(128 * 1024)
+        val turn = CommandTurn(
+            id = CommandId("large-output"),
+            command = "generate bounded output",
+            directoryAtStart = "/tmp",
+            submittedAtMillis = 100L,
+            startedAtMillis = 110L,
+            completedAtMillis = 145L,
+            status = CommandStatus.SUCCEEDED,
+            exitStatus = 0,
+            currentDirectory = "/tmp",
+            output = CommandOutput(
+                plainText = output,
+                truncated = true,
+                byteCount = 2_000_000L,
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Large-output session",
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onControlC = {},
+                    onDisconnect = {},
+                    rawTerminal = { modifier ->
+                        Text("Raw performance surface", modifier = modifier)
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Showing the latest 8000 characters").assertExists()
+        val expandStarted = SystemClock.elapsedRealtime()
+        composeRule.onNodeWithText("Show all").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Collapse").assertExists()
+        assertTrue(
+            "Expanding the bounded output exceeded five seconds",
+            SystemClock.elapsedRealtime() - expandStarted <= UI_RESPONSE_LIMIT_MILLIS,
+        )
+
+        val terminalStarted = SystemClock.elapsedRealtime()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Raw performance surface").assertIsDisplayed()
+        assertTrue(
+            "Opening the raw terminal exceeded five seconds",
+            SystemClock.elapsedRealtime() - terminalStarted <= UI_RESPONSE_LIMIT_MILLIS,
+        )
+
+        val transcriptStarted = SystemClock.elapsedRealtime()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(TranscriptTags.TRANSCRIPT).assertExists()
+        assertTrue(
+            "Returning to the expanded transcript exceeded five seconds",
+            SystemClock.elapsedRealtime() - transcriptStarted <= UI_RESPONSE_LIMIT_MILLIS,
+        )
+    }
+
+    @Test
     fun terminalExtraKeyRowExposesOneShotModifiersAndTerminalKeys() {
         val modifiers = mutableStateOf(TerminalModifiers())
         var sentKey: TerminalKey? = null
@@ -787,4 +858,8 @@ class TranscriptScreenTest {
         ),
         stopRequestedAtMillis = stopRequestedAtMillis,
     )
+
+    private companion object {
+        const val UI_RESPONSE_LIMIT_MILLIS = 5_000L
+    }
 }

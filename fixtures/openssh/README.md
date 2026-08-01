@@ -73,6 +73,26 @@ nonzero exit even though
 cases are skipped during ordinary connected-test runs because neither fixture
 credential is supplied.
 
+To run the opt-in Phase 5 large-output profile against the production SSH,
+session, transcript, and terminal path:
+
+```bash
+./profile-android-large-output.sh
+```
+
+The runner installs the debug app and test APK, passes the disposable fixture
+password only to the targeted instrumentation test, and prints its
+`THREADLINE_PERF` metrics from Logcat. It exercises 100,000 styled Unicode
+lines, a one-megabyte unbroken line, 50,000 carriage-return progress rewrites,
+an interruptible infinite stream, and a follow-up command. The test gates
+completion and recovery time, transcript publication cadence, terminal receive
+latency, bounded output, retained heap, and next-session heap release. It is
+not part of routine connected tests because it intentionally runs sustained
+load through the emulator and fixture.
+
+The acceptance limits, results, and device-specific interpretation are in the
+[Phase 5 performance investigation](../../docs/investigations/2026-07-31-phase5-large-output-performance.md).
+
 Run `threadline-test-output` in the remote shell for mixed raw output. It also
 accepts `ansi`, `progress`, `unicode`, and `volume`.
 

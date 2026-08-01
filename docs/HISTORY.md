@@ -43,6 +43,9 @@ are complete; device-credential and biometric gating remain optional backlog dec
 
 The first slice added typed safe error presentation, recovery actions and focus behavior,
 screen-reader semantics, complete terminal-key labels, and 200%-font-scale access to connected
-session actions. Manual accessibility and physical-device validation, profiling, onboarding, and a
-signed internal APK remain. See [STATUS.md](STATUS.md) rather than this chronology for the active
-boundary.
+session actions. The next slice added repeatable production-path large-output profiling and fixed
+an INT handler that could let builtin-only infinite loops resume after Ctrl-C or expose a startup
+gap before the command became safely stoppable. A Galaxy S25 Ultra then passed physical Android 16
+/ One UI 8.5 validation across lifecycle, rendering, raw fallback, large font, and manual TalkBack.
+Pixel validation, onboarding, and a signed internal APK remain. See
+[STATUS.md](STATUS.md) rather than this chronology for the active boundary.
