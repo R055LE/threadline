@@ -11,6 +11,19 @@ streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
 terminal with mobile modifier and navigation keys.
 
+## Prototype tour
+
+These captures show the current functional prototype using the repository's
+local OpenSSH fixture and synthetic test output. They document behavior, not a
+finished visual design.
+
+| Transcript-first command view | Same-session raw terminal |
+| --- | --- |
+| [![A successful synthetic command displayed as a structured Threadline transcript card](docs/images/prototype-transcript.png)](docs/images/prototype-transcript.png) | [![The same Threadline SSH session displayed as a raw terminal](docs/images/prototype-terminal.png)](docs/images/prototype-terminal.png) |
+
+See the [complete prototype screenshot tour](docs/screenshots.md) for onboarding,
+connection setup, and saved transcript history.
+
 ## What the prototype contains
 
 - Native Kotlin, Jetpack Compose, and Material 3 app in one Gradle module
@@ -213,8 +226,9 @@ risks are recorded in
 ## Project status
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
-accessibility/error, large-output performance, and Samsung physical-validation slices are
-implemented; Pixel validation, onboarding, and a signed internal APK remain.
+accessibility/error, large-output performance, Samsung physical-validation, and
+basic-onboarding slices are implemented. Physical Pixel validation, a signed internal APK,
+and sufficient technical-alpha use remain.
 
 Use these records according to their purpose:
 
@@ -222,6 +236,7 @@ Use these records according to their purpose:
 - [Milestone history](docs/HISTORY.md) — a compact chronology
 - [Investigation index](docs/investigations/README.md) — dated technical decisions and acceptance
   evidence
+- [Prototype screenshots](docs/screenshots.md) — the current functional walkthrough
 - [Backlog](docs/BACKLOG.md) — deliberately deferred decisions that are not current blockers
 
 ## License
