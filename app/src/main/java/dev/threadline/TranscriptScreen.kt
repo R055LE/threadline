@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -139,7 +140,7 @@ internal fun ConnectedSessionScreen(
 
     Scaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.statusBarsPadding()) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -578,6 +579,10 @@ private fun CommandCard(
                 Text(
                     "This command may need interactive input.",
                     style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Terminal keeps using this live SSH session.",
+                    style = MaterialTheme.typography.labelSmall,
                 )
                 TextButton(
                     onClick = onOpenTerminal,

@@ -76,7 +76,19 @@ This is not initially a beginner shell, a server dashboard, or a replacement for
 
 ### 4.1 First launch
 
-The user sees a host list and an action to add a host.
+On the first app launch, the user sees one compact, scrollable introduction that explains:
+
+- ordinary commands run through the transcript;
+- interactive programs use the same-session terminal;
+- the app connects directly to the SSH endpoint and enforces host-key verification; and
+- profiles do not retain passwords or passphrases, while transcript retention can be disabled
+  with an ephemeral session.
+
+The introduction is acknowledged explicitly, its version is stored in app-private preferences,
+and it can be reopened from Help. It is not an account setup flow or a multi-page tutorial.
+
+After the introduction, the user sees saved host profiles and a blank connection form. Only the
+standard SSH port `22` is prefilled; development-fixture values are never production defaults.
 
 A host contains:
 
@@ -1035,8 +1047,10 @@ reachability. Production-path large-output profiling now covers styled Unicode
 volume, long lines, progress rewrites, sustained-output interruption, bounded
 memory, and post-load recovery. A Galaxy S25 Ultra running Android 16 / One UI
 8.5 has passed the physical lifecycle, large-font, raw-terminal, persistence,
-and manual TalkBack checks; Pixel-specific validation remains. Exportable
-sanitized diagnostics were completed during Phase 4.
+and manual TalkBack checks. Basic onboarding now provides a versioned one-screen
+introduction, contextual security and persistence guidance, a Help reopen path,
+and blank production connection defaults. Pixel-specific validation remains.
+Exportable sanitized diagnostics were completed during Phase 4.
 
 ---
 

@@ -48,6 +48,29 @@ class ConnectionFormRetentionTest {
     val compose = createComposeRule()
 
     @Test
+    fun connectionFormReopensHelpAndExplainsProfileCredentialBoundary() {
+        var helpOpenCount = 0
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.emptyDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    onOpenIntroduction = { helpOpenCount += 1 },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Connect to a server").assertExists()
+        compose.onNodeWithText("Passwords and private-key passphrases are never saved", substring = true)
+            .performScrollTo()
+            .assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.HELP).performClick()
+        compose.runOnIdle { assertEquals(1, helpOpenCount) }
+    }
+
+    @Test
     fun failedConnectionRetainsNonSecretFieldsAndClearsPassword() {
         val formVisible = mutableStateOf(true)
 

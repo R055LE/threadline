@@ -42,6 +42,10 @@ terminal with mobile modifier and navigation keys.
 - Assertive error announcements, navigable headings, full spoken terminal-key
   labels, and a connected-session action row proven reachable at 200% system
   font scale
+- A versioned, one-screen first-run introduction covering transcript and
+  same-session terminal behavior, direct verified connections, credential and
+  transcript-retention boundaries, plus a Help reopen path and blank production
+  connection defaults
 - A repeatable Android/OpenSSH performance runner for styled Unicode volume,
   long lines, progress rewrites, interruption under sustained output, bounded
   memory, and post-load recovery

@@ -10,7 +10,7 @@ record; their old "next" or "remaining" sections do not override this page.
 
 **Phase 5 — Alpha polish is in progress.** Phases 0 through 4 are complete.
 
-Three Phase 5 slices are implemented:
+Four Phase 5 slices are implemented:
 
 - typed, non-secret connection and authentication errors;
 - direct recovery actions and focus movement;
@@ -22,17 +22,19 @@ Three Phase 5 slices are implemented:
   and completes builtin-only infinite loops as exit 130 instead of letting them resume; and
 - physical Galaxy S25 Ultra validation on Android 16 / One UI 8.5 covering connection, rendering,
   large output, interruption, raw fallback, rotation, backgrounding, persistence, maximum font
-  scale, and manual TalkBack navigation.
+  scale, and manual TalkBack navigation; and
+- a versioned one-screen first-run introduction, contextual connection/security guidance, a Help
+  reopen path, blank production connection defaults, and status-bar-safe custom headers.
 
 Their evidence is recorded in the
 [accessibility and error investigation](investigations/2026-07-31-phase5-accessibility-error-ux.md),
 [large-output performance investigation](investigations/2026-07-31-phase5-large-output-performance.md),
-and [Samsung physical-device investigation](investigations/2026-08-01-phase5-samsung-physical-validation.md).
+[Samsung physical-device investigation](investigations/2026-08-01-phase5-samsung-physical-validation.md),
+and [basic-onboarding investigation](investigations/2026-08-01-phase5-basic-onboarding.md).
 
 ## Remaining Phase 5 boundaries
 
 - Physical Pixel device validation.
-- Basic onboarding.
 - A signed internal APK.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
 

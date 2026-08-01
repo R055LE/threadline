@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -123,6 +124,15 @@ internal data class ConnectionFormDraft(
     val ephemeral: Boolean,
 ) {
     companion object {
+        fun emptyDefaults() = ConnectionFormDraft(
+            displayName = "",
+            hostname = "",
+            port = "22",
+            username = "",
+            authenticationMode = AuthenticationMode.PASSWORD,
+            ephemeral = false,
+        )
+
         fun fixtureDefaults() = ConnectionFormDraft(
             displayName = "Local fixture",
             hostname = "10.0.2.2",
@@ -186,6 +196,7 @@ internal object ConnectionFormTags {
     const val CONFIRM_DELETE_TRUST = "connection-confirm-delete-trust"
     const val SESSION_ERROR = "connection-session-error"
     const val ERROR_ACTION = "connection-error-action"
+    const val HELP = "connection-help"
 }
 
 @Composable
@@ -204,7 +215,11 @@ private fun ThreadlineApp() {
     val transcriptSaveFailed by manager.transcriptSaveFailed.collectAsStateWithLifecycle()
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
-        mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+        mutableStateOf(ConnectionFormDraft.emptyDefaults())
+    }
+    val onboardingPreferences = remember(context) { OnboardingPreferences.create(context) }
+    var showIntroduction by rememberSaveable {
+        mutableStateOf(onboardingPreferences.shouldShowIntroduction())
     }
     var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var diagnosticGeneratedAtMillis by remember { mutableStateOf<Long?>(null) }
@@ -221,7 +236,15 @@ private fun ThreadlineApp() {
         }
     }
 
-    when (val current = state) {
+    val canShowIntroduction = state is SessionState.Disconnected || state is SessionState.Failed
+    if (showIntroduction && canShowIntroduction) {
+        OnboardingScreen(
+            onContinue = {
+                onboardingPreferences.markIntroductionComplete()
+                showIntroduction = false
+            },
+        )
+    } else when (val current = state) {
         SessionState.Disconnected,
         is SessionState.Failed,
         -> HostForm(
@@ -246,6 +269,7 @@ private fun ThreadlineApp() {
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
             onDeletePrivateKey = SessionRuntime.importedPrivateKeys::delete,
+            onOpenIntroduction = { showIntroduction = true },
             onOpenDiagnostics = openDiagnostics,
             onOpenNotificationSettings = { openNotificationSettings(context) },
             onPrepared = prepared@{ request ->
@@ -419,6 +443,7 @@ internal fun HostForm(
     onDeletePrivateKey: suspend (id: String) -> Unit = {
         error("Encrypted private-key storage is unavailable.")
     },
+    onOpenIntroduction: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
     onPrepared: (ConnectionRequest) -> Boolean,
@@ -465,19 +490,25 @@ internal fun HostForm(
 
     Scaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.statusBarsPadding()) {
+                Text(
+                    text = "Threadline",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                        .semantics { heading() },
+                )
                 Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = "Threadline",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier
-                            .padding(horizontal = 24.dp, vertical = 16.dp)
-                            .semantics { heading() },
-                    )
+                    TextButton(
+                        onClick = onOpenIntroduction,
+                        modifier = Modifier.testTag(ConnectionFormTags.HELP),
+                    ) {
+                        Text("Help")
+                    }
                     TextButton(
                         onClick = onOpenDiagnostics,
                         modifier = Modifier
@@ -499,13 +530,13 @@ internal fun HostForm(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "Phase 5 · alpha hardening",
+                "Connect to a server",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                "Connect through the live PTY-backed shell with strict host verification " +
-                    "and local trust persistence.",
+                "Threadline connects directly to the SSH endpoint you enter and verifies " +
+                    "the server before signing in.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -772,6 +803,11 @@ internal fun HostForm(
                     }
                 }
             }
+            Text(
+                "Profiles save the server address and username only. Passwords and private-key " +
+                    "passphrases are never saved.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             Text(
                 "Authentication",

@@ -47,5 +47,7 @@ session actions. The next slice added repeatable production-path large-output pr
 an INT handler that could let builtin-only infinite loops resume after Ctrl-C or expose a startup
 gap before the command became safely stoppable. A Galaxy S25 Ultra then passed physical Android 16
 / One UI 8.5 validation across lifecycle, rendering, raw fallback, large font, and manual TalkBack.
-Pixel validation, onboarding, and a signed internal APK remain. See
+Basic onboarding then added a one-screen product explanation, contextual security and retention
+guidance, a persistent completion marker, a Help reopen path, and blank production connection
+defaults. Pixel validation and a signed internal APK remain. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.
