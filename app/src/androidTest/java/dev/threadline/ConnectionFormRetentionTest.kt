@@ -6,12 +6,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -472,6 +474,87 @@ class ConnectionFormRetentionTest {
         compose.onAllNodesWithTag(
             ConnectionFormTags.TRUSTED_HOST_PREFIX + trustedHost.endpointKey,
         ).assertCountEquals(0)
+    }
+
+    @Test
+    fun authenticationFailureIsAssertiveActionableAndFocusesTheClearedCredential() {
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = dev.threadline.core.model.SessionError.AuthenticationRejected,
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.SESSION_ERROR).assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.LiveRegion,
+                LiveRegionMode.Assertive,
+            ),
+        )
+        compose.onNodeWithText("Authentication failed", useUnmergedTree = true).assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        compose.onNodeWithText("Passwords and passphrases are cleared", substring = true)
+            .assertExists()
+
+        compose.onNodeWithTag(ConnectionFormTags.ERROR_ACTION).performClick()
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD).assertIsFocused()
+    }
+
+    @Test
+    fun networkFailureReviewActionFocusesTheHostname() {
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = dev.threadline.core.model.SessionError.ConnectionTimedOut,
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Connection timed out").assertExists()
+        compose.onNodeWithText("Check the hostname, port, network or VPN", substring = true)
+            .assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.ERROR_ACTION).performClick()
+
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME).assertIsFocused()
+    }
+
+    @Test
+    fun notificationFailureOnlyOpensSettingsAfterTheUserAction() {
+        var settingsOpenCount = 0
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError =
+                    dev.threadline.core.model.SessionError.NotificationPermissionRequired,
+                    onOpenNotificationSettings = { settingsOpenCount += 1 },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        assertEquals(0, settingsOpenCount)
+        compose.onNodeWithText("Open notification settings").performClick()
+        compose.runOnIdle { assertEquals(1, settingsOpenCount) }
     }
 }
 

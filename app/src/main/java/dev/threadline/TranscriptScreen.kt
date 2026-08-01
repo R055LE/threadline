@@ -25,7 +25,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +32,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +48,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -85,6 +88,8 @@ internal object TranscriptTags {
     const val INTERACTIVE_OPEN = "interactive-open-terminal"
     const val TERMINAL_CONTROL = "terminal-control"
     const val TERMINAL_ALT = "terminal-alt"
+    const val SUBMISSION_ERROR = "command-submission-error"
+    const val SESSION_ACTIONS = "session-actions"
     private const val TERMINAL_KEY_PREFIX = "terminal-key-"
     private const val OUTPUT_PREFIX = "command-output-"
 
@@ -93,21 +98,26 @@ internal object TranscriptTags {
     fun terminalKey(key: TerminalKey): String = "$TERMINAL_KEY_PREFIX${key.name}"
 }
 
-private val terminalExtraKeys = listOf(
-    TerminalKey.ESCAPE to "Esc",
-    TerminalKey.TAB to "Tab",
-    TerminalKey.ARROW_UP to "↑",
-    TerminalKey.ARROW_DOWN to "↓",
-    TerminalKey.ARROW_LEFT to "←",
-    TerminalKey.ARROW_RIGHT to "→",
-    TerminalKey.HOME to "Home",
-    TerminalKey.END to "End",
-    TerminalKey.PAGE_UP to "PgUp",
-    TerminalKey.PAGE_DOWN to "PgDn",
-    TerminalKey.DELETE to "Del",
+private data class TerminalExtraKey(
+    val key: TerminalKey,
+    val label: String,
+    val accessibilityLabel: String,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val terminalExtraKeys = listOf(
+    TerminalExtraKey(TerminalKey.ESCAPE, "Esc", "Escape"),
+    TerminalExtraKey(TerminalKey.TAB, "Tab", "Tab"),
+    TerminalExtraKey(TerminalKey.ARROW_UP, "↑", "Arrow up"),
+    TerminalExtraKey(TerminalKey.ARROW_DOWN, "↓", "Arrow down"),
+    TerminalExtraKey(TerminalKey.ARROW_LEFT, "←", "Arrow left"),
+    TerminalExtraKey(TerminalKey.ARROW_RIGHT, "→", "Arrow right"),
+    TerminalExtraKey(TerminalKey.HOME, "Home", "Home"),
+    TerminalExtraKey(TerminalKey.END, "End", "End"),
+    TerminalExtraKey(TerminalKey.PAGE_UP, "PgUp", "Page up"),
+    TerminalExtraKey(TerminalKey.PAGE_DOWN, "PgDn", "Page down"),
+    TerminalExtraKey(TerminalKey.DELETE, "Del", "Delete"),
+)
+
 @Composable
 internal fun ConnectedSessionScreen(
     displayName: String,
@@ -129,17 +139,29 @@ internal fun ConnectedSessionScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(displayName)
-                        Text(
-                            structuredShell.statusLabel(),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                },
-                actions = {
+            Column {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        displayName,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(
+                        structuredShell.statusLabel(),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp)
+                        .testTag(TranscriptTags.SESSION_ACTIONS),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     if (!rawModeRequired || transcript.turns.isNotEmpty()) {
                         TextButton(
                             onClick = { rawModeRequested = !rawModeRequested },
@@ -158,8 +180,9 @@ internal fun ConnectedSessionScreen(
                         Text("Diagnostics")
                     }
                     TextButton(onClick = onDisconnect) { Text("Disconnect") }
-                },
-            )
+                }
+                HorizontalDivider()
+            }
         },
     ) { contentPadding ->
         if (showingRawTerminal) {
@@ -249,12 +272,16 @@ internal fun TerminalExtraKeyRow(
             label = { Text("Alt") },
             modifier = Modifier.testTag(TranscriptTags.TERMINAL_ALT),
         )
-        terminalExtraKeys.forEach { (key, label) ->
+        terminalExtraKeys.forEach { extraKey ->
             TextButton(
-                onClick = { onKey(key) },
-                modifier = Modifier.testTag(TranscriptTags.terminalKey(key)),
+                onClick = { onKey(extraKey.key) },
+                modifier = Modifier
+                    .testTag(TranscriptTags.terminalKey(extraKey.key))
+                    .semantics {
+                        contentDescription = extraKey.accessibilityLabel
+                    },
             ) {
-                Text(label)
+                Text(extraKey.label)
             }
         }
     }
@@ -410,6 +437,9 @@ internal fun TranscriptSurface(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .testTag(TranscriptTags.SUBMISSION_ERROR)
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
                 )
             }
             Row(
@@ -505,6 +535,7 @@ private fun CommandCard(
                     text = turn.command,
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
             Text(

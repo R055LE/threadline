@@ -2,10 +2,12 @@ package dev.threadline
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -49,7 +51,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -64,7 +73,9 @@ import dev.threadline.core.model.HostKeyPrompt
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
+import dev.threadline.core.model.SessionErrorAction
 import dev.threadline.core.model.SessionState
+import dev.threadline.core.model.presentation
 import dev.threadline.core.diagnostics.DiagnosticInventory
 import dev.threadline.core.diagnostics.DiagnosticReportInput
 import dev.threadline.core.diagnostics.diagnosticSessionSnapshot
@@ -173,6 +184,8 @@ internal object ConnectionFormTags {
     const val TRUSTED_HOST_PREFIX = "connection-trusted-host-"
     const val DELETE_TRUST_PREFIX = "connection-delete-trust-"
     const val CONFIRM_DELETE_TRUST = "connection-confirm-delete-trust"
+    const val SESSION_ERROR = "connection-session-error"
+    const val ERROR_ACTION = "connection-error-action"
 }
 
 @Composable
@@ -234,6 +247,7 @@ private fun ThreadlineApp() {
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
             onDeletePrivateKey = SessionRuntime.importedPrivateKeys::delete,
             onOpenDiagnostics = openDiagnostics,
+            onOpenNotificationSettings = { openNotificationSettings(context) },
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
 
@@ -336,6 +350,20 @@ private fun startSessionService(context: Context) {
     }
 }
 
+private fun openNotificationSettings(context: Context) {
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        }
+    } else {
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}"),
+        )
+    }
+    context.startActivity(intent)
+}
+
 @Composable
 internal fun HostForm(
     draft: ConnectionFormDraft,
@@ -392,6 +420,7 @@ internal fun HostForm(
         error("Encrypted private-key storage is unavailable.")
     },
     onOpenDiagnostics: () -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {},
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -412,6 +441,9 @@ internal fun HostForm(
     var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
+    val hostnameFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
+    val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
     val isBusy = isPreparing || isManagingProfile || isManagingKnownHost || isManagingKey
 
@@ -442,7 +474,9 @@ internal fun HostForm(
                     Text(
                         text = "Threadline",
                         style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                            .semantics { heading() },
                     )
                     TextButton(
                         onClick = onOpenDiagnostics,
@@ -465,8 +499,9 @@ internal fun HostForm(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "Phase 4 · security and persistence",
+                "Phase 5 · alpha hardening",
                 style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 "Connect through the live PTY-backed shell with strict host verification " +
@@ -474,7 +509,36 @@ internal fun HostForm(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            sessionError?.let { ErrorCard(it) }
+            sessionError?.let { error ->
+                ErrorCard(
+                    error = error,
+                    onAction = { action ->
+                        when (action) {
+                            SessionErrorAction.REVIEW_SERVER ->
+                                hostnameFocusRequester.requestFocus()
+
+                            SessionErrorAction.REVIEW_CREDENTIALS -> when (
+                                draft.authenticationMode
+                            ) {
+                                AuthenticationMode.PASSWORD ->
+                                    passwordFocusRequester.requestFocus()
+
+                                AuthenticationMode.PRIVATE_KEY ->
+                                    keyPassphraseFocusRequester.requestFocus()
+                            }
+
+                            SessionErrorAction.REVIEW_PRIVATE_KEY ->
+                                keyPassphraseFocusRequester.requestFocus()
+
+                            SessionErrorAction.OPEN_NOTIFICATION_SETTINGS -> try {
+                                onOpenNotificationSettings()
+                            } catch (_: RuntimeException) {
+                                formError = "Android notification settings could not be opened."
+                            }
+                        }
+                    },
+                )
+            }
             formError?.let {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -619,6 +683,7 @@ internal fun HostForm(
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(hostnameFocusRequester)
                     .testTag(ConnectionFormTags.HOSTNAME),
             )
             Row(
@@ -708,7 +773,11 @@ internal fun HostForm(
                 }
             }
 
-            Text("Authentication", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Authentication",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.semantics { heading() },
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(
                     selected = draft.authenticationMode == AuthenticationMode.PASSWORD,
@@ -744,6 +813,7 @@ internal fun HostForm(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusRequester(passwordFocusRequester)
                         .testTag(ConnectionFormTags.PASSWORD),
                 )
 
@@ -845,6 +915,7 @@ internal fun HostForm(
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .focusRequester(keyPassphraseFocusRequester)
                             .testTag(ConnectionFormTags.KEY_PASSPHRASE),
                     )
                     Text(
@@ -1216,15 +1287,33 @@ internal fun HostForm(
 }
 
 @Composable
-private fun ErrorCard(error: SessionError) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun ErrorCard(
+    error: SessionError,
+    onAction: (SessionErrorAction) -> Unit,
+) {
+    val presentation = error.presentation()
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(ConnectionFormTags.SESSION_ERROR)
+            .semantics(mergeDescendants = true) {
+                liveRegion = LiveRegionMode.Assertive
+            },
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = error.userMessage,
+                text = presentation.title,
                 color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(presentation.message)
+            Text(
+                text = presentation.recovery,
+                style = MaterialTheme.typography.bodySmall,
             )
             if (error is SessionError.HostKeyChanged) {
                 Text(
@@ -1249,8 +1338,23 @@ private fun ErrorCard(error: SessionError) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            presentation.action?.let { action ->
+                TextButton(
+                    onClick = { onAction(action) },
+                    modifier = Modifier.testTag(ConnectionFormTags.ERROR_ACTION),
+                ) {
+                    Text(action.label())
+                }
+            }
         }
     }
+}
+
+private fun SessionErrorAction.label(): String = when (this) {
+    SessionErrorAction.REVIEW_SERVER -> "Review server"
+    SessionErrorAction.REVIEW_CREDENTIALS -> "Review credentials"
+    SessionErrorAction.REVIEW_PRIVATE_KEY -> "Review private key"
+    SessionErrorAction.OPEN_NOTIFICATION_SETTINGS -> "Open notification settings"
 }
 
 @Composable
@@ -1270,8 +1374,16 @@ private fun ProgressScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            CircularProgressIndicator()
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            CircularProgressIndicator(
+                modifier = Modifier.semantics {
+                    contentDescription = "Connection in progress"
+                },
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
             Text(status)
             onCancel?.let {
                 OutlinedButton(onClick = it) { Text("Cancel") }

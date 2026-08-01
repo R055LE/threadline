@@ -5,6 +5,11 @@ import dev.threadline.core.model.ConnectionStage
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.TerminalSize
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.Flow
@@ -49,7 +54,10 @@ class ConnectBotSshClientAdapter(
                 is ConnectResult.ProtocolError ->
                     throw SshAdapterException(SessionError.ConnectionFailed, result.cause)
                 is ConnectResult.TransportError ->
-                    throw SshAdapterException(SessionError.ConnectionFailed, result.cause)
+                    throw SshAdapterException(
+                        transportSessionError(result.cause),
+                        result.cause,
+                    )
             }
 
             onStage(ConnectionStage.AUTHENTICATING)
@@ -61,7 +69,7 @@ class ConnectBotSshClientAdapter(
                 is AuthResult.Error -> {
                     val error = when (request.credential) {
                         is SessionCredential.PrivateKey -> SessionError.UnsupportedPrivateKey
-                        is SessionCredential.Password -> SessionError.ConnectionFailed
+                        is SessionCredential.Password -> transportSessionError(authResult.cause)
                     }
                     throw SshAdapterException(error, authResult.cause)
                 }
@@ -92,7 +100,7 @@ class ConnectBotSshClientAdapter(
             throw expected
         } catch (unexpected: Exception) {
             cleanUp(client, session)
-            throw SshAdapterException(SessionError.ConnectionFailed, unexpected)
+            throw SshAdapterException(transportSessionError(unexpected), unexpected)
         } finally {
             request.credential.clear()
         }
@@ -124,6 +132,27 @@ class ConnectBotSshClientAdapter(
         runCatching { client.disconnect() }
     }
 }
+
+internal fun transportSessionError(failure: Throwable?): SessionError {
+    var current = failure
+    repeat(MAX_CAUSE_DEPTH) {
+        when (current) {
+            is UnknownHostException,
+            is UnresolvedAddressException,
+            -> return SessionError.DnsResolutionFailed
+
+            is SocketTimeoutException -> return SessionError.ConnectionTimedOut
+            is ConnectException -> return SessionError.ConnectionRefused
+            is NoRouteToHostException -> return SessionError.NetworkUnreachable
+        }
+        val next = current?.cause
+        if (next === current) return SessionError.ConnectionFailed
+        current = next
+    }
+    return SessionError.ConnectionFailed
+}
+
+private const val MAX_CAUSE_DEPTH = 8
 
 private class ConnectBotLiveSession(
     private val client: SshClient,

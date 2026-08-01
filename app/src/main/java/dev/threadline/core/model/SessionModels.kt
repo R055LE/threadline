@@ -145,6 +145,22 @@ sealed interface SessionError {
         override val userMessage: String = "Could not establish the SSH connection."
     }
 
+    data object DnsResolutionFailed : SessionError {
+        override val userMessage: String = "The server name could not be resolved."
+    }
+
+    data object ConnectionTimedOut : SessionError {
+        override val userMessage: String = "The server did not respond before the connection timed out."
+    }
+
+    data object ConnectionRefused : SessionError {
+        override val userMessage: String = "The server refused the SSH connection."
+    }
+
+    data object NetworkUnreachable : SessionError {
+        override val userMessage: String = "The server network could not be reached."
+    }
+
     data object ProtocolMismatch : SessionError {
         override val userMessage: String =
             "The server and client could not agree on secure SSH algorithms."

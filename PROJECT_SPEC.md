@@ -1028,6 +1028,12 @@ Exit criterion:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
+Implementation status (2026-07-31): the first accessibility and
+connection/authentication-error pass is implemented, including typed network
+failures, recovery actions, screen-reader semantics, and 200% font-scale action
+reachability. Manual TalkBack and physical-device validation remain. Exportable
+sanitized diagnostics were completed during Phase 4.
+
 ---
 
 ## 18. Product validation

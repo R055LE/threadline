@@ -4,8 +4,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -26,8 +29,10 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Density
 import dev.threadline.core.shell.ActiveCommand
 import dev.threadline.core.shell.CommandId
+import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.LifecyclePhase
 import dev.threadline.core.shell.StructuredShellState
@@ -453,12 +458,87 @@ class TranscriptScreenTest {
             composeRule.onNodeWithTag(TranscriptTags.terminalKey(key)).assertExists()
         }
         composeRule.onNodeWithTag(TranscriptTags.terminalKey(TerminalKey.ARROW_UP))
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ContentDescription,
+                    listOf("Arrow up"),
+                ),
+            )
             .performClick()
         composeRule.runOnIdle {
             assertEquals(TerminalKey.ARROW_UP, sentKey)
         }
         composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertIsNotSelected()
         composeRule.onNodeWithTag(TranscriptTags.TERMINAL_ALT).assertIsNotSelected()
+    }
+
+    @Test
+    fun commandHeadingAndSubmissionFailureExposeAccessibilitySemantics() {
+        val turn = turn(
+            command = "printf accessible",
+            status = CommandStatus.SUCCEEDED,
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Rejected(
+                            CommandSubmissionRejection.INPUT_BACKPRESSURE,
+                        )
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("printf accessible", useUnmergedTree = true).assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER).performTextInput("date")
+        composeRule.onNodeWithTag(TranscriptTags.SEND).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.SUBMISSION_ERROR).assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.LiveRegion,
+                LiveRegionMode.Assertive,
+            ),
+        )
+        composeRule.onNodeWithText("The session input queue is full. Try again.")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun connectedSessionActionsRemainReachableAtTwoHundredPercentFontScale() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    ConnectedSessionScreen(
+                        displayName = "Accessibility test session",
+                        structuredShell = StructuredShellState.Ready("/tmp"),
+                        transcript = CommandTranscriptState(),
+                        onSubmit = {
+                            CommandSubmissionResult.Accepted(CommandId("unused"))
+                        },
+                        onControlC = {},
+                        onDisconnect = {},
+                        onOpenDiagnostics = {},
+                        rawTerminal = { modifier -> Text("Terminal", modifier = modifier) },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Accessibility test session", useUnmergedTree = true).assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        composeRule.onNodeWithText("Terminal").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Diagnostics").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Disconnect").performScrollTo().assertIsDisplayed()
     }
 
     @Test

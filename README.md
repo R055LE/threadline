@@ -4,7 +4,8 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**Phase 4: security and persistence is implemented.** The app opens on a
+**Phase 5: alpha hardening is in progress.** Phase 4 security and persistence is
+implemented. The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
@@ -35,6 +36,12 @@ terminal with mobile modifier and navigation keys.
   usernames, directories, commands, output, credentials, and host-key material
   by default, with explicit opt-in only for host fields, directories, and recent
   command text before Android sharing
+- Typed DNS, timeout, refusal, unreachable-network, authentication, key,
+  host-trust, PTY, shell, service, and session failures with non-secret recovery
+  guidance and direct server/credential/settings actions
+- Assertive error announcements, navigable headings, full spoken terminal-key
+  labels, and a connected-session action row proven reachable at 200% system
+  font scale
 - Idempotent migration from the dependency spike's private known-host
   preferences without allowing stale trust to replace a Room record
 - PTY creation, raw ordered output, keyboard input, and resize propagation
@@ -409,6 +416,29 @@ biometric gating are optional decisions recorded in the
 [backlog](docs/BACKLOG.md), not Phase 4 blockers. Biometrics require a concrete
 threat-model justification before reconsideration. Passwords and passphrases
 remain session-only.
+
+The first Phase 5 slice gives every typed session failure an exhaustive title,
+safe message, recovery instruction, and optional action. The SSH adapter now
+distinguishes DNS resolution, timeout, refusal, and unreachable-network failures
+by exception type through a bounded cause chain; it never parses or displays
+the low-level message. Authentication recovery states that passwords and
+passphrases were cleared, then focuses the active credential field. Network
+recovery focuses the retained hostname, while notification recovery opens the
+app's Android settings only after a tap.
+
+Accessibility semantics now include assertive connection/submission errors,
+useful headings, a labeled progress indicator, and full spoken names for
+symbol-only terminal keys. Connected-session actions moved below the title into
+a horizontally scrollable row and remain reachable at 200% font scale. The
+focused 29-test Compose run passed; the full API 35 run finished 61 tests with
+59 passed and the two expected credential-injected skips. Both live
+Docker/OpenSSH cases passed in 5.36 seconds. See the
+[Phase 5 accessibility and error investigation](docs/investigations/2026-07-31-phase5-accessibility-error-ux.md).
+The final JVM, lint, debug, and release gate passed.
+
+Manual TalkBack and physical Samsung/Pixel validation remain, along with
+performance profiling, further large-output work, onboarding, and a signed
+internal APK.
 
 ## License
 
