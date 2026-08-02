@@ -26,7 +26,8 @@ connection setup, and saved transcript history.
 
 ## What the prototype contains
 
-- Native Kotlin, Jetpack Compose, and Material 3 app in one Gradle module
+- Native Kotlin, Jetpack Compose, and Material 3 in one Android application
+  module, plus a plain-JVM SSH integration harness
 - ConnectBot's coroutine SSH library behind a narrow adapter
 - A bundled Conscrypt provider with an Android Ed25519 capability probe and
   modern ECDSA/RSA-SHA2 compatibility fallback
@@ -227,8 +228,9 @@ risks are recorded in
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. Physical Pixel validation, a signed internal APK,
-and sufficient technical-alpha use remain.
+basic-onboarding slices are implemented. A signed internal APK and sufficient
+technical-alpha use remain; additional device and OEM coverage, including Pixel,
+is opportunistic alpha evidence rather than a separate release gate.
 
 Use these records according to their purpose:
 

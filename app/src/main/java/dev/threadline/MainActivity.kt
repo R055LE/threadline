@@ -1002,7 +1002,7 @@ internal fun HostForm(
                             val credential = when (draft.authenticationMode) {
                                 AuthenticationMode.PASSWORD -> {
                                     if (password.isEmpty()) {
-                                        error("Enter the fixture password.")
+                                        error("Enter the password.")
                                     }
                                     val characters = password.toCharArray()
                                     try {

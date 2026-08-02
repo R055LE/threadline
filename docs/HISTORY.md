@@ -49,5 +49,6 @@ gap before the command became safely stoppable. A Galaxy S25 Ultra then passed p
 / One UI 8.5 validation across lifecycle, rendering, raw fallback, large font, and manual TalkBack.
 Basic onboarding then added a one-screen product explanation, contextual security and retention
 guidance, a persistent completion marker, a Help reopen path, and blank production connection
-defaults. Pixel validation and a signed internal APK remain. See
+defaults. A signed internal APK and technical-alpha use remain. Additional device and OEM coverage
+is opportunistic alpha evidence rather than a separate Pixel gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

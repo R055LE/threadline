@@ -3,8 +3,12 @@
 ## Status
 
 Accepted. Direct user-observed validation completed on the Samsung hardware and
-software described below. Pixel-specific behavior remains a separate Phase 5
-boundary rather than an implied part of this result.
+software described below.
+
+Scope clarification recorded after the pass: this result satisfies Phase 5's
+dedicated physical-device boundary. Pixel and other OEM coverage remain useful
+opportunistic evidence during technical alpha, not separate handset-specific
+release gates.
 
 ## Environment
 

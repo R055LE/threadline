@@ -12,19 +12,18 @@ record; their old "next" or "remaining" sections do not override this page.
 
 Four Phase 5 slices are implemented:
 
-- typed, non-secret connection and authentication errors;
-- direct recovery actions and focus movement;
-- assertive error announcements, navigable headings, and full spoken terminal-key labels;
-- connected-session actions that remain reachable at 200% system font scale;
-- repeatable production-path profiling for 100,000 styled Unicode lines, a one-megabyte line,
-  50,000 progress rewrites, sustained-output interruption, and post-load recovery;
-- a corrected structured-shell INT handler that is installed before a command becomes stoppable
-  and completes builtin-only infinite loops as exit 130 instead of letting them resume; and
-- physical Galaxy S25 Ultra validation on Android 16 / One UI 8.5 covering connection, rendering,
-  large output, interruption, raw fallback, rotation, backgrounding, persistence, maximum font
-  scale, and manual TalkBack navigation; and
-- a versioned one-screen first-run introduction, contextual connection/security guidance, a Help
-  reopen path, blank production connection defaults, and status-bar-safe custom headers.
+- **Accessibility and error UX:** typed, non-secret errors; direct recovery and focus movement;
+  assertive announcements; navigable headings; spoken terminal-key labels; and connected-session
+  actions reachable at 200% system font scale.
+- **Large-output performance:** repeatable production-path profiling for styled Unicode volume,
+  long lines, progress rewrites, sustained-output interruption, and post-load recovery; plus a
+  corrected INT handler that completes builtin-only infinite loops as exit 130.
+- **Physical-device validation:** Galaxy S25 Ultra testing on Android 16 / One UI 8.5 covering
+  connection, rendering, large output, interruption, raw fallback, rotation, backgrounding,
+  persistence, maximum font scale, and manual TalkBack navigation.
+- **Basic onboarding:** a versioned one-screen introduction, contextual connection/security
+  guidance, a Help reopen path, blank production connection defaults, and status-bar-safe custom
+  headers.
 
 Their evidence is recorded in the
 [accessibility and error investigation](investigations/2026-07-31-phase5-accessibility-error-ux.md),
@@ -34,9 +33,12 @@ and [basic-onboarding investigation](investigations/2026-08-01-phase5-basic-onbo
 
 ## Remaining Phase 5 boundaries
 
-- Physical Pixel device validation.
 - A signed internal APK.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
+
+Additional physical-device and OEM coverage, including Pixel, should be collected opportunistically
+during technical alpha. The completed Samsung pass satisfies the dedicated physical-device boundary;
+no specific handset brand is a separate Phase 5 gate.
 
 Choose the smallest remaining boundary with the user before implementation. Do not infer that the
 list order is a priority decision.

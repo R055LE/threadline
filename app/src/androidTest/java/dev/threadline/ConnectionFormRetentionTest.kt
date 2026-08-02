@@ -71,6 +71,32 @@ class ConnectionFormRetentionTest {
     }
 
     @Test
+    fun blankPasswordUsesProductionSafeValidationCopy() {
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.waitUntil {
+            compose.onAllNodesWithText("Enter the password.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
+        compose.onNodeWithText("Enter the password.").assertExists()
+        compose.onAllNodesWithText("Enter the fixture password.").assertCountEquals(0)
+    }
+
+    @Test
     fun failedConnectionRetainsNonSecretFieldsAndClearsPassword() {
         val formVisible = mutableStateOf(true)
 

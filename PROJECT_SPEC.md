@@ -22,7 +22,7 @@ The default experience resembles a messaging or notebook interface:
 - The command is submitted to a persistent remote shell.
 - Output streams into a discrete command card.
 - The card records status, duration, exit code, and the working directory.
-- Long output can be collapsed, copied, searched, or rerun.
+- Long output can be collapsed, copied, or rerun. Search is a deferred transcript-polish decision.
 - When a command becomes genuinely interactive, the same live session opens in a conventional terminal surface.
 
 The terminal is not removed. It is demoted from the entire product to an escape hatch.
@@ -97,15 +97,15 @@ A host contains:
 - Port, default `22`
 - Username
 - Authentication method
-- Optional startup directory
-- Optional shell preference
-- Optional “keep active in background” preference
 
 Supported authentication for MVP:
 
 - Password
 - Imported private key
-- Newly generated Ed25519 key, when supported by the selected SSH library
+
+Startup-directory, shell-preference, keep-active, and generated-device-key options are deferred
+product decisions. Their intended boundaries are recorded in `docs/BACKLOG.md` rather than claimed
+as current MVP behavior.
 
 ### 4.2 First connection
 
@@ -138,9 +138,9 @@ The primary session screen contains:
   - Multiline text editor
   - Send button
   - Command history button
-  - Compact shortcut row for common shell characters and controls
 
-Suggested shortcut row:
+The raw terminal provides a compact mobile-key row. Adding a separate shortcut row to the
+structured composer is deferred interaction polish; a possible set is:
 
 - `Tab`
 - `Ctrl`
@@ -174,7 +174,9 @@ A card contains:
   - Edit and rerun
   - Rerun
   - Open at this point in raw terminal, where practical
-  - Delete from local history
+
+Saved transcript sessions can be deleted from local history. Per-command deletion is deferred
+because it needs an explicit persistence and live-session contract.
 
 Output rules:
 
@@ -1031,7 +1033,8 @@ Deliverables:
 - Connection and authentication error UX
 - Performance profiling
 - Large-output tests
-- Samsung/Pixel device testing
+- Physical-device testing on at least one current Android/OEM combination, with additional device
+  coverage collected opportunistically during technical alpha
 - Basic onboarding
 - Exportable sanitized bug report
 - Signed internal APK
@@ -1049,7 +1052,9 @@ memory, and post-load recovery. A Galaxy S25 Ultra running Android 16 / One UI
 8.5 has passed the physical lifecycle, large-font, raw-terminal, persistence,
 and manual TalkBack checks. Basic onboarding now provides a versioned one-screen
 introduction, contextual security and persistence guidance, a Help reopen path,
-and blank production connection defaults. Pixel-specific validation remains.
+and blank production connection defaults. A Galaxy S25 Ultra pass satisfies the dedicated
+physical-device boundary; Pixel and other OEM coverage remain useful opportunistic alpha evidence
+rather than separate phase gates.
 Exportable sanitized diagnostics were completed during Phase 4.
 
 ---

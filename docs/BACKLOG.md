@@ -128,3 +128,63 @@ If it recurs, capture the entry path, orientation, current IME, prior focus,
 and whether a second tap succeeds. Then evaluate an explicit focus requester
 and post-attachment IME request rather than treating repeated tapping as the
 product behavior.
+
+## Deferred connection-profile options
+
+**Status:** Deferred product design; not required for the current MVP or Phase 5.
+
+The current host profile intentionally stores display name, endpoint, username,
+and authentication mode without credentials. Before adding a startup directory,
+shell preference, or keep-active preference, define validation, failure behavior,
+profile migration, and whether each setting affects only a new connection or an
+already active session. Keep-active behavior must also agree with the foreground
+service and explicit disconnect contract.
+
+## Generated device keys
+
+**Status:** Deferred authentication feature; imported keys cover current key auth.
+
+The SSH stack can use Ed25519 and the app probes Android's provider support, but
+Threadline does not currently offer user key generation. A future design must
+cover private-key ownership, Keystore compatibility, public-key export and copy,
+labels, rotation, deletion, backup expectations, and recovery before presenting
+a generated device key as safer or simpler than an imported key.
+
+## Structured-composer shortcut row
+
+**Status:** Deferred interaction polish; the raw terminal already has mobile keys.
+
+If structured-command testing shows repeated friction entering shell punctuation
+or controls, evaluate a compact composer-specific row separately from the raw
+terminal keyboard. It must remain usable with large fonts, screen readers,
+landscape keyboards, selection, multiline input, and ordinary IME behavior.
+
+## Per-command transcript deletion
+
+**Status:** Deferred history semantics; saved-session deletion is implemented.
+
+Deleting one command card needs a clear contract across the live transcript,
+Room output chunks, session summaries, retention counts, currently running
+turns, and ephemeral sessions. Do not imply that a card was deleted while its
+persisted output or metadata remains reachable elsewhere.
+
+## Live transcript search
+
+**Status:** Deferred transcript polish; persisted-history search is also future work.
+
+Search must define whether it covers the retained in-memory tail, collapsed
+content, ANSI-styled text, the current session, saved history, or all of them.
+It should expose truncation boundaries honestly and avoid creating an unbounded
+secondary index of terminal output.
+
+## Technical-alpha evidence collection
+
+**Status:** Design before implementation; no remote analytics are authorized.
+
+The alpha needs enough evidence to distinguish isolated test success from useful
+day-to-day behavior. Start with an explicit tester checklist, a short feedback
+template, and the existing user-triggered sanitized diagnostics export. Consider
+optional on-device counters or an exportable local summary only after defining
+the exact questions, fields, retention, redaction, consent, and deletion model.
+Do not add a telemetry SDK, background upload, stable user identifier, command
+content, host data, or terminal output merely to claim that metrics exist.

@@ -1,7 +1,9 @@
 # Contributing
 
-Threadline is in a dependency-spike phase. Please keep changes within the
-current milestone in `PROJECT_SPEC.md` and read `AGENTS.md` before editing.
+Threadline is in alpha-polish development. Read `AGENTS.md`, `PROJECT_SPEC.md`,
+and the canonical current boundary in `docs/STATUS.md` before editing. Keep
+changes within the milestone and scope chosen with the user; do not restart a
+completed phase from an older prompt or investigation.
 
 For a change:
 
@@ -13,5 +15,7 @@ For a change:
 5. Do not include passwords, private keys, `.env`, host data, or raw packet
    logs in commits or bug reports.
 
-Phase 0 does not accept transcript cards, SFTP, port forwarding, cloud
-services, analytics, AI features, or multi-session work.
+SFTP, port forwarding, cloud services, analytics, AI features, and
+multi-session work remain out of the current MVP unless the user explicitly
+changes the product scope. Deliberately deferred work belongs in
+`docs/BACKLOG.md`, not the active milestone.
