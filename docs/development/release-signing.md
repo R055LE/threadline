@@ -79,16 +79,21 @@ Before using the key:
 
 ### Current custody status
 
-As of 2026-08-03, the owner reports two encrypted off-machine archives held by
+As of 2026-08-03, the owner has two AES-256-encrypted 7z archives held by
 separate storage providers. The archive decryption secret is stored separately
-in a password manager. Provider names and recovery details are intentionally
-omitted from this public repository.
+in a password manager. Each provider copy has been downloaded independently,
+extracted, and confirmed to contain the expected readable `PrivateKeyEntry`
+under the `threadline-release` alias with the established certificate SHA-256.
+Earlier application-specific encrypted copies were retired only after these
+replacement restores passed. Provider names and recovery details are
+intentionally omitted from this public repository.
 
-This is a reasonable technical-alpha backup set, but existence is not restore
-proof. `keytool` does not create, encrypt, or decrypt the backup archive. The
-archive tool and its password protect the backup; `keytool` is used only after
-extraction to prove that the recovered PKCS12 keystore is readable and belongs
-to Threadline's established update lineage.
+This closes the technical-alpha restore-verification boundary. Future backup
+replacements still need the same independent restore test: existence is not
+restore proof. `keytool` does not create, encrypt, or decrypt the backup
+archive. The archive tool and its password protect the backup; `keytool` is
+used only after extraction to prove that the recovered PKCS12 keystore is
+readable and belongs to Threadline's established update lineage.
 
 Test a downloaded copy from each storage provider independently:
 

@@ -46,7 +46,11 @@ critical physical path passed: password SSH, structured and raw views, repeated
 switching while `ping` remained active, and rotation in each view all preserved
 the live session without the alpha.2 crash. The release/JNI blocker is closed;
 the landscape software-keyboard screenshot adds a deferred compact-height
-layout issue because little or no terminal output remains visible. See the
+layout issue because little or no terminal output remains visible. Two
+portable AES-256-encrypted signing-key backups are held separately from their
+decryption secret; independent download, extraction, key-entry, alias, and
+certificate checks passed for both provider copies, closing restore
+verification. See the
 [permanent alpha.3 acceptance investigation](investigations/2026-08-03-alpha3-permanent-physical-acceptance.md),
 [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md),
 [alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
@@ -54,10 +58,6 @@ and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-
 
 ## Remaining Phase 5 boundaries
 
-- Two encrypted off-machine backups now exist and their decryption secret is
-  held separately. Download, decrypt, and inspect each recovered keystore before
-  closing restore verification; an additional offline copy is recommended but
-  is not a technical-alpha blocker.
 - Complete any still-unreported permanent-alpha.3 checklist items, especially
   imported-key authentication and the sanitized diagnostic preview. The
   release-blocking raw-terminal path is accepted.

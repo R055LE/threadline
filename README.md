@@ -258,9 +258,9 @@ field contracts, matches the established signing lineage, and has now passed
 the corrected physical release path on the Galaxy S25 Ultra. A running `ping`
 survived repeated transcript/terminal switching and rotation in each view. The
 release/JNI blocker is closed. Two encrypted off-machine signing-key backups
-now exist with separately held decryption material; restore verification,
-still-unreported checklist items, the distribution decision, and
-technical-alpha use remain.
+now exist with separately held decryption material, and independent restores
+verified both copies against the established key identity. Still-unreported
+checklist items, the distribution decision, and technical-alpha use remain.
 
 Use these records according to their purpose:
 
