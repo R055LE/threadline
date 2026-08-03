@@ -54,7 +54,10 @@ and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-
 
 ## Remaining Phase 5 boundaries
 
-- Confirm restorable, separately held backups of the permanent signing key.
+- Two encrypted off-machine backups now exist and their decryption secret is
+  held separately. Download, decrypt, and inspect each recovered keystore before
+  closing restore verification; an additional offline copy is recommended but
+  is not a technical-alpha blocker.
 - Complete any still-unreported permanent-alpha.3 checklist items, especially
   imported-key authentication and the sanitized diagnostic preview. The
   release-blocking raw-terminal path is accepted.

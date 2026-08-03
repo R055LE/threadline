@@ -76,6 +76,37 @@ Before using the key:
 4. Never rename a different key to look like the original. A different signing
    certificate creates an incompatible application update lineage.
 
+### Current custody status
+
+As of 2026-08-03, the owner reports two encrypted off-machine archives held by
+separate storage providers. The archive decryption secret is stored separately
+in a password manager. Provider names and recovery details are intentionally
+omitted from this public repository.
+
+This is a reasonable technical-alpha backup set, but existence is not restore
+proof. Download each archive independently, decrypt it into a temporary local
+directory, and run:
+
+```bash
+keytool -list -v -keystore /path/to/recovered-threadline-release.p12
+```
+
+Confirm the `threadline-release` alias and compare the certificate SHA-256 with
+the public fingerprint above. Repeat from the second archive, then remove the
+temporary decrypted copies. Record only that both restores succeeded—never the
+archive password, keystore password, or private key.
+
+Both current backups are online. A later offline encrypted copy on removable
+media would reduce their shared cloud/account/synchronization failure modes and
+better approximate the 3-2-1 backup model. It is recommended hardening, not a
+technical-alpha blocker once both existing restores are proven. See the
+[NCSC guidance on logically separate, offline, and tested backups](https://www.ncsc.gov.uk/blog-post/offline-backups-in-an-online-world).
+
+The separately stored decryption secret also needs a recovery path. Confirm that
+loss of one device or second-factor method would not permanently lock the owner
+out of the password manager; keep recovery material or emergency-access
+instructions somewhere that does not depend on the same two cloud accounts.
+
 ## Build a signed alpha APK
 
 Set only the non-secret path and alias in the shell. The build helper prompts

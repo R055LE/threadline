@@ -9,8 +9,10 @@ SSH, and structured execution, but opening its raw terminal exposed a second
 lazy native field-name contract. Alpha.2 is also rejected. Permanent-key alpha.3
 preserves and verifies both contracts, matches the established certificate, and
 has passed the corrected physical Galaxy S25 Ultra path. The release/JNI blocker
-is closed. Key-backup recovery, unreported checklist items, distribution, and
-technical-alpha use remain open. No APK is published for testers.
+is closed. Two encrypted off-machine key backups with separately held
+decryption material now exist; restore testing, unreported checklist items,
+distribution, and technical-alpha use remain open. No APK is published for
+testers.
 
 ## Decision
 
@@ -173,8 +175,10 @@ toolbar into Threadline's design specification.
 
 ## Acceptance still required
 
-1. Confirm password-manager custody plus at least two separately held encrypted
-   keystore backups, including one successful `keytool -list` restore check.
+1. Independently download and decrypt both reported off-machine archives, then
+   confirm each recovered keystore's alias and public certificate with
+   `keytool -list`. An additional offline encrypted copy is recommended but is
+   not a technical-alpha blocker.
 2. Complete any still-unreported permanent-alpha.3 checklist items, especially
    imported-key authentication and the sanitized diagnostic preview.
 3. Choose distribution deliberately. Share directly for a limited invited alpha,

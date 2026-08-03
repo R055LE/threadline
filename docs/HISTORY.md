@@ -64,7 +64,9 @@ proof. The permanent alpha.3 then verified against the established certificate a
 corrected Galaxy S25 Ultra path; a running `ping` survived repeated transcript/terminal switches
 and rotation in both views. That closed the release/JNI blocker while exposing a deferred
 compact-height terminal-layout issue. Backup recovery, the limited-versus-public distribution
-decision, remaining checklist items, and technical-alpha use remain.
+decision, remaining checklist items, and technical-alpha use remain. Two encrypted off-machine
+signing-key copies with separately held decryption material subsequently established the backup
+set; recovery testing remains before that boundary closes.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

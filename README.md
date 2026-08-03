@@ -257,8 +257,10 @@ The permanent-key `0.1.0-alpha.3` artifact preserves and verifies both native
 field contracts, matches the established signing lineage, and has now passed
 the corrected physical release path on the Galaxy S25 Ultra. A running `ping`
 survived repeated transcript/terminal switching and rotation in each view. The
-release/JNI blocker is closed; signing-key backup recovery, still-unreported
-checklist items, the distribution decision, and technical-alpha use remain.
+release/JNI blocker is closed. Two encrypted off-machine signing-key backups
+now exist with separately held decryption material; restore verification,
+still-unreported checklist items, the distribution decision, and
+technical-alpha use remain.
 
 Use these records according to their purpose:
 

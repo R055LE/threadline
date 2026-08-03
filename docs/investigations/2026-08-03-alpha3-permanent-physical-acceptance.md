@@ -6,8 +6,8 @@ The release-only JNI blocker is closed. The permanent-key
 `0.1.0-alpha.3` (`10003`) artifact verifies against the established update
 lineage and the corrected raw-terminal path passes on the Galaxy S25 Ultra that
 exposed alpha.2. Alpha.3 remains an unpublished technical-alpha candidate while
-key-backup recovery, unreported checklist items, the distribution decision, and
-the Phase 5 usage criterion remain open.
+backup restore testing, unreported checklist items, the distribution decision,
+and the Phase 5 usage criterion remain open.
 
 ## Permanent artifact record
 
@@ -69,7 +69,9 @@ retaining device chrome or another application's interface as project assets.
 
 ## Remaining boundary
 
-- Confirm restorable, separately held backups of the permanent signing key.
+- Independently restore and inspect both reported encrypted off-machine signing
+  key backups. An additional offline encrypted copy is recommended but is not a
+  technical-alpha blocker.
 - Complete still-unreported candidate checklist items, especially imported-key
   authentication and the sanitized diagnostic preview.
 - Choose limited direct sharing or a public GitHub prerelease deliberately.

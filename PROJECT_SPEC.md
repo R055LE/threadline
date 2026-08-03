@@ -1072,10 +1072,12 @@ background/restore, transcript return, and a follow-up structured command on API
 35. The permanent-key alpha.3 artifact matches the established certificate and
 passed the corrected physical path on the Galaxy S25 Ultra. Password SSH,
 structured and raw views, a running `ping`, repeated view changes, and rotation
-in both views preserved the live session without the alpha.2 crash. Backup
-recovery, still-unreported release-checklist items, and the limited-versus-public
-distribution decision remain open. Because the repository is public, any
-published GitHub prerelease is public.
+in both views preserved the live session without the alpha.2 crash. Two
+encrypted off-machine signing-key backups exist with their decryption secret
+held separately; recovery testing remains open. Still-unreported
+release-checklist items and the limited-versus-public distribution decision also
+remain open. Because the repository is public, any published GitHub prerelease
+is public.
 
 ---
 
