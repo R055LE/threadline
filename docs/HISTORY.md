@@ -60,8 +60,11 @@ alpha.1 with data preserved, authenticated by password, and completed a structur
 opening its raw terminal exposed a second release-only native field-name contract. Alpha.2 was
 rejected; alpha.3 now preserves and verifies both contracts and has passed a disposable-key
 minified terminal open, raw input, resize, lifecycle, transcript-return, and follow-up-command
-proof. Backup recovery, a permanent-key alpha.3 physical update, the limited-versus-public
-distribution decision, and technical-alpha use remain.
+proof. The permanent alpha.3 then verified against the established certificate and passed the
+corrected Galaxy S25 Ultra path; a running `ping` survived repeated transcript/terminal switches
+and rotation in both views. That closed the release/JNI blocker while exposing a deferred
+compact-height terminal-layout issue. Backup recovery, the limited-versus-public distribution
+decision, remaining checklist items, and technical-alpha use remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

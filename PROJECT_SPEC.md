@@ -1043,7 +1043,7 @@ Exit criterion:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
-Implementation status (2026-08-02): the accessibility and
+Implementation status (2026-08-03): the accessibility and
 connection/authentication-error pass is implemented, including typed network
 failures, recovery actions, screen-reader semantics, and 200% font-scale action
 reachability. Production-path large-output profiling now covers styled Unicode
@@ -1069,9 +1069,13 @@ second native field-name contract and rejected alpha.2 as well. The alpha.3
 source preserves and release-verifies both contracts and passed a disposable-key
 minified same-session proof across terminal open, raw input, resize,
 background/restore, transcript return, and a follow-up structured command on API
-35. Backup recovery, the permanent-key alpha.3 physical update and release-path
-checklist, and the limited-versus-public distribution decision remain open.
-Because the repository is public, any published GitHub prerelease is public.
+35. The permanent-key alpha.3 artifact matches the established certificate and
+passed the corrected physical path on the Galaxy S25 Ultra. Password SSH,
+structured and raw views, a running `ping`, repeated view changes, and rotation
+in both views preserved the live session without the alpha.2 crash. Backup
+recovery, still-unreported release-checklist items, and the limited-versus-public
+distribution decision remain open. Because the repository is public, any
+published GitHub prerelease is public.
 
 ---
 

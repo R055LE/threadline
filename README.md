@@ -239,8 +239,8 @@ risks are recorded in
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. Completion of the permanent alpha.3
-physical release checklist and sufficient technical-alpha use remain;
+basic-onboarding slices are implemented. Completion of the remaining alpha.3
+release checklist and sufficient technical-alpha use remain;
 additional device and OEM coverage, including Pixel, is opportunistic alpha
 evidence rather than a separate release gate.
 
@@ -253,11 +253,12 @@ attempt rejected that artifact. Permanent-key alpha.2 fixed Connect, installed
 over alpha.1 with data preserved, authenticated by password, and completed a
 structured command before raw-terminal opening exposed a second native field
 contract omitted from the shrinker rule. Alpha.2 is therefore also rejected.
-The `0.1.0-alpha.3` source preserves and verifies both native field contracts
-and has passed a disposable-key minified SSH, terminal open/input/resize,
-lifecycle, return-to-transcript, and follow-up-command proof on API 35. The
-acceptance boundary remains open until signing-key backup recovery and a
-permanent-key alpha.3 in-place physical release run.
+The permanent-key `0.1.0-alpha.3` artifact preserves and verifies both native
+field contracts, matches the established signing lineage, and has now passed
+the corrected physical release path on the Galaxy S25 Ultra. A running `ping`
+survived repeated transcript/terminal switching and rotation in each view. The
+release/JNI blocker is closed; signing-key backup recovery, still-unreported
+checklist items, the distribution decision, and technical-alpha use remain.
 
 Use these records according to their purpose:
 

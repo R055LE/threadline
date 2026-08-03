@@ -68,6 +68,28 @@ and large font scales. If the primary action becomes untappable, obscured, or
 unreadable on any supported configuration, promote that case to a functional
 layout bug instead of leaving it in polish.
 
+## Compact-height connected-session layout
+
+**Status:** Deferred responsive-layout work; the alpha.3 session/resize behavior
+is accepted, but raw-terminal visibility with a landscape software keyboard is
+not a finished experience.
+
+Permanent alpha.3 testing on the Galaxy S25 Ultra confirmed that a running
+command survives transcript/raw-terminal switching and rotation in both views.
+The landscape raw-terminal screenshot also showed that the connection title,
+status, and action row consume nearly all height left above the software
+keyboard, leaving little or no readable terminal surface. A Termius comparison
+preserved roughly one prompt row by using much denser landscape chrome. That is
+evidence about the constraint, not a request to reproduce its layout or style.
+
+Keep rotation support: it is normal Android behavior, useful for wide terminal
+lines, and more important on tablets, foldables, and hardware keyboards. During
+the visual/responsive pass, evaluate a compact connected header, moving
+secondary actions into overflow, and an optional focused or immersive terminal
+presentation. Define a minimum visible terminal viewport when the IME is open,
+while keeping connection state and a route back to the transcript reachable.
+Portrait remains the primary phone layout.
+
 ## Drafting and queued commands while a turn runs
 
 **Status:** Deferred interaction design; not a Phase 5 interruption blocker.

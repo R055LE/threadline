@@ -36,8 +36,16 @@ installation with app data preserved. Its verified APK SHA-256 is:
 
 Alpha.2 is also rejected: password SSH and the structured transcript worked,
 but opening the raw terminal exposed a second release-only JNI field-renaming
-crash. The next permanent candidate must be alpha.3, use this same certificate,
-install over alpha.2, preserve its data, and pass the complete release path.
+crash. Permanent-key alpha.3 uses the same certificate and passed the corrected
+physical terminal path. Its verified APK SHA-256 is:
+
+```text
+694c5f9b1780bd279a3c14de971d822ee024ac1f706cceaeeb486191224d088e
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.3` (`10003`), and verifies with APK signature schemes v2 and v3.
+Keep alpha.1 and alpha.2 as immutable rejected evidence; do not overwrite them.
 
 ## Signing-key boundary
 

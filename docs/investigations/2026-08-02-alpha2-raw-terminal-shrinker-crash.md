@@ -88,3 +88,13 @@ established update lineage, and install it over physical alpha.2. The physical
 release checklist must repeat password and imported-key authentication,
 structured execution, raw-terminal open/input/resize/return, lifecycle, retained
 data, and sanitized diagnostics before any tester distribution decision.
+
+## Physical closure (2026-08-03)
+
+The permanent-key alpha.3 artifact matches the established certificate and the
+owner reports that its critical Galaxy S25 Ultra path passes. A running `ping`
+survived repeated transcript/raw-terminal switching and rotation in each view
+without a crash or lost session. The release/JNI correction is therefore
+accepted on the device that exposed alpha.2. Artifact verification and the
+remaining alpha boundary are recorded in the
+[permanent alpha.3 acceptance investigation](2026-08-03-alpha3-permanent-physical-acceptance.md).

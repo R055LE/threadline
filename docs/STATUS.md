@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-02
+Updated: 2026-08-03
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -39,22 +39,25 @@ Alpha.1 crashed during native terminal initialization on Connect. Alpha.2 fixed
 that path, installed over alpha.1 with app data preserved, authenticated by
 password, and completed a structured `pwd` turn on the Galaxy S25 Ultra. Opening
 the raw terminal then exposed a second release-only R8/JNI field-renaming crash.
-Alpha.3 preserves and verifies both native field contracts and has passed a
-disposable-key minified release proof on API 35: password SSH, raw-terminal
-open and input, portrait/landscape resize, background/restore, return to the
-same transcript, and a subsequent structured command all completed in one live
-process. A permanent-key alpha.3 build and physical in-place update remain open;
-see the [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md),
+Alpha.3 preserves and verifies both native field contracts. Its permanent-key
+APK matches the established certificate and passed checksum, v2/v3 signature,
+alignment, identity, and version inspection. On the Galaxy S25 Ultra, the
+critical physical path passed: password SSH, structured and raw views, repeated
+switching while `ping` remained active, and rotation in each view all preserved
+the live session without the alpha.2 crash. The release/JNI blocker is closed;
+the landscape software-keyboard screenshot adds a deferred compact-height
+layout issue because little or no terminal output remains visible. See the
+[permanent alpha.3 acceptance investigation](investigations/2026-08-03-alpha3-permanent-physical-acceptance.md),
+[alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md),
 [alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
 and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
 ## Remaining Phase 5 boundaries
 
 - Confirm restorable, separately held backups of the permanent signing key.
-- Build permanent-key alpha.3, verify that it retains the established signing
-  certificate, install it over physical alpha.2, and repeat the release-path
-  checklist—especially raw-terminal open, resize, return, and same-session
-  command recovery—without losing preserved app data.
+- Complete any still-unreported permanent-alpha.3 checklist items, especially
+  imported-key authentication and the sanitized diagnostic preview. The
+  release-blocking raw-terminal path is accepted.
 - Choose the alpha distribution boundary deliberately: direct owner sharing for
   invited testers, or a public GitHub prerelease with checksum, certificate
   fingerprint, release notes, and known limitations. This repository is public,

@@ -6,10 +6,11 @@ Infrastructure and the permanent update lineage are implemented and locally
 verified. Alpha.1 is rejected for a Connect-time shrinker/JNI crash. Alpha.2
 fixed Connect and proved same-key physical update, retained app data, password
 SSH, and structured execution, but opening its raw terminal exposed a second
-lazy native field-name contract. Alpha.2 is also rejected. Alpha.3 preserves and
-verifies both contracts and has passed a disposable-key minified release proof;
-the permanent-key build and physical update remain open. No APK is published
-for testers.
+lazy native field-name contract. Alpha.2 is also rejected. Permanent-key alpha.3
+preserves and verifies both contracts, matches the established certificate, and
+has passed the corrected physical Galaxy S25 Ultra path. The release/JNI blocker
+is closed. Key-backup recovery, unreported checklist items, distribution, and
+technical-alpha use remain open. No APK is published for testers.
 
 ## Decision
 
@@ -139,16 +140,44 @@ background/restore, transcript return, and a subsequent structured `pwd` in one
 unchanged app process with no fatal runtime log. See the
 [alpha.2 raw-terminal crash investigation](2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
+## Permanent alpha.3 verification and physical acceptance
+
+The owner built immutable `0.1.0-alpha.3` with the established permanent key.
+Its public verification record is:
+
+- SHA-256: `694c5f9b1780bd279a3c14de971d822ee024ac1f706cceaeeb486191224d088e`
+- signing-certificate SHA-256:
+  `102893bcc2fa4b70fb451661579c717c6c2b917296a99baefa6d9e9d1d13e7fc`
+- signer: one 4096-bit RSA key with certificate subject `CN=Threadline`
+- Android APK signature schemes: v2 and v3 verified
+- manifest identity: `io.github.r055le.threadline`, version
+  `0.1.0-alpha.3` (`10003`)
+
+The checksum file verifies against the artifact, 16 KiB page-aware zip
+alignment passes, and the certificate matches the alpha.1/alpha.2 update
+lineage.
+
+On the Galaxy S25 Ultra, the owner reports that the critical corrected path
+passes. Password SSH and both session views remained functional. For a stronger
+same-session stress check, a continuous `ping` remained active while switching
+repeatedly between transcript and terminal and rotating in each view. No crash
+or session loss was reported. This closes the physical release/JNI boundary
+that rejected alpha.2; see the
+[permanent alpha.3 acceptance investigation](2026-08-03-alpha3-permanent-physical-acceptance.md).
+
+The landscape comparison also supplied separate UX evidence. Threadline keeps
+the session alive across rotation, but its connected header and action row leave
+almost no visible terminal above the software keyboard. That compact-height
+layout is recorded in the backlog without turning a third-party application's
+toolbar into Threadline's design specification.
+
 ## Acceptance still required
 
 1. Confirm password-manager custody plus at least two separately held encrypted
    keystore backups, including one successful `keytool -list` restore check.
-2. Build immutable permanent-key alpha.3, verify its certificate against the
-   established update lineage, and install it over physical alpha.2.
-3. Finish the alpha.3 physical release run through password authentication,
-   SSH, imported-key, structured, raw-terminal open/input/resize/return,
-   lifecycle, retained-data, and diagnostic paths.
-4. Choose distribution deliberately. Share directly for a limited invited alpha,
+2. Complete any still-unreported permanent-alpha.3 checklist items, especially
+   imported-key authentication and the sanitized diagnostic preview.
+3. Choose distribution deliberately. Share directly for a limited invited alpha,
    or publish a public GitHub prerelease with the tester guide, release notes,
    checksum, certificate fingerprint, and known limitations. Threadline's GitHub
    repository is public, so a published prerelease is not private.
