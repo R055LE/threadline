@@ -52,8 +52,11 @@ guidance, a persistent completion marker, a Help reopen path, and blank producti
 defaults. Alpha packaging groundwork then fixed the release identity and version, isolated debug
 data, added off-repository signing and verification tooling, and defined tester feedback without
 premature telemetry. The owner-created `0.1.0-alpha.1` candidate then passed checksum, certificate,
-alignment, exact installation, and API 35 cold-launch verification. Backup recovery, physical
-release-path and same-key update acceptance, the limited-versus-public distribution decision, and
-technical-alpha use remain. Additional device and OEM coverage is opportunistic alpha evidence rather than a
-separate Pixel gate. See
+alignment, exact installation, and API 35 cold-launch verification before its first physical
+connection attempt exposed a release-only R8/JNI field-renaming crash. Alpha.1 was rejected;
+alpha.2 added an explicit native field contract plus CI verification and completed a disposable-key
+minified SSH and structured-command proof. Backup recovery, permanent-key alpha.2 physical update
+acceptance, the limited-versus-public distribution decision, and technical-alpha use remain.
+Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
+gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

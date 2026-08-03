@@ -24,3 +24,5 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test, lint, and assemble debug and release
         run: ./gradlew --no-daemon test lint assembleDebug assembleRelease
+      - name: Verify release JNI field names
+        run: ./scripts/verify-release-jni-contract.sh

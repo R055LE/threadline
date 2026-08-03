@@ -49,6 +49,25 @@ selection, styled spans, web-link confirmation, TalkBack traversal, and the
 exact bounded-tail contract intact rather than optimizing only the common
 visual case.
 
+## Responsive onboarding and edge-to-edge polish
+
+**Status:** Deferred visual and responsive-layout polish; monitor action
+reachability during alpha.
+
+The first permanent-key alpha installed successfully on the Galaxy S25 Ultra,
+but its onboarding screenshot exposed an awkward compact-height composition:
+the persistent Continue action visually collides with Samsung's navigation area,
+the stacked cards dominate the viewport, and a scrolled position can leave the
+introductory sentence without much context. No tap failure or inaccessible
+content was reported.
+
+During the visual-design pass, revisit navigation-bar insets, the relationship
+between a sticky action and scrollable content, card density, responsive spacing,
+and scroll-position cues across gesture and three-button navigation, landscape,
+and large font scales. If the primary action becomes untappable, obscured, or
+unreadable on any supported configuration, promote that case to a functional
+layout bug instead of leaving it in polish.
+
 ## Drafting and queued commands while a turn runs
 
 **Status:** Deferred interaction design; not a Phase 5 interruption blocker.

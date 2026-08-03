@@ -1060,12 +1060,14 @@ Alpha packaging preparation now fixes `io.github.r055le.threadline` as the
 release application ID, isolates standard debug builds under a `.debug` suffix,
 defines explicit alpha versioning, and provides local off-repository
 align/sign/verify/checksum tooling plus tester and feedback guidance. A permanent
-key and `0.1.0-alpha.1` candidate now exist outside Git; the APK's checksum and
-public certificate fingerprint are recorded, and its exact install and cold
-launch passed on API 35. Backup recovery, physical release-path validation,
-same-key update preservation, and the limited-versus-public distribution
-decision remain open. Because the repository is public, any published GitHub
-prerelease is public.
+key and `0.1.0-alpha.1` artifact exist outside Git; its checksum and public
+certificate fingerprint are recorded. Its first physical connection attempt
+exposed a release-only R8/JNI crash, so alpha.1 is rejected. The alpha.2 source
+fix preserves and verifies the native field contract and has passed a
+disposable-key minified SSH plus structured-command proof on API 35. Backup
+recovery, permanent-key alpha.2 physical update preservation and release-path
+validation, and the limited-versus-public distribution decision remain open.
+Because the repository is public, any published GitHub prerelease is public.
 
 ---
 

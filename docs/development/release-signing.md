@@ -11,9 +11,9 @@ The current alpha version is defined once in `gradle.properties`. Increase both
 build. An Android update must have a greater version code and the same signing
 certificate as the installed release.
 
-## Current candidate certificate
+## Permanent update-line certificate
 
-The public SHA-256 fingerprint for the `0.1.0-alpha.1` candidate certificate is:
+The public SHA-256 fingerprint established by the permanent-key alpha.1 build is:
 
 ```text
 102893bcc2fa4b70fb451661579c717c6c2b917296a99baefa6d9e9d1d13e7fc
@@ -24,6 +24,11 @@ publication. The fingerprint is public verification data, not a secret and not
 a substitute for keystore backups. It may be deliberately replaced before the
 first distribution, but distributing an APK establishes the update lineage for
 that application ID.
+
+Alpha.1 is rejected because of its release-only shrinker/JNI crash, but its
+certificate remains the intended update lineage. Permanent-key alpha.2 must
+match this fingerprint so it can update the physical alpha.1 installation and
+prove data preservation.
 
 ## Signing-key boundary
 

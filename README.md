@@ -244,12 +244,15 @@ technical-alpha use remain; additional device and OEM coverage, including Pixel,
 is opportunistic alpha evidence rather than a separate release gate.
 
 Alpha packaging preparation now defines the permanent release/debug identities,
-`0.1.0-alpha.1` version, interactive off-repository key creation, local
+explicit alpha versioning, interactive off-repository key creation, local
 align/sign/verify/checksum tooling, tester checklist, and feedback form. The
-owner-created `0.1.0-alpha.1` APK now has a verified checksum, public signing
-fingerprint, and API 35 cold-launch proof. The acceptance boundary remains open
-until signing-key backup recovery, physical release-path testing, and a
-same-key in-place update are proven.
+owner-created `0.1.0-alpha.1` APK established the certificate record and passed
+installation, but a release-only R8/JNI crash on its first physical connection
+attempt rejected that artifact. The `0.1.0-alpha.2` source fix now verifies the
+native field-name contract in CI and has passed a disposable-key minified SSH
+connection and structured command round-trip on API 35. The acceptance boundary
+remains open until signing-key backup recovery and a permanent-key alpha.2
+in-place physical update and release-path pass are proven.
 
 Use these records according to their purpose:
 
