@@ -1063,11 +1063,12 @@ align/sign/verify/checksum tooling plus tester and feedback guidance. A permanen
 key and `0.1.0-alpha.1` artifact exist outside Git; its checksum and public
 certificate fingerprint are recorded. Its first physical connection attempt
 exposed a release-only R8/JNI crash, so alpha.1 is rejected. The alpha.2 source
-fix preserves and verifies the native field contract and has passed a
-disposable-key minified SSH plus structured-command proof on API 35. Backup
-recovery, permanent-key alpha.2 physical update preservation and release-path
-validation, and the limited-versus-public distribution decision remain open.
-Because the repository is public, any published GitHub prerelease is public.
+fix preserves and verifies the native field contract, passed a disposable-key
+minified SSH plus structured-command proof on API 35, and installed in place
+over physical alpha.1 without the crash. Backup recovery, completion of the
+physical alpha.2 SSH and data-preservation checklist, and the
+limited-versus-public distribution decision remain open. Because the repository
+is public, any published GitHub prerelease is public.
 
 ---
 

@@ -55,8 +55,10 @@ premature telemetry. The owner-created `0.1.0-alpha.1` candidate then passed che
 alignment, exact installation, and API 35 cold-launch verification before its first physical
 connection attempt exposed a release-only R8/JNI field-renaming crash. Alpha.1 was rejected;
 alpha.2 added an explicit native field contract plus CI verification and completed a disposable-key
-minified SSH and structured-command proof. Backup recovery, permanent-key alpha.2 physical update
-acceptance, the limited-versus-public distribution decision, and technical-alpha use remain.
+minified SSH and structured-command proof. The permanent-key alpha.2 then installed over physical
+alpha.1 and no longer crashed on Connect. Backup recovery, completion of the physical SSH and
+data-preservation checklist, the limited-versus-public distribution decision, and technical-alpha
+use remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

@@ -239,20 +239,22 @@ risks are recorded in
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. A signed internal APK and sufficient
-technical-alpha use remain; additional device and OEM coverage, including Pixel,
-is opportunistic alpha evidence rather than a separate release gate.
+basic-onboarding slices are implemented. Completion of the permanent alpha.2
+physical release checklist and sufficient technical-alpha use remain;
+additional device and OEM coverage, including Pixel, is opportunistic alpha
+evidence rather than a separate release gate.
 
 Alpha packaging preparation now defines the permanent release/debug identities,
 explicit alpha versioning, interactive off-repository key creation, local
 align/sign/verify/checksum tooling, tester checklist, and feedback form. The
 owner-created `0.1.0-alpha.1` APK established the certificate record and passed
 installation, but a release-only R8/JNI crash on its first physical connection
-attempt rejected that artifact. The `0.1.0-alpha.2` source fix now verifies the
-native field-name contract in CI and has passed a disposable-key minified SSH
-connection and structured command round-trip on API 35. The acceptance boundary
-remains open until signing-key backup recovery and a permanent-key alpha.2
-in-place physical update and release-path pass are proven.
+attempt rejected that artifact. The permanent-key `0.1.0-alpha.2` fix now
+verifies the native field-name contract in CI, passed a disposable-key minified
+SSH command round-trip on API 35, installed in place over physical alpha.1, and
+no longer crashes on Connect. The acceptance boundary remains open until
+signing-key backup recovery and completion of the physical alpha.2 SSH,
+data-preservation, and release-path checks.
 
 Use these records according to their purpose:
 

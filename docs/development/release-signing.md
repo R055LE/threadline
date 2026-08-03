@@ -26,9 +26,16 @@ first distribution, but distributing an APK establishes the update lineage for
 that application ID.
 
 Alpha.1 is rejected because of its release-only shrinker/JNI crash, but its
-certificate remains the intended update lineage. Permanent-key alpha.2 must
-match this fingerprint so it can update the physical alpha.1 installation and
-prove data preservation.
+certificate remains the intended update lineage. Permanent-key alpha.2 matches
+this fingerprint and Android accepted it as an update over the physical alpha.1
+installation. Its verified APK SHA-256 is:
+
+```text
+320cd5021973326226d5842a98a36965af221b05d35db611e4dac33663e901b8
+```
+
+The remaining physical check is data preservation and the complete release-path
+run, not signing compatibility.
 
 ## Signing-key boundary
 

@@ -4,9 +4,11 @@
 
 `0.1.0-alpha.1` is rejected and must not be distributed. Its first physical
 connection attempt exposed a release-only native interoperability failure. The
-fix is implemented as `0.1.0-alpha.2` (`10002`) and has completed a disposable-key
-minified release proof on the API 35 emulator. A permanent-key alpha.2 build,
-in-place physical update, and physical SSH rerun remain open.
+fix is implemented as `0.1.0-alpha.2` (`10002`), has completed a disposable-key
+minified release proof on the API 35 emulator, and has installed in place over
+physical alpha.1 with the crash resolved. Physical password authentication and
+the remaining data-preservation checklist remain open because the fixture
+credential was intentionally rotated during diagnosis.
 
 ## Incident
 
@@ -71,7 +73,9 @@ ignored and no credential belongs in the repository.
 
 ## Remaining boundary
 
-Build alpha.2 with the established permanent key, verify its public certificate
-fingerprint matches the recorded update lineage, and install it over the
-physical alpha.1 app. That run must prove preserved app data plus the physical
-connect, shell, transcript, raw-terminal, lifecycle, and diagnostic checklist.
+The permanent-key alpha.2 artifact matches the recorded certificate and Android
+accepted it as an update over physical alpha.1. The owner confirmed that the
+Connect action no longer terminates the process. Retrieve the rotated fixture
+credential locally, then complete password authentication and prove preserved
+app data plus the physical shell, transcript, raw-terminal, lifecycle, and
+diagnostic checklist.

@@ -37,20 +37,21 @@ key creation, local align/sign/verify/checksum tooling, a tester checklist, and
 a non-secret feedback form. The owner-created `0.1.0-alpha.1` candidate has a
 recorded checksum and public signing-certificate fingerprint and passed exact
 installation and launch, but its first physical Connect action exposed a
-release-only R8/JNI crash. Alpha.1 is rejected. The `0.1.0-alpha.2` source fix
-now preserves and verifies ConnectBot termlib's native field contract and has
-completed a disposable-key minified release connection plus structured command
-round-trip on API 35. Permanent-key alpha.2 signing and physical update proof
-remain open; see the [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md)
+release-only R8/JNI crash. Alpha.1 is rejected. The permanent-key
+`0.1.0-alpha.2` artifact now preserves and verifies ConnectBot termlib's native
+field contract, matches the established certificate, and installed in place
+over alpha.1 on the Galaxy S25 Ultra. The owner confirmed that Connect no longer
+crashes. The authentication attempt used the stale pre-rotation fixture
+password, so the remaining physical SSH and data-preservation checks are not yet
+complete; see the [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md)
 and [release-shrinker crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md).
 
 ## Remaining Phase 5 boundaries
 
-- Confirm restorable, separately held backups of the permanent signing key,
-  build alpha.2 with that key, and verify its certificate matches the recorded
-  update lineage.
-- Install permanent-key alpha.2 over physical alpha.1, prove app-data
-  preservation, and rerun the physical release checklist through an SSH command.
+- Confirm restorable, separately held backups of the permanent signing key.
+- With the current local fixture credential, finish the permanent alpha.2
+  physical SSH run and confirm preserved onboarding, trust, profiles, transcript
+  data, and settings before completing the remaining release checklist.
 - Choose the alpha distribution boundary deliberately: direct owner sharing for
   invited testers, or a public GitHub prerelease with checksum, certificate
   fingerprint, release notes, and known limitations. This repository is public,

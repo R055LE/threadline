@@ -5,8 +5,9 @@
 Infrastructure and the first permanent-key candidate were implemented and
 locally verified. Its fresh physical installation succeeded, but its first
 connection attempt exposed a release-only shrinker/JNI crash. Alpha.1 is
-rejected; the alpha.2 source fix is locally release-proven while permanent-key
-alpha.2 signing, physical update proof, and technical-alpha use remain open.
+rejected. Permanent-key alpha.2 is verified, Android accepted it as an in-place
+physical update over alpha.1, and the release crash is resolved. The remaining
+physical SSH and data-preservation checks plus technical-alpha use remain open.
 No APK is published for testers.
 
 ## Decision
@@ -100,15 +101,35 @@ PTY/shell startup, and a structured command round-trip on API 35. See the
 [release-shrinker crash investigation](2026-08-02-alpha1-release-shrinker-crash.md)
 for the failure, false lead, fix, and acceptance evidence.
 
+## Permanent alpha.2 verification and physical update
+
+The owner built the immutable `0.1.0-alpha.2` candidate with the established
+permanent key. Its public verification record is:
+
+- SHA-256: `320cd5021973326226d5842a98a36965af221b05d35db611e4dac33663e901b8`
+- signing-certificate SHA-256:
+  `102893bcc2fa4b70fb451661579c717c6c2b917296a99baefa6d9e9d1d13e7fc`
+- signer: one 4096-bit RSA key with certificate subject `CN=Threadline`
+- Android APK signature schemes: v2 and v3 verified
+- manifest identity: `io.github.r055le.threadline`, version
+  `0.1.0-alpha.2` (`10002`)
+
+The checksum file verifies against the artifact, and the certificate matches
+the alpha.1 update lineage. Android accepted alpha.2 directly over alpha.1 on
+the Galaxy S25 Ultra. The owner confirmed that the Connect action no longer
+crashes the app. Authentication with the previously retained fixture password
+was rejected because that disposable credential had been intentionally rotated
+during diagnosis; this is not evidence of a release authentication regression.
+
 ## Acceptance still required
 
 1. Confirm password-manager custody plus at least two separately held encrypted
    keystore backups, including one successful `keytool -list` restore check.
-2. Build alpha.2 with the permanent key, install it over physical alpha.1, and
-   run the minified release through the SSH,
-   trust, password, imported-key, structured, raw-terminal, lifecycle,
-   persistence, and diagnostic paths.
-3. Confirm that same-key in-place update preserved release app data.
+2. Retrieve the current fixture credential locally and finish the minified
+   physical release run through password authentication, SSH, imported-key,
+   structured, raw-terminal, lifecycle, persistence, and diagnostic paths.
+3. Confirm that the successful same-key in-place update preserved onboarding,
+   trust, profiles, transcript data, and settings.
 4. Choose distribution deliberately. Share directly for a limited invited alpha,
    or publish a public GitHub prerelease with the tester guide, release notes,
    checksum, certificate fingerprint, and known limitations. Threadline's GitHub
