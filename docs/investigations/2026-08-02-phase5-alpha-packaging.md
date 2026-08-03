@@ -2,13 +2,14 @@
 
 ## Status
 
-Infrastructure and the first permanent-key candidate were implemented and
-locally verified. Its fresh physical installation succeeded, but its first
-connection attempt exposed a release-only shrinker/JNI crash. Alpha.1 is
-rejected. Permanent-key alpha.2 is verified, Android accepted it as an in-place
-physical update over alpha.1, and the release crash is resolved. The remaining
-physical SSH and data-preservation checks plus technical-alpha use remain open.
-No APK is published for testers.
+Infrastructure and the permanent update lineage are implemented and locally
+verified. Alpha.1 is rejected for a Connect-time shrinker/JNI crash. Alpha.2
+fixed Connect and proved same-key physical update, retained app data, password
+SSH, and structured execution, but opening its raw terminal exposed a second
+lazy native field-name contract. Alpha.2 is also rejected. Alpha.3 preserves and
+verifies both contracts and has passed a disposable-key minified release proof;
+the permanent-key build and physical update remain open. No APK is published
+for testers.
 
 ## Decision
 
@@ -117,19 +118,36 @@ permanent key. Its public verification record is:
 The checksum file verifies against the artifact, and the certificate matches
 the alpha.1 update lineage. Android accepted alpha.2 directly over alpha.1 on
 the Galaxy S25 Ultra. The owner confirmed that the Connect action no longer
-crashes the app. Authentication with the previously retained fixture password
-was rejected because that disposable credential had been intentionally rotated
-during diagnosis; this is not evidence of a release authentication regression.
+crashes the app. After retrieving the current fixture credential locally, the
+owner confirmed password authentication, a successful structured `pwd` turn,
+and preservation of the installed app data. Opening the raw terminal then
+crashed the app. Alpha.2 is therefore rejected despite proving signing
+compatibility and the update/data boundary.
+
+## Correction after the alpha.2 raw-terminal attempt
+
+Exact alpha.2 reproduction on API 35 failed in `TerminalNative.nativeResize`
+when native termlib resolved `ScreenCell.char`. R8 had renamed the 14 private
+`ScreenCell` fields because the alpha.2 rule and verifier covered only the 17
+`CellRun` fields reached during earlier native initialization.
+
+The corrected source is `0.1.0-alpha.3` (`10003`). Its release shrinker rule
+preserves both classes, and the release gate verifies all 31 exact field names
+in the R8 mapping and assembled DEX. A disposable-key minified alpha.3
+completed password SSH, raw-terminal open and `pwd` input, portrait/landscape resize,
+background/restore, transcript return, and a subsequent structured `pwd` in one
+unchanged app process with no fatal runtime log. See the
+[alpha.2 raw-terminal crash investigation](2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
 ## Acceptance still required
 
 1. Confirm password-manager custody plus at least two separately held encrypted
    keystore backups, including one successful `keytool -list` restore check.
-2. Retrieve the current fixture credential locally and finish the minified
-   physical release run through password authentication, SSH, imported-key,
-   structured, raw-terminal, lifecycle, persistence, and diagnostic paths.
-3. Confirm that the successful same-key in-place update preserved onboarding,
-   trust, profiles, transcript data, and settings.
+2. Build immutable permanent-key alpha.3, verify its certificate against the
+   established update lineage, and install it over physical alpha.2.
+3. Finish the alpha.3 physical release run through password authentication,
+   SSH, imported-key, structured, raw-terminal open/input/resize/return,
+   lifecycle, retained-data, and diagnostic paths.
 4. Choose distribution deliberately. Share directly for a limited invited alpha,
    or publish a public GitHub prerelease with the tester guide, release notes,
    checksum, certificate fingerprint, and known limitations. Threadline's GitHub
@@ -141,17 +159,17 @@ The repository gate passed for unit tests, lint, debug assembly, and minified
 unsigned release assembly. Manifest inspection confirmed release identity
 `io.github.r055le.threadline`, debug identity
 `io.github.r055le.threadline.debug`. The initial build used version name
-`0.1.0-alpha.1` and version code `10001`; the corrected source is now
-`0.1.0-alpha.2` and `10002`.
+`0.1.0-alpha.1` and version code `10001`; the current corrected source is
+`0.1.0-alpha.3` and `10003`.
 
 GitHub verification now assembles the unsigned minified release on every push
 and pull request in addition to its existing test, lint, and debug-build gate.
 Signing remains local, so CI never needs the permanent release key merely to
 prove that release shrinking and packaging compile.
 
-After the physical alpha.1 incident, that gate also verifies ConnectBot
-termlib's native-resolved `CellRun` field names in both the R8 mapping and the
-assembled release DEX.
+After the physical alpha.1 and alpha.2 incidents, that gate verifies ConnectBot
+termlib's native-resolved `CellRun` and `ScreenCell` field names in both the R8
+mapping and the assembled release DEX.
 
 A disposable `/tmp` key exercised alignment, environment-backed signing,
 signature verification, checksum output, cold installation and launch of the

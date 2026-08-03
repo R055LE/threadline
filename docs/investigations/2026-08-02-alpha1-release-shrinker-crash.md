@@ -79,3 +79,14 @@ Connect action no longer terminates the process. Retrieve the rotated fixture
 credential locally, then complete password authentication and prove preserved
 app data plus the physical shell, transcript, raw-terminal, lifecycle, and
 diagnostic checklist.
+
+## Correction (2026-08-02)
+
+The subsequent physical alpha.2 run confirmed same-key data preservation,
+password authentication, and a structured `pwd` turn. Opening the raw terminal
+then crashed on a second private Java-field contract that native termlib reaches
+only while resizing and restoring scrollback. Alpha.2 is therefore rejected;
+the first verifier proved `CellRun` initialization but did not yet prove
+`ScreenCell` resize behavior. The failure, expanded contract, and alpha.3 proof
+are recorded in the
+[alpha.2 raw-terminal crash investigation](2026-08-02-alpha2-raw-terminal-shrinker-crash.md).

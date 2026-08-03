@@ -28,3 +28,4 @@ technical claim.
 | 2026-08-01 | 5 | [Basic onboarding](2026-08-01-phase5-basic-onboarding.md) | one-screen orientation, contextual guidance, persistent completion, and Help reopen |
 | 2026-08-02 | 5 | [Alpha packaging and first signed candidate](2026-08-02-phase5-alpha-packaging.md) | permanent app identity, off-repository signing boundary, verified alpha.1 artifact, update proof, and tester evidence design |
 | 2026-08-02 | 5 | [Alpha.1 release-shrinker crash](2026-08-02-alpha1-release-shrinker-crash.md) | physical release failure, native field-name contract, alpha.1 rejection, and disposable-key alpha.2 SSH proof |
+| 2026-08-02 | 5 | [Alpha.2 raw-terminal shrinker crash](2026-08-02-alpha2-raw-terminal-shrinker-crash.md) | second lazy JNI contract, alpha.2 rejection, expanded release verification, and disposable-key alpha.3 same-session proof |

@@ -34,24 +34,27 @@ and [basic-onboarding investigation](investigations/2026-08-01-phase5-basic-onbo
 Alpha packaging preparation is also implemented: permanent release and separate
 debug application IDs, explicit alpha versioning, off-repository interactive
 key creation, local align/sign/verify/checksum tooling, a tester checklist, and
-a non-secret feedback form. The owner-created `0.1.0-alpha.1` candidate has a
-recorded checksum and public signing-certificate fingerprint and passed exact
-installation and launch, but its first physical Connect action exposed a
-release-only R8/JNI crash. Alpha.1 is rejected. The permanent-key
-`0.1.0-alpha.2` artifact now preserves and verifies ConnectBot termlib's native
-field contract, matches the established certificate, and installed in place
-over alpha.1 on the Galaxy S25 Ultra. The owner confirmed that Connect no longer
-crashes. The authentication attempt used the stale pre-rotation fixture
-password, so the remaining physical SSH and data-preservation checks are not yet
-complete; see the [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md)
-and [release-shrinker crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md).
+a non-secret feedback form. The first two permanent-key candidates are rejected.
+Alpha.1 crashed during native terminal initialization on Connect. Alpha.2 fixed
+that path, installed over alpha.1 with app data preserved, authenticated by
+password, and completed a structured `pwd` turn on the Galaxy S25 Ultra. Opening
+the raw terminal then exposed a second release-only R8/JNI field-renaming crash.
+Alpha.3 preserves and verifies both native field contracts and has passed a
+disposable-key minified release proof on API 35: password SSH, raw-terminal
+open and input, portrait/landscape resize, background/restore, return to the
+same transcript, and a subsequent structured command all completed in one live
+process. A permanent-key alpha.3 build and physical in-place update remain open;
+see the [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md),
+[alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
+and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
 ## Remaining Phase 5 boundaries
 
 - Confirm restorable, separately held backups of the permanent signing key.
-- With the current local fixture credential, finish the permanent alpha.2
-  physical SSH run and confirm preserved onboarding, trust, profiles, transcript
-  data, and settings before completing the remaining release checklist.
+- Build permanent-key alpha.3, verify that it retains the established signing
+  certificate, install it over physical alpha.2, and repeat the release-path
+  checklist—especially raw-terminal open, resize, return, and same-session
+  command recovery—without losing preserved app data.
 - Choose the alpha distribution boundary deliberately: direct owner sharing for
   invited testers, or a public GitHub prerelease with checksum, certificate
   fingerprint, release notes, and known limitations. This repository is public,

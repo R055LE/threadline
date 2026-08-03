@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Threadline version
-      description: Use the version shown in Diagnostics, for example 0.1.0-alpha.2 (10002).
+      description: Use the version shown in Diagnostics, for example 0.1.0-alpha.3 (10003).
     validations:
       required: true
   - type: input

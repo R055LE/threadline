@@ -35,25 +35,50 @@ find_apkanalyzer() {
     exit 1
 }
 
-cell_run_mapping=$(awk '
-    $0 == "org.connectbot.terminal.CellRun -> org.connectbot.terminal.CellRun:" {
-        found = 1
-        in_class = 1
-        print
-        next
+verify_class_fields() {
+    class_name=$1
+    shift
+    class_mapping=$(awk -v expected_header="$class_name -> $class_name:" '
+        $0 == expected_header {
+            found = 1
+            in_class = 1
+            print
+            next
+        }
+        in_class && $0 !~ /^ / {
+            exit
+        }
+        in_class {
+            print
+        }
+        END {
+            if (!found) exit 2
+        }
+    ' "$mapping_file") || {
+        echo "$class_name is missing or renamed in the release mapping." >&2
+        exit 1
     }
-    in_class && $0 !~ /^ / {
-        exit
-    }
-    in_class {
-        print
-    }
-    END {
-        if (!found) exit 2
-    }
-' "$mapping_file") || {
-    echo "CellRun is missing or renamed in the release mapping." >&2
-    exit 1
+
+    for field_name do
+        if printf '%s\n' "$class_mapping" | awk -v expected="$field_name" '
+            $2 == expected && $3 == "->" && $4 != expected { found = 1 }
+            END { exit found ? 0 : 1 }
+        '
+        then
+            echo "R8 renamed JNI field $class_name.$field_name." >&2
+            exit 1
+        fi
+        if ! awk -v expected_class="$class_name" -v expected_field="$field_name" '
+            $1 == "F" &&
+            $6 == expected_class &&
+            $8 == expected_field { found = 1 }
+            END { exit found ? 0 : 1 }
+        ' "$dex_listing"
+        then
+            echo "Release DEX is missing JNI field $class_name.$field_name." >&2
+            exit 1
+        fi
+    done
 }
 
 apkanalyzer_command=$(find_apkanalyzer)
@@ -61,28 +86,11 @@ dex_listing=$(mktemp)
 trap 'rm -f "$dex_listing"' EXIT
 "$apkanalyzer_command" dex packages --defined-only "$release_apk" > "$dex_listing"
 
-for field_name in \
+verify_class_fields org.connectbot.terminal.CellRun \
     fgRed fgGreen fgBlue bgRed bgGreen bgBlue bold underline italic blink \
     reverse strike font dwl dhl chars runLength
-do
-    if printf '%s\n' "$cell_run_mapping" | awk -v expected="$field_name" '
-        $2 == expected && $3 == "->" && $4 != expected { found = 1 }
-        END { exit found ? 0 : 1 }
-    '
-    then
-        echo "R8 renamed JNI field CellRun.$field_name." >&2
-        exit 1
-    fi
-    if ! awk -v expected="$field_name" '
-        $1 == "F" &&
-        $6 == "org.connectbot.terminal.CellRun" &&
-        $8 == expected { found = 1 }
-        END { exit found ? 0 : 1 }
-    ' "$dex_listing"
-    then
-        echo "Release DEX is missing JNI field CellRun.$field_name." >&2
-        exit 1
-    fi
-done
+verify_class_fields org.connectbot.terminal.ScreenCell \
+    char combiningChars fgRed fgGreen fgBlue bgRed bgGreen bgBlue bold italic \
+    underline reverse strike width
 
 echo "Release JNI field-name contract verified."

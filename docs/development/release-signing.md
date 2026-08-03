@@ -28,14 +28,16 @@ that application ID.
 Alpha.1 is rejected because of its release-only shrinker/JNI crash, but its
 certificate remains the intended update lineage. Permanent-key alpha.2 matches
 this fingerprint and Android accepted it as an update over the physical alpha.1
-installation. Its verified APK SHA-256 is:
+installation with app data preserved. Its verified APK SHA-256 is:
 
 ```text
 320cd5021973326226d5842a98a36965af221b05d35db611e4dac33663e901b8
 ```
 
-The remaining physical check is data preservation and the complete release-path
-run, not signing compatibility.
+Alpha.2 is also rejected: password SSH and the structured transcript worked,
+but opening the raw terminal exposed a second release-only JNI field-renaming
+crash. The next permanent candidate must be alpha.3, use this same certificate,
+install over alpha.2, preserve its data, and pass the complete release path.
 
 ## Signing-key boundary
 

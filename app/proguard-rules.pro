@@ -5,3 +5,10 @@
 -keepclassmembers class org.connectbot.terminal.CellRun {
     <fields>;
 }
+
+# The same native library constructs scrollback ScreenCell objects by assigning
+# their private fields directly. Resizing the raw terminal can pop scrollback,
+# so this contract is reached only when the terminal viewport opens or changes.
+-keepclassmembers class org.connectbot.terminal.ScreenCell {
+    <fields>;
+}

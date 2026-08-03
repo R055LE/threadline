@@ -56,9 +56,12 @@ alignment, exact installation, and API 35 cold-launch verification before its fi
 connection attempt exposed a release-only R8/JNI field-renaming crash. Alpha.1 was rejected;
 alpha.2 added an explicit native field contract plus CI verification and completed a disposable-key
 minified SSH and structured-command proof. The permanent-key alpha.2 then installed over physical
-alpha.1 and no longer crashed on Connect. Backup recovery, completion of the physical SSH and
-data-preservation checklist, the limited-versus-public distribution decision, and technical-alpha
-use remain.
+alpha.1 with data preserved, authenticated by password, and completed a structured command, but
+opening its raw terminal exposed a second release-only native field-name contract. Alpha.2 was
+rejected; alpha.3 now preserves and verifies both contracts and has passed a disposable-key
+minified terminal open, raw input, resize, lifecycle, transcript-return, and follow-up-command
+proof. Backup recovery, a permanent-key alpha.3 physical update, the limited-versus-public
+distribution decision, and technical-alpha use remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

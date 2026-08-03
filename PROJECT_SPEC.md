@@ -1062,13 +1062,16 @@ defines explicit alpha versioning, and provides local off-repository
 align/sign/verify/checksum tooling plus tester and feedback guidance. A permanent
 key and `0.1.0-alpha.1` artifact exist outside Git; its checksum and public
 certificate fingerprint are recorded. Its first physical connection attempt
-exposed a release-only R8/JNI crash, so alpha.1 is rejected. The alpha.2 source
-fix preserves and verifies the native field contract, passed a disposable-key
-minified SSH plus structured-command proof on API 35, and installed in place
-over physical alpha.1 without the crash. Backup recovery, completion of the
-physical alpha.2 SSH and data-preservation checklist, and the
-limited-versus-public distribution decision remain open. Because the repository
-is public, any published GitHub prerelease is public.
+exposed a release-only R8/JNI crash, so alpha.1 is rejected. Alpha.2 fixed that
+initialization path and proved physical same-key update, data preservation,
+password SSH, and a structured command, but raw-terminal opening exposed a
+second native field-name contract and rejected alpha.2 as well. The alpha.3
+source preserves and release-verifies both contracts and passed a disposable-key
+minified same-session proof across terminal open, raw input, resize,
+background/restore, transcript return, and a follow-up structured command on API
+35. Backup recovery, the permanent-key alpha.3 physical update and release-path
+checklist, and the limited-versus-public distribution decision remain open.
+Because the repository is public, any published GitHub prerelease is public.
 
 ---
 
