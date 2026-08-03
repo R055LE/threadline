@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-01
+Updated: 2026-08-02
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -31,9 +31,25 @@ Their evidence is recorded in the
 [Samsung physical-device investigation](investigations/2026-08-01-phase5-samsung-physical-validation.md),
 and [basic-onboarding investigation](investigations/2026-08-01-phase5-basic-onboarding.md).
 
+Alpha packaging preparation is also implemented: permanent release and separate
+debug application IDs, explicit alpha versioning, off-repository interactive
+key creation, local align/sign/verify/checksum tooling, a tester checklist, and
+a non-secret feedback form. The owner-created `0.1.0-alpha.1` candidate now has
+a recorded checksum and public signing-certificate fingerprint and has passed
+exact-APK installation and cold launch on the API 35 emulator. This is packaging
+evidence rather than physical release acceptance; see the
+[alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md).
+
 ## Remaining Phase 5 boundaries
 
-- A signed internal APK.
+- Confirm restorable, separately held backups of the permanent signing key, then
+  prove the signed candidate through the physical-device release checklist.
+- Build a higher-versioned candidate with the same key and prove an in-place
+  update preserves release app data.
+- Choose the alpha distribution boundary deliberately: direct owner sharing for
+  invited testers, or a public GitHub prerelease with checksum, certificate
+  fingerprint, release notes, and known limitations. This repository is public,
+  so a published prerelease is public too.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
 
 Additional physical-device and OEM coverage, including Pixel, should be collected opportunistically

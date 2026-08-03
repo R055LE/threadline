@@ -1043,7 +1043,7 @@ Exit criterion:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
-Implementation status (2026-08-01): the accessibility and
+Implementation status (2026-08-02): the accessibility and
 connection/authentication-error pass is implemented, including typed network
 failures, recovery actions, screen-reader semantics, and 200% font-scale action
 reachability. Production-path large-output profiling now covers styled Unicode
@@ -1056,6 +1056,16 @@ and blank production connection defaults. A Galaxy S25 Ultra pass satisfies the 
 physical-device boundary; Pixel and other OEM coverage remain useful opportunistic alpha evidence
 rather than separate phase gates.
 Exportable sanitized diagnostics were completed during Phase 4.
+Alpha packaging preparation now fixes `io.github.r055le.threadline` as the
+release application ID, isolates standard debug builds under a `.debug` suffix,
+defines explicit alpha versioning, and provides local off-repository
+align/sign/verify/checksum tooling plus tester and feedback guidance. A permanent
+key and `0.1.0-alpha.1` candidate now exist outside Git; the APK's checksum and
+public certificate fingerprint are recorded, and its exact install and cold
+launch passed on API 35. Backup recovery, physical release-path validation,
+same-key update preservation, and the limited-versus-public distribution
+decision remain open. Because the repository is public, any published GitHub
+prerelease is public.
 
 ---
 

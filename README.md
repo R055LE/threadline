@@ -108,6 +108,11 @@ connection setup, and saved transcript history.
 ./gradlew assembleDebug
 ```
 
+Standard debug builds install as **Threadline Debug** under
+`io.github.r055le.threadline.debug`. The permanent release application ID is
+`io.github.r055le.threadline`; release and debug builds therefore keep separate
+Android data and Keystore records.
+
 With an emulator or device running:
 
 ```bash
@@ -116,6 +121,12 @@ With an emulator or device running:
 
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`.
+
+Release signing is deliberately local and secret-free in Git. See the
+[release-signing guide](docs/development/release-signing.md) to create and back
+up the long-lived key, produce a verified signed APK, and generate its checksum.
+The [technical-alpha guide](docs/alpha-testing.md) defines installation, update,
+test, feedback, diagnostics, and metrics boundaries.
 
 Windows/WSL setup and APK-install notes are in
 [the Android development guide](docs/development/windows-wsl-android.md).
@@ -231,6 +242,14 @@ accessibility/error, large-output performance, Samsung physical-validation, and
 basic-onboarding slices are implemented. A signed internal APK and sufficient
 technical-alpha use remain; additional device and OEM coverage, including Pixel,
 is opportunistic alpha evidence rather than a separate release gate.
+
+Alpha packaging preparation now defines the permanent release/debug identities,
+`0.1.0-alpha.1` version, interactive off-repository key creation, local
+align/sign/verify/checksum tooling, tester checklist, and feedback form. The
+owner-created `0.1.0-alpha.1` APK now has a verified checksum, public signing
+fingerprint, and API 35 cold-launch proof. The acceptance boundary remains open
+until signing-key backup recovery, physical release-path testing, and a
+same-key in-place update are proven.
 
 Use these records according to their purpose:
 

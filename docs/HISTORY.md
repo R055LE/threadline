@@ -49,6 +49,11 @@ gap before the command became safely stoppable. A Galaxy S25 Ultra then passed p
 / One UI 8.5 validation across lifecycle, rendering, raw fallback, large font, and manual TalkBack.
 Basic onboarding then added a one-screen product explanation, contextual security and retention
 guidance, a persistent completion marker, a Help reopen path, and blank production connection
-defaults. A signed internal APK and technical-alpha use remain. Additional device and OEM coverage
-is opportunistic alpha evidence rather than a separate Pixel gate. See
+defaults. Alpha packaging groundwork then fixed the release identity and version, isolated debug
+data, added off-repository signing and verification tooling, and defined tester feedback without
+premature telemetry. The owner-created `0.1.0-alpha.1` candidate then passed checksum, certificate,
+alignment, exact installation, and API 35 cold-launch verification. Backup recovery, physical
+release-path and same-key update acceptance, the limited-versus-public distribution decision, and
+technical-alpha use remain. Additional device and OEM coverage is opportunistic alpha evidence rather than a
+separate Pixel gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

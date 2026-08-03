@@ -8,22 +8,30 @@ plugins {
 }
 
 val applicationIdOverride = providers.gradleProperty("threadline.applicationId").orNull
+val releaseApplicationId = providers.gradleProperty("threadline.releaseApplicationId").get()
+val threadlineVersionCode = providers.gradleProperty("threadline.versionCode").get().toInt()
+val threadlineVersionName = providers.gradleProperty("threadline.versionName").get()
 
 android {
     namespace = "dev.threadline"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = applicationIdOverride ?: "dev.threadline"
+        applicationId = applicationIdOverride ?: releaseApplicationId
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = threadlineVersionCode
+        versionName = threadlineVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            if (applicationIdOverride == null) {
+                applicationIdSuffix = ".debug"
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

@@ -77,16 +77,21 @@ $LocalApk = "$env:TEMP\threadline-debug.apk"
 Copy-Item -LiteralPath $SourceApk -Destination $LocalApk -Force
 & $Adb -e wait-for-device
 & $Adb -e install -r $LocalApk
-& $Adb -e shell am start -n dev.threadline/.MainActivity
+& $Adb -e shell am start -n io.github.r055le.threadline.debug/dev.threadline.MainActivity
 ```
 
 If `adb` reports that the activity does not exist, inspect the earlier install
 command first. A missing APK and an uninstalled package are more likely than an
 activity-name problem.
 
-Two debug APKs built with different debug keystores cannot update one another.
-Use an isolated application ID for diagnostic builds rather than uninstalling
-the user's app and losing its private data.
+Standard debug builds use `io.github.r055le.threadline.debug`, while signed
+alpha releases use `io.github.r055le.threadline`. They install side by side and
+never share private data. Two builds of either identity that use different
+signing keys still cannot update one another.
+
+The older pre-alpha debug identity `dev.threadline` is not an update target for
+either new identity. Remove it only after its disposable profiles, trust, keys,
+and transcript history are no longer needed.
 
 ## Fixture connection values
 
@@ -106,9 +111,10 @@ application ID:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug `
-  "-Pthreadline.applicationId=dev.threadline.validation"
+  "-Pthreadline.applicationId=io.github.r055le.threadline.validation"
 ```
 
-The property is opt-in. Ordinary builds remain `dev.threadline`. The validation
-APK has separate Android app data, so it can be installed beside the normal
-debug app and removed after the test.
+The property is opt-in and is treated as the exact application ID without the
+standard `.debug` suffix. The validation APK has separate Android app data, so
+it can be installed beside the normal debug and release apps and removed after
+the test.

@@ -26,3 +26,4 @@ technical claim.
 | 2026-07-31 | 5 | [Large-output performance](2026-07-31-phase5-large-output-performance.md) | production-path load, bounded memory, recovery latency, and builtin-loop interruption |
 | 2026-08-01 | 5 | [Samsung physical-device validation](2026-08-01-phase5-samsung-physical-validation.md) | Android 16/One UI 8.5 lifecycle, rendering, raw fallback, large font, and TalkBack |
 | 2026-08-01 | 5 | [Basic onboarding](2026-08-01-phase5-basic-onboarding.md) | one-screen orientation, contextual guidance, persistent completion, and Help reopen |
+| 2026-08-02 | 5 | [Alpha packaging and first signed candidate](2026-08-02-phase5-alpha-packaging.md) | permanent app identity, off-repository signing boundary, verified alpha.1 artifact, update proof, and tester evidence design |

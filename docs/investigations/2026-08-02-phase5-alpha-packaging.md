@@ -1,0 +1,115 @@
+# Phase 5 alpha-packaging preparation (2026-08-02)
+
+## Status
+
+Infrastructure and the first permanent-key candidate are implemented and
+locally verified. Physical release-path acceptance, same-key update proof, and
+technical-alpha use remain open; the APK is not yet published for testers.
+
+## Decision
+
+The permanent release application ID is `io.github.r055le.threadline`.
+Standard debug builds append `.debug`, allowing development and release installs
+to coexist without sharing Room databases, Android Keystore entries, profiles,
+trust records, or transcript history. The Kotlin namespace remains
+`dev.threadline` because changing source packages is unrelated to installed app
+identity.
+
+The first artifact is version `0.1.0-alpha.1` with version code `10001`.
+Both values live in `gradle.properties` beside the release application ID so
+fixture scripts, artifact naming, diagnostics, and Gradle use one source of
+truth.
+
+## Signing boundary
+
+The permanent release key is owner-held and created interactively outside the
+repository. Its keystore and passwords do not belong in Git, ordinary shell
+profiles, documentation, diagnostics, release assets, or chat. The helper uses
+JDK `keytool` without password command-line arguments and refuses repository
+destinations or replacement of an existing file.
+
+The signed-alpha builder keeps signing secrets out of Gradle configuration and
+its configuration cache. It builds the unsigned minified APK, aligns it, signs
+with Android SDK `apksigner` using environment-backed password input, verifies
+the result, prints only public certificate details, and writes a SHA-256
+checksum under ignored `dist/`.
+
+Common keystore extensions, `signing.properties`, and `dist/` are ignored as
+defense in depth. Those patterns do not replace encrypted backups, password
+manager custody, restore testing, or changed-content leak scanning.
+
+The builder also refuses repository-local keystores and refuses to replace an
+existing artifact with the same version. Alpha names identify immutable bytes;
+a changed build requires an incremented version.
+
+## Alpha evidence design
+
+The tester guide separates first installation from the more important update
+proof. A later alpha must install over the earlier signed release and preserve
+profiles, trust, encrypted saved keys, transcript configuration and history,
+and onboarding completion.
+
+The feedback form requests version, device, task category, outcome, friction,
+and reuse intent while explicitly prohibiting SSH identifiers, commands,
+output, fingerprints, and credentials. Initial evidence remains manual plus the
+existing user-previewed sanitized diagnostic export. No analytics, crash
+reporter, background upload, or stable user identifier was added.
+
+## Permanent candidate verification
+
+The owner created the off-repository PKCS12 keystore and built the immutable
+`0.1.0-alpha.1` candidate. Repository inspection found no keystore or other
+private signing material. The APK's public verification record is:
+
+- SHA-256: `feb824af68043879da2a54ecfe802b11f1fe4d0e2b722c8afceaea56ce9557e5`
+- signing-certificate SHA-256:
+  `102893bcc2fa4b70fb451661579c717c6c2b917296a99baefa6d9e9d1d13e7fc`
+- signer: one 4096-bit RSA key with certificate subject `CN=Threadline`
+- Android APK signature schemes: v2 and v3 verified
+- manifest identity: `io.github.r055le.threadline`, version
+  `0.1.0-alpha.1` (`10001`), launcher label `Threadline`
+
+The APK passed 16 KiB page-aware zip alignment and installed successfully on
+the API 35 emulator. Android reported a 776 ms cold launch of
+`dev.threadline.MainActivity`, and the app process remained alive afterward.
+The `.idsig` sidecar enabled the local incremental install; ordinary tester
+sideloading requires only the APK. This verifies the exact permanent-key
+candidate's packaging and launch, not its physical SSH behavior or upgrade
+lineage.
+
+## Acceptance still required
+
+1. Confirm password-manager custody plus at least two separately held encrypted
+   keystore backups, including one successful `keytool -list` restore check.
+2. Install and run the minified release on physical hardware through the SSH,
+   trust, password, imported-key, structured, raw-terminal, lifecycle,
+   persistence, and diagnostic paths.
+3. Build a higher-versioned candidate with the same key and prove an in-place
+   update preserves release app data.
+4. Choose distribution deliberately. Share directly for a limited invited alpha,
+   or publish a public GitHub prerelease with the tester guide, release notes,
+   checksum, certificate fingerprint, and known limitations. Threadline's GitHub
+   repository is public, so a published prerelease is not private.
+
+## Infrastructure validation
+
+The repository gate passed for unit tests, lint, debug assembly, and minified
+unsigned release assembly. Manifest inspection confirmed release identity
+`io.github.r055le.threadline`, debug identity
+`io.github.r055le.threadline.debug`, version name `0.1.0-alpha.1`, and version
+code `10001`.
+
+GitHub verification now assembles the unsigned minified release on every push
+and pull request in addition to its existing test, lint, and debug-build gate.
+Signing remains local, so CI never needs the permanent release key merely to
+prove that release shrinking and packaging compile.
+
+A disposable `/tmp` key exercised alignment, environment-backed signing,
+signature verification, checksum output, cold installation and launch of the
+minified release, and exact uninstall. The temporary key, APK, and emulator app
+were deleted; this proves tooling rather than permanent-key custody.
+
+The renamed debug and instrumentation identities then passed the complete API
+35 suite, the opt-in production password and encrypted-key SSH tests, and the
+large-output performance runner against the disposable OpenSSH fixture. The
+temporary plaintext fixture key was absent after the runner completed.

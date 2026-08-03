@@ -3,6 +3,9 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+THREADLINE_METADATA_REPOSITORY_DIR=$repository_dir
+. "$repository_dir/scripts/project-metadata.sh"
+unset THREADLINE_METADATA_REPOSITORY_DIR
 
 if [ -n "${ADB:-}" ]; then
     adb_command=$ADB
@@ -34,7 +37,7 @@ cd "$repository_dir"
 instrumentation_output=$("$adb_command" shell am instrument -w \
     -e class dev.threadline.core.session.AndroidLargeOutputPerformanceTest \
     -e threadlineFixturePassword "$fixture_password" \
-    dev.threadline.test/androidx.test.runner.AndroidJUnitRunner)
+    "$THREADLINE_DEBUG_TEST_APPLICATION_ID/androidx.test.runner.AndroidJUnitRunner")
 printf '%s\n' "$instrumentation_output"
 
 performance_output=$("$adb_command" logcat -d -t 500 | \

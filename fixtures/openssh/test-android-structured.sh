@@ -3,6 +3,9 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+THREADLINE_METADATA_REPOSITORY_DIR=$repository_dir
+. "$repository_dir/scripts/project-metadata.sh"
+unset THREADLINE_METADATA_REPOSITORY_DIR
 
 if [ -n "${ADB:-}" ]; then
     adb_command=$ADB
@@ -34,19 +37,20 @@ cd "$repository_dir"
 
 fixture_key_file=files/threadline-fixture-private-key
 cleanup_fixture_key() {
-    "$adb_command" shell run-as dev.threadline rm -f "$fixture_key_file" \
+    "$adb_command" shell run-as "$THREADLINE_DEBUG_APPLICATION_ID" rm -f "$fixture_key_file" \
         >/dev/null 2>&1 || true
 }
 trap cleanup_fixture_key EXIT INT TERM
-"$adb_command" shell run-as dev.threadline mkdir -p files
-"$adb_command" exec-in run-as dev.threadline sh -c "cat > $fixture_key_file" \
+"$adb_command" shell run-as "$THREADLINE_DEBUG_APPLICATION_ID" mkdir -p files
+"$adb_command" exec-in run-as "$THREADLINE_DEBUG_APPLICATION_ID" sh -c \
+    "cat > $fixture_key_file" \
     < "$script_dir/.state/client_ed25519"
 
 instrumentation_output=$("$adb_command" shell am instrument -w \
     -e class dev.threadline.core.session.AndroidStructuredShellIntegrationTest \
     -e threadlineFixturePassword "$fixture_password" \
     -e threadlineFixtureKeyFingerprint "$fixture_key_fingerprint" \
-    dev.threadline.test/androidx.test.runner.AndroidJUnitRunner)
+    "$THREADLINE_DEBUG_TEST_APPLICATION_ID/androidx.test.runner.AndroidJUnitRunner")
 printf '%s\n' "$instrumentation_output"
 
 case "$instrumentation_output" in

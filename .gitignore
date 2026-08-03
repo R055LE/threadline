@@ -10,6 +10,12 @@ externalNativeBuild/
 local.properties
 app/build/
 fixtures/openssh/.state/
+dist/
+*.jks
+*.keystore
+*.p12
+*.pfx
+signing.properties
 
 # Local-only Claude state (project-shared config stays committed)
 .claude/settings.local.json

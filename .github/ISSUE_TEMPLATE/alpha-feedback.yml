@@ -1,0 +1,72 @@
+name: Technical alpha feedback
+description: Report a Threadline alpha outcome without sharing SSH or terminal data.
+title: "[alpha] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include passwords, passphrases, private keys, usernames, hostnames, IP addresses, fingerprints, commands, or terminal output. Preview any Threadline diagnostic report before attaching it.
+  - type: input
+    id: version
+    attributes:
+      label: Threadline version
+      description: Use the version shown in Diagnostics, for example 0.1.0-alpha.1 (10001).
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: Galaxy S25 Ultra, Android 16 / One UI 8.5
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation type
+      options:
+        - Fresh alpha installation
+        - Update over an earlier alpha
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task category
+      description: Describe the kind of remote task without including the exact command, server, account, or output.
+      placeholder: Checked a service state and reviewed recent logs.
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Completed in transcript mode
+        - Completed after switching to raw terminal
+        - Completed after recovering from a problem
+        - Could not complete in Threadline
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: Friction or failure
+      description: Explain what slowed, confused, or blocked you and whether recovery worked. Do not paste terminal content.
+    validations:
+      required: true
+  - type: dropdown
+    id: reuse
+    attributes:
+      label: Would you use Threadline for a similar task again?
+      options:
+        - "Yes"
+        - Maybe
+        - "No"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Optionally attach the exact default-redacted report after previewing it. Explain any sensitive-field opt-in.
