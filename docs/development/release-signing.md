@@ -72,7 +72,8 @@ Before using the key:
 1. Save the password in a password manager.
 2. Make at least two encrypted backups of the keystore on separately owned
    storage.
-3. Confirm one backup can be opened with `keytool -list`.
+3. Restore-test each archive: extract a downloaded copy with the archive tool,
+   then confirm the recovered `.p12` can be read with `keytool -list`.
 4. Never rename a different key to look like the original. A different signing
    certificate creates an incompatible application update lineage.
 
@@ -84,17 +85,36 @@ in a password manager. Provider names and recovery details are intentionally
 omitted from this public repository.
 
 This is a reasonable technical-alpha backup set, but existence is not restore
-proof. Download each archive independently, decrypt it into a temporary local
-directory, and run:
+proof. `keytool` does not create, encrypt, or decrypt the backup archive. The
+archive tool and its password protect the backup; `keytool` is used only after
+extraction to prove that the recovered PKCS12 keystore is readable and belongs
+to Threadline's established update lineage.
+
+Test a downloaded copy from each storage provider independently:
+
+1. Create a temporary directory and download the encrypted archive into it. Do
+   not extract over the working keystore or modify the provider's original.
+2. Use the archive program that created the backup to decrypt and extract it
+   with the archive password. If extraction fails, stop: that backup has not
+   been proven restorable.
+3. Locate the recovered `.p12` file and run:
 
 ```bash
-keytool -list -v -keystore /path/to/recovered-threadline-release.p12
+keytool -list -v \
+  -keystore /path/to/recovered-threadline-release.p12 \
+  -alias threadline-release
 ```
 
-Confirm the `threadline-release` alias and compare the certificate SHA-256 with
-the public fingerprint above. Repeat from the second archive, then remove the
-temporary decrypted copies. Record only that both restores succeeded—never the
-archive password, keystore password, or private key.
+4. At the prompt, enter the **keystore password**. This is separate from the
+   archive password unless the owner deliberately made them identical.
+5. Confirm the alias is `threadline-release`, the entry type is
+   `PrivateKeyEntry`, and the certificate SHA-256 matches the public fingerprint
+   above. `keytool` may display the same fingerprint in uppercase with colons.
+6. Remove the temporary extracted `.p12`, leaving the encrypted archive intact.
+7. Repeat the complete process with a fresh download from the second provider.
+
+Record only that both restores succeeded—never the archive password, keystore
+password, or private key.
 
 Both current backups are online. A later offline encrypted copy on removable
 media would reduce their shared cloud/account/synchronization failure modes and
