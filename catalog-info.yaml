@@ -1,0 +1,22 @@
+# Generated from catalog/fleet.yaml in R055LE/runbook. Do not edit here.
+# Change the source and run `scripts/catalog.py apply`; edits made here
+# are reported as drift and overwritten.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: threadline
+  annotations:
+    github.com/project-slug: R055LE/threadline
+  tags:
+    - android
+    - application
+    - kotlin
+    - products
+    - ssh
+    - terminal
+spec:
+  type: application
+  lifecycle: experimental
+  owner: R055LE
+  domain: products
+  tier: 3
