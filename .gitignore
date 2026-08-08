@@ -20,6 +20,7 @@ signing.properties
 # Local-only Claude state (project-shared config stays committed)
 .claude/settings.local.json
 CLAUDE.local.md
+.claude/worktrees/
 
 # Local-only Codex agent instructions (may reference private/sibling repos)
 AGENTS.md
