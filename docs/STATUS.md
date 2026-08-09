@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-08
+Updated: 2026-08-09
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -60,13 +60,17 @@ verification. See the
 [alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
 and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
+Public CI now publishes short-lived unsigned candidates tied to the exact
+source commit; permanent signing remains local. The permanent-key alpha.4
+artifact installed over alpha.3 as the same app on the Galaxy S25 Ultra. The
+completed onboarding state, saved profile, trusted host, transcript history,
+settings, and encrypted imported key all survived. The retained key then
+authenticated without re-import and completed `pwd`. This closes the installed
+update-preservation boundary. See the
+[alpha.4 update-preservation investigation](investigations/2026-08-09-alpha4-update-preservation.md).
+
 ## Remaining Phase 5 boundaries
 
-- Complete the installed-update checklist with the next immutable permanent-key
-  alpha: update over alpha.3 while its encrypted saved fixture key exists, then
-  confirm retained local data and imported-key authentication. Alpha.3 already
-  passes imported-key authentication after force-stop/reopen and the exact
-  default-redacted diagnostic preview.
 - Choose the alpha distribution boundary deliberately: direct owner sharing for
   invited testers, or a public GitHub prerelease with checksum, certificate
   fingerprint, release notes, and known limitations. This repository is public,

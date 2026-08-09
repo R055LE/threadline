@@ -69,8 +69,12 @@ AES-256-encrypted archives, and independent downloads, extractions, and key-iden
 for both provider copies, closing backup recovery.
 The permanent alpha.3 then authenticated with an encrypted saved fixture key before and after a
 force-stop/reopen cycle, and its default diagnostic preview matched the documented privacy boundary.
-Preserving that key through the next signed version update, the limited-versus-public distribution
-decision, and technical-alpha use remain.
+Public CI then began producing source-bound unsigned candidates while permanent signing stayed
+local. The permanent alpha.4 installed over alpha.3 as the same app on the Galaxy S25 Ultra. Its
+onboarding state, profile, trusted host, transcript history, settings, and encrypted imported key
+survived, and the retained key authenticated and completed `pwd` without re-import. This closed the
+installed-update preservation boundary. The limited-versus-public distribution decision and
+technical-alpha use remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

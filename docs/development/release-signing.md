@@ -47,6 +47,19 @@ The artifact identifies as `io.github.r055le.threadline`, version
 `0.1.0-alpha.3` (`10003`), and verifies with APK signature schemes v2 and v3.
 Keep alpha.1 and alpha.2 as immutable rejected evidence; do not overwrite them.
 
+Permanent-key alpha.4 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+e010f7c4c7b9e78e5fa07a9382db8b08aa423dd2525bd25c2336ebe28d3de396
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.4` (`10004`), verifies with APK signature schemes v2 and v3,
+and is 16 KiB page aligned. Android installed it over alpha.3 as the same app.
+The update retained the release app's onboarding state, profile, trusted host,
+transcript history, settings, and encrypted saved key. That retained key then
+authenticated without re-import and completed a structured command.
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this
@@ -220,7 +233,9 @@ candidate and complete the [alpha test checklist](../alpha-testing.md), includin
 password and imported-key authentication against the disposable fixture. Then
 produce the next version and prove that `adb install -r` updates in place while
 preserving the release app's profiles, trusted-host records, encrypted keys, and
-bounded transcript history.
+bounded transcript history. Alpha.4 completed this proof over alpha.3 on the
+Galaxy S25 Ultra. Repeat it when a future release changes persistence, encryption,
+application identity, signing, or Android update behavior.
 
 Only after those checks should the verified APK, checksum, public certificate
 fingerprint, release notes, and known limitations be distributed. Direct owner

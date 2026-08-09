@@ -31,3 +31,4 @@ technical claim.
 | 2026-08-02 | 5 | [Alpha.2 raw-terminal shrinker crash](2026-08-02-alpha2-raw-terminal-shrinker-crash.md) | second lazy JNI contract, alpha.2 rejection, expanded release verification, and disposable-key alpha.3 same-session proof |
 | 2026-08-03 | 5 | [Permanent alpha.3 physical acceptance](2026-08-03-alpha3-permanent-physical-acceptance.md) | permanent artifact verification, physical same-session stress, release/JNI closure, and landscape UX evidence |
 | 2026-08-08 | 5 | [Alpha.3 imported-key and diagnostic acceptance](2026-08-08-alpha3-imported-key-diagnostics-acceptance.md) | permanent-release imported-key auth after force-stop/reopen and exact default diagnostic privacy proof |
+| 2026-08-09 | 5 | [Alpha.4 installed-update preservation](2026-08-09-alpha4-update-preservation.md) | public-CI candidate provenance, permanent-key update, retained local state, and imported-key auth without re-import |

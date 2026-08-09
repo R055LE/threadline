@@ -239,10 +239,10 @@ risks are recorded in
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. One installed-update preservation
-check and sufficient technical-alpha use remain;
-additional device and OEM coverage, including Pixel, is opportunistic alpha
-evidence rather than a separate release gate.
+basic-onboarding slices are implemented. The installed-update preservation
+check is complete. A distribution decision and sufficient technical-alpha use
+remain; additional device and OEM coverage, including Pixel, is opportunistic
+alpha evidence rather than a separate release gate.
 
 Alpha packaging preparation now defines the permanent release/debug identities,
 explicit alpha versioning, interactive off-repository key creation, local
@@ -261,9 +261,11 @@ release/JNI blocker is closed. Two encrypted off-machine signing-key backups
 now exist with separately held decryption material, and independent restores
 verified both copies against the established key identity. Alpha.3 imported-key
 authentication and default diagnostic checks now pass on the physical release
-artifact. Preserving that encrypted key through the next
-signed version update, the distribution decision, and technical-alpha use
-remain.
+artifact. Public CI now produces source-bound unsigned candidates while the
+permanent signing key remains local. The permanent-key `0.1.0-alpha.4` artifact
+installed over alpha.3 in place, retained onboarding, profiles, trusted hosts,
+transcripts, settings, and the encrypted saved key, then authenticated with that
+key without re-import. The distribution decision and technical-alpha use remain.
 
 Use these records according to their purpose:
 
