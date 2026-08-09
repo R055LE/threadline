@@ -33,8 +33,11 @@ and [basic-onboarding investigation](investigations/2026-08-01-phase5-basic-onbo
 
 Alpha packaging preparation is also implemented: permanent release and separate
 debug application IDs, explicit alpha versioning, off-repository interactive
-key creation, local align/sign/verify/checksum tooling, a tester checklist, and
-a non-secret feedback form. The first two permanent-key candidates are rejected.
+key creation, public CI packaging of short-lived unsigned candidates, local
+align/sign/verify/checksum tooling, a tester checklist, and a non-secret
+feedback form. CI candidates carry their source commit, release identity,
+checksum, and R8 mapping, while the permanent key and signed artifacts remain
+outside the public workflow. The first two permanent-key candidates are rejected.
 Alpha.1 crashed during native terminal initialization on Connect. Alpha.2 fixed
 that path, installed over alpha.1 with app data preserved, authenticated by
 password, and completed a structured `pwd` turn on the Galaxy S25 Ultra. Opening

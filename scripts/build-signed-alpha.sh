@@ -8,6 +8,11 @@ THREADLINE_METADATA_REPOSITORY_DIR=$repository_dir
 . "$script_dir/project-metadata.sh"
 unset THREADLINE_METADATA_REPOSITORY_DIR
 
+if (( $# > 1 )); then
+    echo "Usage: $0 [unsigned-ci-candidate.apk]" >&2
+    exit 64
+fi
+
 if [[ -z ${THREADLINE_RELEASE_STORE_FILE:-} ]]; then
     echo "Set THREADLINE_RELEASE_STORE_FILE to the release keystore path." >&2
     exit 64
@@ -49,12 +54,12 @@ find_sdk_tool() {
 }
 
 apksigner_command=$(find_sdk_tool apksigner)
+aapt_command=$(find_sdk_tool aapt)
 zipalign_command=$(find_sdk_tool zipalign)
 output_dir=${THREADLINE_ALPHA_OUTPUT_DIR:-$repository_dir/dist}
 output_name=threadline-${THREADLINE_VERSION_NAME}.apk
 output_apk=$output_dir/$output_name
 aligned_apk=$output_dir/.threadline-${THREADLINE_VERSION_NAME}-aligned.apk
-unsigned_apk=$repository_dir/app/build/outputs/apk/release/app-release-unsigned.apk
 
 umask 077
 install -d "$output_dir"
@@ -62,11 +67,60 @@ if [[ -e $output_apk || -e $output_apk.sha256 ]]; then
     echo "Refusing to replace an existing alpha artifact; increment the version first." >&2
     exit 64
 fi
-cd "$repository_dir"
-./gradlew --no-daemon :app:assembleRelease
+
+if [[ -n ${1:-} ]]; then
+    if [[ ! -f $1 ]]; then
+        echo "Unsigned CI candidate not found: $1" >&2
+        exit 64
+    fi
+    candidate_dir=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd -P)
+    unsigned_apk=$candidate_dir/$(basename -- "$1")
+    candidate_checksum=$unsigned_apk.sha256
+    candidate_metadata=$candidate_dir/BUILD-METADATA.txt
+    if [[ ! -f $candidate_checksum || ! -f $candidate_metadata ]]; then
+        echo "The CI candidate must include its checksum and BUILD-METADATA.txt." >&2
+        exit 64
+    fi
+
+    expected_checksum=$(awk -v name="$(basename -- "$unsigned_apk")" \
+        '$2 == name { print $1 }' "$candidate_checksum")
+    actual_checksum=$(sha256sum "$unsigned_apk" | awk '{ print $1 }')
+    if [[ -z $expected_checksum || $actual_checksum != "$expected_checksum" ]]; then
+        echo "Unsigned CI candidate checksum verification failed." >&2
+        exit 1
+    fi
+
+    metadata_value() {
+        sed -n "s/^$1=//p" "$candidate_metadata"
+    }
+    source_commit=$(metadata_value source-commit)
+    current_commit=$(git -C "$repository_dir" rev-parse HEAD)
+    if [[ $(metadata_value artifact-kind) != "unsigned-alpha-candidate" ]] ||
+        [[ $(metadata_value distribution-status) != "unsigned-not-an-official-release" ]] ||
+        [[ $source_commit != "$current_commit" ]] ||
+        [[ $(metadata_value application-id) != "$THREADLINE_RELEASE_APPLICATION_ID" ]] ||
+        [[ $(metadata_value version-name) != "$THREADLINE_VERSION_NAME" ]] ||
+        [[ $(metadata_value version-code) != "$THREADLINE_VERSION_CODE" ]] ||
+        [[ $(metadata_value apk) != "$(basename -- "$unsigned_apk")" ]]; then
+        echo "Unsigned CI candidate metadata does not match this checkout." >&2
+        exit 1
+    fi
+else
+    cd "$repository_dir"
+    ./gradlew --no-daemon :app:assembleRelease
+    unsigned_apk=$repository_dir/app/build/outputs/apk/release/app-release-unsigned.apk
+fi
 
 if [[ ! -f $unsigned_apk ]]; then
     echo "Unsigned release APK was not produced at $unsigned_apk" >&2
+    exit 1
+fi
+
+package_line=$("$aapt_command" dump badging "$unsigned_apk" | sed -n '1p')
+if [[ $package_line != *"name='$THREADLINE_RELEASE_APPLICATION_ID'"* ]] ||
+    [[ $package_line != *"versionCode='$THREADLINE_VERSION_CODE'"* ]] ||
+    [[ $package_line != *"versionName='$THREADLINE_VERSION_NAME'"* ]]; then
+    echo "Unsigned release APK identity does not match project metadata." >&2
     exit 1
 fi
 

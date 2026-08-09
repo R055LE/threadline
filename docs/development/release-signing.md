@@ -134,24 +134,64 @@ instructions somewhere that does not depend on the same two cloud accounts.
 
 ## Build a signed alpha APK
 
+Every successful push to `main` publishes a seven-day GitHub Actions artifact
+named `threadline-<version>-UNSIGNED-<commit>`. It contains the unsigned release
+APK, its SHA-256 checksum, the R8 mapping, and build metadata. The artifact is
+public because this repository is public. It contains no signing key or
+password, cannot update the official app, and is not a distributable Threadline
+release.
+
+To sign the exact candidate produced by CI, first identify the successful
+`Android` run for the intended commit:
+
+```bash
+git pull --ff-only
+git rev-parse HEAD
+gh run list --workflow Android --branch main --limit 5
+gh run view RUN_ID --json conclusion,headSha,url
+```
+
+Confirm that `conclusion` is `success` and `headSha` equals the local `HEAD`.
+Then download and verify the artifact:
+
+```bash
+threadline_candidate_dir=$(mktemp -d)
+gh run download RUN_ID \
+  --pattern 'threadline-*-UNSIGNED-*' \
+  --dir "$threadline_candidate_dir"
+(
+  cd "$threadline_candidate_dir"
+  sha256sum -c threadline-*-UNSIGNED.apk.sha256
+)
+threadline_candidate_apk=$(find "$threadline_candidate_dir" -maxdepth 1 \
+  -type f -name 'threadline-*-UNSIGNED.apk' -print -quit)
+```
+
 Set only the non-secret path and alias in the shell. The build helper prompts
 for both passwords without echoing them:
 
 ```bash
 export THREADLINE_RELEASE_STORE_FILE="$HOME/.local/share/threadline/signing/threadline-release.p12"
 export THREADLINE_RELEASE_KEY_ALIAS=threadline-release
-./scripts/build-signed-alpha.sh
+./scripts/build-signed-alpha.sh "$threadline_candidate_apk"
 unset THREADLINE_RELEASE_STORE_FILE THREADLINE_RELEASE_KEY_ALIAS
+rm -r -- "$threadline_candidate_dir"
+unset threadline_candidate_apk threadline_candidate_dir
 ```
+
+The helper verifies the candidate checksum, source commit, application ID, and
+version before asking for signing passwords. Omitting the APK argument keeps the
+original local-build path and runs `assembleRelease` before signing.
 
 For non-interactive automation, the helper also accepts
 `THREADLINE_RELEASE_STORE_PASSWORD` and `THREADLINE_RELEASE_KEY_PASSWORD` from
 the process environment. Do not place those variables in a committed file or
 ordinary shell profile.
 
-The helper:
+The helper then:
 
-1. builds the minified release APK;
+1. uses the verified CI candidate, or builds the minified release APK when no
+   candidate is supplied;
 2. aligns it before signing;
 3. signs it with Android SDK `apksigner` using environment-backed password
    inputs;
