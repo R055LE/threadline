@@ -156,8 +156,12 @@ Then download and verify the artifact:
 
 ```bash
 threadline_candidate_dir=$(mktemp -d)
+THREADLINE_METADATA_REPOSITORY_DIR=$PWD
+. ./scripts/project-metadata.sh
+unset THREADLINE_METADATA_REPOSITORY_DIR
+threadline_candidate_name="threadline-${THREADLINE_VERSION_NAME}-UNSIGNED-$(git rev-parse --short=12 HEAD)"
 gh run download RUN_ID \
-  --pattern 'threadline-*-UNSIGNED-*' \
+  --name "$threadline_candidate_name" \
   --dir "$threadline_candidate_dir"
 (
   cd "$threadline_candidate_dir"
@@ -176,7 +180,7 @@ export THREADLINE_RELEASE_KEY_ALIAS=threadline-release
 ./scripts/build-signed-alpha.sh "$threadline_candidate_apk"
 unset THREADLINE_RELEASE_STORE_FILE THREADLINE_RELEASE_KEY_ALIAS
 rm -r -- "$threadline_candidate_dir"
-unset threadline_candidate_apk threadline_candidate_dir
+unset threadline_candidate_apk threadline_candidate_dir threadline_candidate_name
 ```
 
 The helper verifies the candidate checksum, source commit, application ID, and
