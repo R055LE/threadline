@@ -239,8 +239,8 @@ risks are recorded in
 
 Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. Completion of the remaining alpha.3
-release checklist and sufficient technical-alpha use remain;
+basic-onboarding slices are implemented. One installed-update preservation
+check and sufficient technical-alpha use remain;
 additional device and OEM coverage, including Pixel, is opportunistic alpha
 evidence rather than a separate release gate.
 
@@ -259,8 +259,11 @@ the corrected physical release path on the Galaxy S25 Ultra. A running `ping`
 survived repeated transcript/terminal switching and rotation in each view. The
 release/JNI blocker is closed. Two encrypted off-machine signing-key backups
 now exist with separately held decryption material, and independent restores
-verified both copies against the established key identity. Still-unreported
-checklist items, the distribution decision, and technical-alpha use remain.
+verified both copies against the established key identity. Alpha.3 imported-key
+authentication and default diagnostic checks now pass on the physical release
+artifact. Preserving that encrypted key through the next
+signed version update, the distribution decision, and technical-alpha use
+remain.
 
 Use these records according to their purpose:
 

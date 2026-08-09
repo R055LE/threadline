@@ -67,8 +67,10 @@ compact-height terminal-layout issue. Two encrypted off-machine signing-key copi
 held decryption material subsequently established the backup set. They were replaced with portable
 AES-256-encrypted archives, and independent downloads, extractions, and key-identity checks passed
 for both provider copies, closing backup recovery.
-The limited-versus-public distribution decision, remaining checklist items, and technical-alpha
-use remain.
+The permanent alpha.3 then authenticated with an encrypted saved fixture key before and after a
+force-stop/reopen cycle, and its default diagnostic preview matched the documented privacy boundary.
+Preserving that key through the next signed version update, the limited-versus-public distribution
+decision, and technical-alpha use remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

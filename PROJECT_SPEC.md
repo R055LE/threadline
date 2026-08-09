@@ -1075,10 +1075,12 @@ structured and raw views, a running `ping`, repeated view changes, and rotation
 in both views preserved the live session without the alpha.2 crash. Two
 portable AES-256-encrypted off-machine signing-key backups are held separately
 from their decryption secret. Independent restores verified both copies against
-the established key identity, closing backup recovery. Still-unreported
-release-checklist items and the limited-versus-public distribution decision
-remain open. Because the repository is public, any published GitHub prerelease
-is public.
+the established key identity, closing backup recovery. Alpha.3 imported-key
+authentication and default diagnostic checks subsequently passed on the
+physical release artifact after force-stop/reopen. Preserving that encrypted
+key through the next signed version update and the
+limited-versus-public distribution decision remain open. Because the
+repository is public, any published GitHub prerelease is public.
 
 ---
 

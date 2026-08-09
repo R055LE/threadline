@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-03
+Updated: 2026-08-08
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -52,15 +52,18 @@ decryption secret; independent download, extraction, key-entry, alias, and
 certificate checks passed for both provider copies, closing restore
 verification. See the
 [permanent alpha.3 acceptance investigation](investigations/2026-08-03-alpha3-permanent-physical-acceptance.md),
+[alpha.3 imported-key and diagnostic investigation](investigations/2026-08-08-alpha3-imported-key-diagnostics-acceptance.md),
 [alpha-packaging investigation](investigations/2026-08-02-phase5-alpha-packaging.md),
 [alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
 and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
 ## Remaining Phase 5 boundaries
 
-- Complete any still-unreported permanent-alpha.3 checklist items, especially
-  imported-key authentication and the sanitized diagnostic preview. The
-  release-blocking raw-terminal path is accepted.
+- Complete the installed-update checklist with the next immutable permanent-key
+  alpha: update over alpha.3 while its encrypted saved fixture key exists, then
+  confirm retained local data and imported-key authentication. Alpha.3 already
+  passes imported-key authentication after force-stop/reopen and the exact
+  default-redacted diagnostic preview.
 - Choose the alpha distribution boundary deliberately: direct owner sharing for
   invited testers, or a public GitHub prerelease with checksum, certificate
   fingerprint, release notes, and known limitations. This repository is public,
