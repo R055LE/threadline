@@ -71,11 +71,40 @@ update-preservation boundary. See the
 
 ## Remaining Phase 5 boundaries
 
-- Choose the alpha distribution boundary deliberately: direct owner sharing for
-  invited testers, or a public GitHub prerelease with checksum, certificate
-  fingerprint, release notes, and known limitations. This repository is public,
-  so a published prerelease is public too.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
+
+## Alpha distribution: direct invited sharing, decided 2026-08-09
+
+The alpha goes to invited testers directly. **No public GitHub prerelease while
+Phase 5 is open**, even though this repository is public and a release would be
+straightforward to publish.
+
+What decided it was not caution about the artifact, which is in good shape. It
+was reach against contact. A public prerelease means anyone can install a build
+whose own release notes carry a known-limitations list, and there is then no way
+to reach those installs when the next alpha changes something. An invited list
+is a list you can talk to, so "don't rely on X yet" gets said to a person rather
+than left sitting next to a download button.
+
+The exit criterion is what makes this easy. It asks for enough technical-alpha
+use to evaluate, and a handful of testers who answer questions is worth more
+toward that than downloads that don't. So a public prerelease is what happens
+once the criterion is met, not the way it gets met. Sequencing, not a permanent
+position.
+
+Two things worth recording so this isn't relitigated from memory:
+
+- **The signing question is separate and already settled.** The permanent update
+  lineage was established at alpha.1 and verified again at alpha.4 against
+  certificate SHA-256 `102893bc…`, with the release key never entering CI. That
+  holds under either distribution choice, so it argues for neither.
+- **The transparency half of the public option is already done.** Checksums, the
+  certificate fingerprint, signature schemes and 16 KiB alignment are published
+  in `investigations/2026-08-09-alpha4-update-preservation.md`, in a public
+  repository. Only the binary stays private.
+
+The asymmetry closes it: private can become public later, published can't become
+unpublished. GitHub will delete a release; anything already mirrored is out.
 
 Additional physical-device and OEM coverage, including Pixel, should be collected opportunistically
 during technical alpha. The completed Samsung pass satisfies the dedicated physical-device boundary;
