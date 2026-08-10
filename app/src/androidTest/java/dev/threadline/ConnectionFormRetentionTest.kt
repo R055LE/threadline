@@ -165,8 +165,11 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .performScrollTo()
             .performTextReplacement("session-only")
 
         compose.runOnIdle { formVisible.value = false }
@@ -315,9 +318,14 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH).performClick()
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .performScrollTo()
             .performTextReplacement("session-only")
         compose.onNodeWithTag(ConnectionFormTags.CONNECT)
             .performScrollTo()
@@ -361,18 +369,27 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH).performClick()
-        compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_NAME)
             .performTextReplacement("New name")
         compose.onNodeWithTag(ConnectionFormTags.CONFIRM_RENAME_KEY).performClick()
         compose.waitForIdle()
         assertEquals(savedKey.id to "New name", renamed)
 
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
+            .performScrollTo()
             .performTextReplacement("delete-me")
-        compose.onNodeWithTag(ConnectionFormTags.DELETE_KEY_PREFIX + savedKey.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.DELETE_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .performClick()
         assertNull(deletedId)
         compose.onNodeWithText("Delete saved key?").assertExists()
         compose.onAllNodesWithText("ssh-ed25519 · SHA256:managed-fixture")
@@ -428,15 +445,20 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.SAVE_PROFILE).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.SAVE_PROFILE)
+            .performScrollTo()
+            .performClick()
         compose.waitForIdle()
         assertEquals("Local fixture", savedProfile?.displayName)
         compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
             .assertIsSelected()
 
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performScrollTo()
             .performTextReplacement("session-only")
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
             .assertEditableTextEquals("Lab")
         compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
@@ -449,16 +471,22 @@ class ConnectionFormRetentionTest {
             .assertEditableTextEquals("")
 
         compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
+            .performScrollTo()
             .performTextReplacement("  Renamed lab  ")
-        compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE)
+            .performScrollTo()
+            .performClick()
         compose.waitForIdle()
         assertEquals(original.id, updatedProfile?.first)
         assertEquals("Renamed lab", updatedProfile?.second?.displayName)
         assertEquals(HostEndpoint("lab.example", 2200), updatedProfile?.second?.endpoint)
 
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performScrollTo()
             .performTextReplacement("delete-me")
-        compose.onNodeWithTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + original.id).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + original.id)
+            .performScrollTo()
+            .performClick()
         assertNull(deletedId)
         compose.onNodeWithText("Delete saved profile?").assertExists()
         compose.onAllNodesWithText("operator@lab.example:2200").assertCountEquals(2)
@@ -511,6 +539,7 @@ class ConnectionFormRetentionTest {
 
         compose.onNodeWithText("To replace this trust record", substring = true).assertExists()
         compose.onNodeWithTag(ConnectionFormTags.DELETE_TRUST_PREFIX + trustedHost.endpointKey)
+            .performScrollTo()
             .performClick()
         assertNull(deletedEndpointKey)
         compose.onNodeWithText("Forget trusted server?").assertExists()
