@@ -230,3 +230,23 @@ optional on-device counters or an exportable local summary only after defining
 the exact questions, fields, retention, redaction, consent, and deletion model.
 Do not add a telemetry SDK, background upload, stable user identifier, command
 content, host data, or terminal output merely to claim that metrics exist.
+
+## Automated release-path and device acceptance
+
+**Status:** Deferred test-infrastructure design; alpha.6 physical acceptance is
+complete.
+
+The core debug Android suite and static release-shrinker checks run in public CI,
+but alpha.5 showed the remaining gap: assembling a minified APK is not the same
+as connecting through its production runtime. Alpha.6 used an isolated in-app
+minified probe plus a manual signed update on the physical device to close that
+specific regression.
+
+A later automation slice should define how to cover a packaged minified app
+through fixture connection, password and imported-key authentication,
+structured commands, raw-terminal input, same-session switching, and retained
+state across versioned installs. Use a dedicated test application identity and
+disposable test signing material. The permanent release key and its passwords
+must remain outside public CI. Device or OEM automation can strengthen the
+matrix, but it does not make every physical keyboard, lifecycle, accessibility,
+or update behavior universal.

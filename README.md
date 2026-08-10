@@ -7,17 +7,17 @@ like responses, while a real terminal remains underneath for interactive work.
 ## Alpha status
 
 **[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
-and owner-device acceptance through alpha.4 are complete. Alpha.5 installed in
-place but is rejected because a new release-shrinker failure prevents SSH
-connection. The alpha.6 source correction now passes the minified SSH proof and
-release regression gate; it still needs independent CI, permanent signing, and
-physical update acceptance. The remaining product boundary is enough invited
-technical-alpha use to evaluate whether ten real users can complete small
-remote tasks for two weeks and provide useful feedback.
+and owner-device acceptance through alpha.6 are complete. Alpha.5 installed in
+place but is rejected because a release-shrinker failure prevents SSH
+connection. Alpha.6 corrects that failure and has passed independent CI,
+permanent signing, in-place update, and physical acceptance. The remaining
+product boundary is invited technical-alpha use sufficient to evaluate whether
+ten real users can complete small remote tasks for two weeks and provide useful
+feedback.
 
-The current accepted signed build is `0.1.0-alpha.4`; `0.1.0-alpha.5` is an
-immutable rejected artifact, and `0.1.0-alpha.6` is the current corrected source
-candidate. Signed builds are shared directly with invited testers.
+The current accepted signed build is `0.1.0-alpha.6`; `0.1.0-alpha.5` is an
+immutable rejected artifact. Signed builds are shared directly with invited
+testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
@@ -299,8 +299,11 @@ relocation. Alpha.5 is rejected; an isolated minified probe reproduces the
 failure and proves the narrow keep-rule correction intended for alpha.6.
 The alpha.6 source applies that narrow rule and makes the release gate verify
 the exact provider class names in both the R8 mapping and assembled DEX. Its
-isolated minified password SSH proof passes. Independent CI, permanent signing,
-and physical acceptance remain before invited technical-alpha use resumes.
+isolated minified password SSH proof passes. Independent CI then produced the
+exact candidate signed with the permanent key. Alpha.6 installed over alpha.5
+with state intact and passed password and retained imported-key authentication,
+Diagnostics, structured commands, and same-session raw-terminal acceptance on
+the Galaxy S25 Ultra. Invited technical-alpha use can resume.
 
 Use these records according to their purpose:
 

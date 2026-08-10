@@ -212,6 +212,8 @@ Raw mode must:
 
 - Use the same SSH channel and PTY.
 - Continue receiving the exact same byte stream.
+- Keep commands entered directly in raw mode and their output in the terminal;
+  they do not create structured transcript cards or persisted transcript turns.
 - Support resize events.
 - Expose Ctrl, Alt, Esc, Tab, arrows, and common terminal keys.
 - Return to transcript mode without terminating the process.
@@ -1087,9 +1089,12 @@ resumable signing and in-place installation path, but a release-only R8
 relocation broke sshlib 0.4.2's bundled Ed25519 provider before authentication.
 Alpha.5 is rejected. The alpha.6 source applies the narrow provider keep rule,
 passes an isolated minified SSH probe, and adds a mapping/DEX release regression
-gate. It still needs independent CI, permanent signing, and physical update
-acceptance. Alpha distribution is direct invited sharing while Phase 5 is open.
-Because the repository is public, any published
+gate. Independent CI passed, and the resulting permanent-key alpha.6 installed
+over alpha.5 with retained state intact. Password and retained imported-key
+authentication, Diagnostics, structured commands, and same-session raw-terminal
+behavior passed on the Galaxy S25 Ultra. Alpha.6 is the accepted tester build.
+Alpha distribution is direct invited sharing while Phase 5 is open. Because the
+repository is public, any published
 GitHub prerelease would be public. Sufficient invited technical-alpha use is the
 remaining Phase 5 boundary.
 

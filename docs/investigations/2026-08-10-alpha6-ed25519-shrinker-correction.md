@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-10
 **Phase:** 5, alpha polish
-**Status:** Source correction accepted; permanent artifact pending
+**Status:** Accepted
 
 ## Boundary
 
@@ -58,13 +58,39 @@ suite reached SSH but timed out on its later Ctrl-C completion case. An
 immediate isolated rerun passed both credential-gated tests. No product change
 was made for that one load-sensitive timeout.
 
-## Remaining acceptance
+## Permanent artifact
 
-Alpha.6 still needs to merge and pass the independent GitHub gate. The resulting
-exact `main` candidate must then be signed with the permanent key and installed
-over alpha.5. On the physical device, repeat retained-state, password and
-imported-key authentication, Diagnostics, structured command, and same-session
-raw-terminal checks before sharing it with invited testers.
+Pull request 7 merged the correction as `b96cda3bfd2c60b006adf17281174dddfbe48af5`.
+The independent Android push run for that exact `main` commit passed its build,
+release-shrinker, and instrumented gates and uploaded the unsigned alpha.6
+candidate. The local signing wrapper selected that run and signed it with the
+permanent key.
 
-Alpha.4 remains the latest accepted tester build. No password, passphrase,
-private key, private endpoint, or fixture identity is recorded here.
+The finished artifact independently verifies as:
+
+- package: `io.github.r055le.threadline`
+- version: `0.1.0-alpha.6` (`10006`)
+- APK SHA-256: `67b20d8b6c149c06e23fb063dff9b3e84ad988f0ff16fcaea25964fa62ede674`
+- signing certificate SHA-256: `102893bcc2fa4b70fb451661579c717c6c2b917296a99baefa6d9e9d1d13e7fc`
+- signature schemes: APK v2 and v3 verified
+- alignment: 16 KiB page-aware zip alignment verified
+
+## Physical acceptance
+
+The owner installed alpha.6 over rejected alpha.5 on the Galaxy S25 Ultra.
+Android accepted it as an in-place update, and the retained application state
+remained usable. The acceptance path passed fixture connection, password and
+retained imported-key authentication, Diagnostics, structured commands, and
+same-session raw-terminal switching. This closes the alpha.5 release regression
+and makes alpha.6 the accepted tester build.
+
+Typing `echo` directly in raw mode displayed its output in the terminal without
+adding a transcript card. This matches the current product contract: raw input
+writes directly to the shared PTY, while structured transcript turns are created
+only by composer submissions and collect output between their lifecycle
+markers. Raw-terminal activity is therefore not persisted as structured
+transcript history.
+
+Broader release-path and device acceptance automation remains a deferred test-
+infrastructure decision in the backlog. No password, passphrase, private key,
+private endpoint, or fixture identity is recorded here.

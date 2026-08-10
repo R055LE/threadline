@@ -86,7 +86,7 @@ authentication, PTY creation, and shell startup. Alpha.5 is rejected and alpha.4
 remains the latest accepted signed artifact. See the
 [alpha.5 signing and release-shrinker investigation](investigations/2026-08-10-alpha5-signing-update-progress.md).
 
-The current corrected source is `0.1.0-alpha.6` (`10006`). It preserves the
+The accepted tester build is `0.1.0-alpha.6` (`10006`). It preserves the
 three cbssh Ed25519 JCA classes whose binary names are part of the provider
 contract, and the renamed release verifier now requires those exact names in
 both the R8 mapping and assembled DEX alongside the existing termlib JNI field
@@ -94,14 +94,18 @@ checks. The gate rejects the pre-fix alpha.5 output and accepts alpha.6. An
 isolated minified API 35 probe with the exact production rule completed password
 authentication, PTY creation, and shell startup. The full local JVM, lint,
 debug, release, connected Android, password fixture, and encrypted-key fixture
-paths pass. See the
+paths pass. The merged `main` gate produced the exact candidate signed with the
+permanent key. Its package, version, certificate, v2/v3 signatures, checksum,
+and 16 KiB alignment independently verify. On the Galaxy S25 Ultra, alpha.6
+installed over alpha.5 with retained state intact and passed password and
+retained imported-key authentication, Diagnostics, structured commands, and
+same-session raw-terminal acceptance. Commands typed directly in the raw
+terminal correctly remained terminal-only rather than creating transcript
+cards. See the
 [alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
 
 ## Remaining Phase 5 boundaries
 
-- Merge alpha.6 and pass independent CI, then sign its exact `main` candidate
-  and repeat physical update, retained-state, authentication, Diagnostics, and
-  same-session structured/raw acceptance.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
 
 ## Alpha distribution: direct invited sharing, decided 2026-08-09
@@ -126,12 +130,12 @@ position.
 Two things worth recording so this isn't relitigated from memory:
 
 - **The signing question is separate and already settled.** The permanent update
-  lineage was established at alpha.1 and verified again at alpha.5 against
+  lineage was established at alpha.1 and verified again at alpha.6 against
   certificate SHA-256 `102893bc…`, with the release key never entering CI. That
   holds under either distribution choice, so it argues for neither.
 - **The transparency half of the public option is already done.** Checksums, the
   certificate fingerprint, signature schemes and 16 KiB alignment are published
-  in `investigations/2026-08-10-alpha5-signing-update-progress.md`, in a public
+  in `investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md`, in a public
   repository. Only the signed tester APK stays private.
 
 The asymmetry closes it: private can become public later, published can't become
