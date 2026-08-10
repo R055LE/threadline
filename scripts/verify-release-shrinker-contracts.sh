@@ -81,10 +81,30 @@ verify_class_fields() {
     done
 }
 
+verify_class_identity() {
+    class_name=$1
+    if ! grep -Fqx "$class_name -> $class_name:" "$mapping_file"; then
+        echo "$class_name is missing or renamed in the release mapping." >&2
+        exit 1
+    fi
+    if ! awk -v expected_class="$class_name" '
+        $1 == "C" && $6 == expected_class { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$dex_listing"
+    then
+        echo "Release DEX is missing required runtime class $class_name." >&2
+        exit 1
+    fi
+}
+
 apkanalyzer_command=$(find_apkanalyzer)
 dex_listing=$(mktemp)
 trap 'rm -f "$dex_listing"' EXIT
 "$apkanalyzer_command" dex packages --defined-only "$release_apk" > "$dex_listing"
+
+verify_class_identity org.connectbot.sshlib.crypto.ed25519.Ed25519Provider
+verify_class_identity org.connectbot.sshlib.crypto.ed25519.Ed25519KeyFactory
+verify_class_identity org.connectbot.sshlib.crypto.ed25519.Ed25519KeyPairGenerator
 
 verify_class_fields org.connectbot.terminal.CellRun \
     fgRed fgGreen fgBlue bgRed bgGreen bgBlue bold underline italic blink \
@@ -93,4 +113,4 @@ verify_class_fields org.connectbot.terminal.ScreenCell \
     char combiningChars fgRed fgGreen fgBlue bgRed bgGreen bgBlue bold italic \
     underline reverse strike width
 
-echo "Release JNI field-name contract verified."
+echo "Release shrinker contracts verified."

@@ -32,3 +32,5 @@ technical claim.
 | 2026-08-03 | 5 | [Permanent alpha.3 physical acceptance](2026-08-03-alpha3-permanent-physical-acceptance.md) | permanent artifact verification, physical same-session stress, release/JNI closure, and landscape UX evidence |
 | 2026-08-08 | 5 | [Alpha.3 imported-key and diagnostic acceptance](2026-08-08-alpha3-imported-key-diagnostics-acceptance.md) | permanent-release imported-key auth after force-stop/reopen and exact default diagnostic privacy proof |
 | 2026-08-09 | 5 | [Alpha.4 installed-update preservation](2026-08-09-alpha4-update-preservation.md) | public-CI candidate provenance, permanent-key update, retained local state, and imported-key auth without re-import |
+| 2026-08-10 | 5 | [Alpha.5 signing and release-shrinker rejection](2026-08-10-alpha5-signing-update-progress.md) | resumable signing proof, physical connection failure, minified reproduction, and cbssh Ed25519 provider root cause |
+| 2026-08-10 | 5 | [Alpha.6 Ed25519 shrinker correction](2026-08-10-alpha6-ed25519-shrinker-correction.md) | narrow provider keep rule, mapping/DEX regression gate, and minified SSH proof |

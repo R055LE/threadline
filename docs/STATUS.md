@@ -69,19 +69,39 @@ authenticated without re-import and completed `pwd`. This closes the installed
 update-preservation boundary. See the
 [alpha.4 update-preservation investigation](investigations/2026-08-09-alpha4-update-preservation.md).
 
-The next source candidate is `0.1.0-alpha.5` (`10005`). Its pre-invite
+The alpha.5 source candidate is `0.1.0-alpha.5` (`10005`). Its pre-invite
 hardening pins GitHub Actions to immutable commits, validates the Gradle wrapper
 and distribution checksum, enforces dependency checksums, verifies 16 KiB APK
 alignment after signing, upgrades ConnectBot `sshlib` to 0.4.2, and adds the
-core API 35 instrumented suite to CI. Alpha.4 remains the latest accepted signed
-artifact until alpha.5 passes the signed update and physical-device regression
-path.
+core API 35 instrumented suite to CI. The new local wrapper selected the exact
+successful `main` candidate, signed it with the permanent key, and produced an
+alpha.5 artifact whose checksum, identity, certificate, v2/v3 signatures, and
+16 KiB alignment verify. Android accepted it as an in-place update over the
+existing Galaxy S25 Ultra installation, but the installed release could not
+connect. An isolated minified API 35 probe reproduced a pre-authentication
+`NullPointerException`: sshlib 0.4.2 constructs its bundled Ed25519 provider,
+while R8 had moved that provider into the default package and broken its runtime
+package lookup. A narrow provider keep rule made the same minified probe pass
+authentication, PTY creation, and shell startup. Alpha.5 is rejected and alpha.4
+remains the latest accepted signed artifact. See the
+[alpha.5 signing and release-shrinker investigation](investigations/2026-08-10-alpha5-signing-update-progress.md).
+
+The current corrected source is `0.1.0-alpha.6` (`10006`). It preserves the
+three cbssh Ed25519 JCA classes whose binary names are part of the provider
+contract, and the renamed release verifier now requires those exact names in
+both the R8 mapping and assembled DEX alongside the existing termlib JNI field
+checks. The gate rejects the pre-fix alpha.5 output and accepts alpha.6. An
+isolated minified API 35 probe with the exact production rule completed password
+authentication, PTY creation, and shell startup. The full local JVM, lint,
+debug, release, connected Android, password fixture, and encrypted-key fixture
+paths pass. See the
+[alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
 
 ## Remaining Phase 5 boundaries
 
-- Alpha.5 signed-update acceptance on the physical device: retained local
-  state, password and imported-key authentication, and the structured/raw
-  same-session path.
+- Merge alpha.6 and pass independent CI, then sign its exact `main` candidate
+  and repeat physical update, retained-state, authentication, Diagnostics, and
+  same-session structured/raw acceptance.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
 
 ## Alpha distribution: direct invited sharing, decided 2026-08-09
@@ -106,12 +126,12 @@ position.
 Two things worth recording so this isn't relitigated from memory:
 
 - **The signing question is separate and already settled.** The permanent update
-  lineage was established at alpha.1 and verified again at alpha.4 against
+  lineage was established at alpha.1 and verified again at alpha.5 against
   certificate SHA-256 `102893bc…`, with the release key never entering CI. That
   holds under either distribution choice, so it argues for neither.
 - **The transparency half of the public option is already done.** Checksums, the
   certificate fingerprint, signature schemes and 16 KiB alignment are published
-  in `investigations/2026-08-09-alpha4-update-preservation.md`, in a public
+  in `investigations/2026-08-10-alpha5-signing-update-progress.md`, in a public
   repository. Only the signed tester APK stays private.
 
 The asymmetry closes it: private can become public later, published can't become
