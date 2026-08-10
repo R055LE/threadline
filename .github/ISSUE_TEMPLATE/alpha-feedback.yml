@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Threadline version
-      description: Use the version shown in Diagnostics, for example 0.1.0-alpha.3 (10003).
+      description: Copy the version name and version code shown in Diagnostics.
     validations:
       required: true
   - type: input

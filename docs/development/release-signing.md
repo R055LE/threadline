@@ -154,6 +154,13 @@ public because this repository is public. It contains no signing key or
 password, cannot update the official app, and is not a distributable Threadline
 release.
 
+The checksum confirms that a download matches the bytes produced by that CI
+run. It is not independent proof that those bytes match the source. The build
+workflow reduces that trust gap by pinning every Action to an immutable commit,
+validating the Gradle wrapper, checking the wrapper distribution, and enforcing
+Gradle dependency checksums. Review changes to those pins and checksums as
+supply-chain changes before signing a new candidate.
+
 To sign the exact candidate produced by CI, first identify the successful
 `Android` run for the intended commit:
 
@@ -209,7 +216,8 @@ The helper then:
 
 1. uses the verified CI candidate, or builds the minified release APK when no
    candidate is supplied;
-2. aligns it before signing;
+2. aligns it for 16 KiB pages before signing and verifies that alignment after
+   signing;
 3. signs it with Android SDK `apksigner` using environment-backed password
    inputs;
 4. verifies the APK and prints its public signing-certificate fingerprints; and

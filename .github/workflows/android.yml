@@ -11,23 +11,66 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Install Android SDK platform
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
-      - uses: gradle/actions/setup-gradle@v6
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: basic
       - name: Test, lint, and assemble debug and release
         run: ./gradlew --no-daemon test lint assembleDebug assembleRelease
       - name: Verify release JNI field names
         run: ./scripts/verify-release-jni-contract.sh
+      - name: Install emulator system image
+        run: sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
+      - name: Create emulator
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/threadline-avd
+        run: |
+          mkdir -p "${ANDROID_AVD_HOME}"
+          echo "no" | avdmanager create avd --force --name threadline-ci --package "system-images;android-35;google_apis;x86_64"
+          "${ANDROID_HOME}/emulator/emulator" -list-avds | grep -Fx threadline-ci
+      - name: Start emulator
+        shell: bash
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/threadline-avd
+        run: |
+          sudo chmod 666 /dev/kvm
+          emulator_log="${RUNNER_TEMP}/threadline-emulator.log"
+          nohup "${ANDROID_HOME}/emulator/emulator" \
+            -avd threadline-ci \
+            -no-window \
+            -noaudio \
+            -no-boot-anim \
+            -no-metrics \
+            -no-snapshot \
+            -gpu swiftshader_indirect \
+            > "${emulator_log}" 2>&1 &
+          if ! timeout 300 adb wait-for-device; then
+            cat "${emulator_log}"
+            exit 1
+          fi
+          if ! timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do sleep 2; done'; then
+            cat "${emulator_log}"
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+      - name: Run instrumented tests
+        run: ./gradlew --no-daemon connectedDebugAndroidTest
+      - name: Stop emulator
+        if: always()
+        run: adb emu kill || true
       - name: Package unsigned alpha candidate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: alpha-candidate
@@ -66,7 +109,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
       - name: Upload unsigned alpha candidate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.alpha-candidate.outputs.name }}
           path: ${{ steps.alpha-candidate.outputs.path }}

@@ -15,6 +15,12 @@ For a change:
 5. Do not include passwords, private keys, `.env`, host data, or raw packet
    logs in commits or bug reports.
 
+Gradle dependency checksums are committed in
+`gradle/verification-metadata.xml`. When a dependency or plugin changes,
+regenerate the affected entries with Gradle's
+`--write-verification-metadata sha256` option and review the resulting checksum
+changes before committing them.
+
 SFTP, port forwarding, cloud services, analytics, AI features, and
 multi-session work remain out of the current MVP unless the user explicitly
 changes the product scope. Deliberately deferred work belongs in
