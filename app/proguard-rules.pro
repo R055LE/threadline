@@ -12,3 +12,11 @@
 -keepclassmembers class org.connectbot.terminal.ScreenCell {
     <fields>;
 }
+
+# cbssh 0.4.2 registers these bundled JCA implementations by a class name
+# derived from Ed25519Provider's runtime package. R8 must preserve the provider
+# package and both name-loaded implementations or host-key verification fails
+# before authentication.
+-keep class org.connectbot.sshlib.crypto.ed25519.Ed25519Provider { *; }
+-keep class org.connectbot.sshlib.crypto.ed25519.Ed25519KeyFactory { *; }
+-keep class org.connectbot.sshlib.crypto.ed25519.Ed25519KeyPairGenerator { *; }

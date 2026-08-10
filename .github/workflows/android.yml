@@ -30,8 +30,8 @@ jobs:
           cache-provider: basic
       - name: Test, lint, and assemble debug and release
         run: ./gradlew --no-daemon test lint assembleDebug assembleRelease
-      - name: Verify release JNI field names
-        run: ./scripts/verify-release-jni-contract.sh
+      - name: Verify release shrinker contracts
+        run: ./scripts/verify-release-shrinker-contracts.sh
       - name: Install emulator system image
         run: sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
       - name: Create emulator

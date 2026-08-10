@@ -60,6 +60,26 @@ The update retained the release app's onboarding state, profile, trusted host,
 transcript history, settings, and encrypted saved key. That retained key then
 authenticated without re-import and completed a structured command.
 
+Permanent-key alpha.5 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+2c238b48c14c3933ab3dcd468352370b0fb1e0d5a20476c10e6fe39b7d38d8bf
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.5` (`10005`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. It was selected from the exact successful `main` build
+by `scripts/sign-latest-alpha.sh` and Android accepted it as an in-place update
+over the existing physical release. Its first connection regression exposed a
+release-only cbssh Ed25519 provider failure after R8 relocation, so alpha.5 is
+rejected and must not be distributed or overwritten. Preserve it as immutable
+evidence and advance the corrected build to alpha.6.
+
+The current corrected source is `0.1.0-alpha.6` (`10006`). Its release rules
+preserve cbssh's name-loaded Ed25519 provider classes, and the release gate
+checks their exact binary names in both the R8 mapping and assembled DEX. Its
+permanent-key artifact and physical update evidence do not exist yet.
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this

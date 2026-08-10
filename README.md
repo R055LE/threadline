@@ -7,18 +7,22 @@ like responses, while a real terminal remains underneath for interactive work.
 ## Alpha status
 
 **[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
-and owner-device acceptance through alpha.4 are complete. The remaining product
-boundary is enough invited technical-alpha use to evaluate whether ten real
-users can complete small remote tasks for two weeks and provide useful feedback.
+and owner-device acceptance through alpha.4 are complete. Alpha.5 installed in
+place but is rejected because a new release-shrinker failure prevents SSH
+connection. The alpha.6 source correction now passes the minified SSH proof and
+release regression gate; it still needs independent CI, permanent signing, and
+physical update acceptance. The remaining product boundary is enough invited
+technical-alpha use to evaluate whether ten real users can complete small
+remote tasks for two weeks and provide useful feedback.
 
-The current accepted signed build is `0.1.0-alpha.4`; the next source candidate
-is `0.1.0-alpha.5`. Signed builds are shared directly with invited testers.
+The current accepted signed build is `0.1.0-alpha.4`; `0.1.0-alpha.5` is an
+immutable rejected artifact, and `0.1.0-alpha.6` is the current corrected source
+candidate. Signed builds are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
 [technical-alpha guide](docs/alpha-testing.md).
-Alpha.5 must pass the signed update and physical-device regression path before
-it replaces alpha.4 for testers.
+Do not distribute alpha.5.
 
 Threadline has no supported production release. Do not use the alpha for
 privileged or sensitive systems.
@@ -287,8 +291,16 @@ artifact. Public CI now produces source-identified unsigned candidates while the
 permanent signing key remains local. The permanent-key `0.1.0-alpha.4` artifact
 installed over alpha.3 in place, retained onboarding, profiles, trusted hosts,
 transcripts, settings, and the encrypted saved key, then authenticated with that
-key without re-import. Alpha.5 signed-update acceptance is the next operational
-check; invited technical-alpha use remains the product-validation boundary.
+key without re-import. The permanent-key alpha.5 artifact was selected through
+the resumable local signing path, verified against the established certificate,
+and installed over the existing physical release in place. Its first connection
+attempt exposed a release-only cbssh Ed25519 provider failure caused by R8
+relocation. Alpha.5 is rejected; an isolated minified probe reproduces the
+failure and proves the narrow keep-rule correction intended for alpha.6.
+The alpha.6 source applies that narrow rule and makes the release gate verify
+the exact provider class names in both the R8 mapping and assembled DEX. Its
+isolated minified password SSH proof passes. Independent CI, permanent signing,
+and physical acceptance remain before invited technical-alpha use resumes.
 
 Use these records according to their purpose:
 

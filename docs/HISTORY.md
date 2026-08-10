@@ -75,6 +75,12 @@ onboarding state, profile, trusted host, transcript history, settings, and encry
 survived, and the retained key authenticated and completed `pwd` without re-import. This closed the
 installed-update preservation boundary. Direct invited sharing was selected for the open Phase 5
 alpha, with no public prerelease until the remaining technical-alpha use boundary is evaluated.
+Alpha.5 then proved the resumable signing and in-place installation path but is
+rejected because R8 relocation broke sshlib 0.4.2's bundled Ed25519 provider
+before authentication. An isolated minified probe reproduced the failure and
+proved the narrow keep-rule correction. The alpha.6 source now applies that rule
+and adds a release mapping/DEX gate for the provider class names; permanent-key
+and physical acceptance remain.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

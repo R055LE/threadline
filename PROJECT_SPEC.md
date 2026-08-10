@@ -1082,8 +1082,14 @@ authentication and default diagnostic checks subsequently passed on the
 physical release artifact after force-stop/reopen. Preserving that encrypted
 key through the next signed version update was then proven when permanent-key
 alpha.4 installed over alpha.3 with local state intact and authenticated with
-the retained key without re-import. Alpha distribution is direct invited
-sharing while Phase 5 is open. Because the repository is public, any published
+the retained key without re-import. Permanent-key alpha.5 then proved the
+resumable signing and in-place installation path, but a release-only R8
+relocation broke sshlib 0.4.2's bundled Ed25519 provider before authentication.
+Alpha.5 is rejected. The alpha.6 source applies the narrow provider keep rule,
+passes an isolated minified SSH probe, and adds a mapping/DEX release regression
+gate. It still needs independent CI, permanent signing, and physical update
+acceptance. Alpha distribution is direct invited sharing while Phase 5 is open.
+Because the repository is public, any published
 GitHub prerelease would be public. Sufficient invited technical-alpha use is the
 remaining Phase 5 boundary.
 
