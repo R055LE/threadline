@@ -75,10 +75,19 @@ release-only cbssh Ed25519 provider failure after R8 relocation, so alpha.5 is
 rejected and must not be distributed or overwritten. Preserve it as immutable
 evidence and advance the corrected build to alpha.6.
 
-The current corrected source is `0.1.0-alpha.6` (`10006`). Its release rules
-preserve cbssh's name-loaded Ed25519 provider classes, and the release gate
-checks their exact binary names in both the R8 mapping and assembled DEX. Its
-permanent-key artifact and physical update evidence do not exist yet.
+Permanent-key alpha.6 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+67b20d8b6c149c06e23fb063dff9b3e84ad988f0ff16fcaea25964fa62ede674
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.6` (`10006`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its exact successful merged-`main` candidate was signed
+through `scripts/sign-latest-alpha.sh`. Android accepted it as an in-place
+update over alpha.5, retained local state, and passed the physical password,
+retained imported-key, Diagnostics, structured-command, and same-session
+raw-terminal acceptance path. Alpha.6 is the current accepted tester build.
 
 ## Signing-key boundary
 

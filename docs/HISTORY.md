@@ -79,8 +79,11 @@ Alpha.5 then proved the resumable signing and in-place installation path but is
 rejected because R8 relocation broke sshlib 0.4.2's bundled Ed25519 provider
 before authentication. An isolated minified probe reproduced the failure and
 proved the narrow keep-rule correction. The alpha.6 source now applies that rule
-and adds a release mapping/DEX gate for the provider class names; permanent-key
-and physical acceptance remain.
+and adds a release mapping/DEX gate for the provider class names. Independent
+CI passed, and the permanent-key alpha.6 installed over alpha.5 with retained
+state intact. Password and retained imported-key authentication, Diagnostics,
+structured commands, and same-session raw-terminal behavior passed on the
+Galaxy S25 Ultra, making alpha.6 the accepted tester build.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

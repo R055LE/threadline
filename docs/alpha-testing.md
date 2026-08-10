@@ -47,6 +47,9 @@ Exercise only systems and accounts you are authorized to use:
 10. Generate a sanitized diagnostic preview and confirm its default form contains
     no host fields, commands, output, or credentials.
 
+Commands entered directly in the raw terminal and their output remain in the
+terminal. They do not create structured cards or persisted transcript turns.
+
 For imported-key authentication, use a disposable or dedicated test key rather
 than a high-value production identity during the first alpha pass.
 
