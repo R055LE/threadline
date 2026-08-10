@@ -90,13 +90,15 @@ and it can be reopened from Help. It is not an account setup flow or a multi-pag
 After the introduction, the user sees saved host profiles and a blank connection form. Only the
 standard SSH port `22` is prefilled; development-fixture values are never production defaults.
 
-A host contains:
+A saved host profile contains:
 
 - Display name
 - Hostname or IP address
 - Port, default `22`
 - Username
-- Authentication method
+
+Authentication method is selected for each connection and is not linked to the
+saved profile. Credentials are never part of a host profile.
 
 Supported authentication for MVP:
 
@@ -1043,7 +1045,7 @@ Exit criterion:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
-Implementation status (2026-08-03): the accessibility and
+Implementation status (2026-08-10): the accessibility and
 connection/authentication-error pass is implemented, including typed network
 failures, recovery actions, screen-reader semantics, and 200% font-scale action
 reachability. Production-path large-output profiling now covers styled Unicode
@@ -1078,9 +1080,12 @@ from their decryption secret. Independent restores verified both copies against
 the established key identity, closing backup recovery. Alpha.3 imported-key
 authentication and default diagnostic checks subsequently passed on the
 physical release artifact after force-stop/reopen. Preserving that encrypted
-key through the next signed version update and the
-limited-versus-public distribution decision remain open. Because the
-repository is public, any published GitHub prerelease is public.
+key through the next signed version update was then proven when permanent-key
+alpha.4 installed over alpha.3 with local state intact and authenticated with
+the retained key without re-import. Alpha distribution is direct invited
+sharing while Phase 5 is open. Because the repository is public, any published
+GitHub prerelease would be public. Sufficient invited technical-alpha use is the
+remaining Phase 5 boundary.
 
 ---
 

@@ -134,7 +134,7 @@ if [[ -z ${THREADLINE_RELEASE_KEY_PASSWORD:-} ]]; then
 fi
 export THREADLINE_RELEASE_STORE_PASSWORD THREADLINE_RELEASE_KEY_PASSWORD
 trap 'unset THREADLINE_RELEASE_STORE_PASSWORD THREADLINE_RELEASE_KEY_PASSWORD; rm -f "$aligned_apk"' EXIT
-"$zipalign_command" -f -p 4 "$unsigned_apk" "$aligned_apk"
+"$zipalign_command" -P 16 -f 4 "$unsigned_apk" "$aligned_apk"
 "$apksigner_command" sign \
     --ks "$THREADLINE_RELEASE_STORE_FILE" \
     --ks-key-alias "$THREADLINE_RELEASE_KEY_ALIAS" \
@@ -142,6 +142,7 @@ trap 'unset THREADLINE_RELEASE_STORE_PASSWORD THREADLINE_RELEASE_KEY_PASSWORD; r
     --key-pass env:THREADLINE_RELEASE_KEY_PASSWORD \
     --out "$output_apk" \
     "$aligned_apk"
+"$zipalign_command" -c -P 16 4 "$output_apk"
 "$apksigner_command" verify --verbose --print-certs "$output_apk"
 
 (

@@ -174,12 +174,13 @@ product behavior.
 
 **Status:** Deferred product design; not required for the current MVP or Phase 5.
 
-The current host profile intentionally stores display name, endpoint, username,
-and authentication mode without credentials. Before adding a startup directory,
-shell preference, or keep-active preference, define validation, failure behavior,
-profile migration, and whether each setting affects only a new connection or an
-already active session. Keep-active behavior must also agree with the foreground
-service and explicit disconnect contract.
+The current host profile intentionally stores display name, endpoint, and
+username without an authentication mode or credentials. Before adding an
+authentication mode, startup directory, shell preference, or keep-active
+preference, define validation, failure behavior, profile migration, and whether
+each setting affects only a new connection or an already active session.
+Keep-active behavior must also agree with the foreground service and explicit
+disconnect contract.
 
 ## Generated device keys
 

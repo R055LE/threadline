@@ -11,8 +11,9 @@ controlled sequence.
 
 ## Before installing
 
-- Obtain the APK from the named public prerelease or directly from the owner
-  through the agreed private channel.
+- Obtain the APK and its checksum directly from the owner through the agreed
+  private channel. Threadline does not publish a signed tester APK while Phase
+  5 is open.
 - Compare its SHA-256 checksum with the separately published value.
 - Confirm the release identifies itself as `io.github.r055le.threadline`.
 - Do not accept a repackaged APK, an unexpected signing-certificate fingerprint,

@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-09
+Updated: 2026-08-10
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -60,7 +60,7 @@ verification. See the
 [alpha.1 crash investigation](investigations/2026-08-02-alpha1-release-shrinker-crash.md),
 and [alpha.2 raw-terminal crash investigation](investigations/2026-08-02-alpha2-raw-terminal-shrinker-crash.md).
 
-Public CI now publishes short-lived unsigned candidates tied to the exact
+Public CI now publishes short-lived unsigned candidates labeled with the exact
 source commit; permanent signing remains local. The permanent-key alpha.4
 artifact installed over alpha.3 as the same app on the Galaxy S25 Ultra. The
 completed onboarding state, saved profile, trusted host, transcript history,
@@ -69,8 +69,19 @@ authenticated without re-import and completed `pwd`. This closes the installed
 update-preservation boundary. See the
 [alpha.4 update-preservation investigation](investigations/2026-08-09-alpha4-update-preservation.md).
 
+The next source candidate is `0.1.0-alpha.5` (`10005`). Its pre-invite
+hardening pins GitHub Actions to immutable commits, validates the Gradle wrapper
+and distribution checksum, enforces dependency checksums, verifies 16 KiB APK
+alignment after signing, upgrades ConnectBot `sshlib` to 0.4.2, and adds the
+core API 35 instrumented suite to CI. Alpha.4 remains the latest accepted signed
+artifact until alpha.5 passes the signed update and physical-device regression
+path.
+
 ## Remaining Phase 5 boundaries
 
+- Alpha.5 signed-update acceptance on the physical device: retained local
+  state, password and imported-key authentication, and the structured/raw
+  same-session path.
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
 
 ## Alpha distribution: direct invited sharing, decided 2026-08-09
@@ -101,7 +112,7 @@ Two things worth recording so this isn't relitigated from memory:
 - **The transparency half of the public option is already done.** Checksums, the
   certificate fingerprint, signature schemes and 16 KiB alignment are published
   in `investigations/2026-08-09-alpha4-update-preservation.md`, in a public
-  repository. Only the binary stays private.
+  repository. Only the signed tester APK stays private.
 
 The asymmetry closes it: private can become public later, published can't become
 unpublished. GitHub will delete a release; anything already mirrored is out.

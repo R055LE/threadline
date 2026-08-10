@@ -4,8 +4,26 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-**[Phase 5 — Alpha polish](docs/STATUS.md) is in progress.** Phase 4 security and persistence is
-implemented. The app opens on a
+## Alpha status
+
+**[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
+and owner-device acceptance through alpha.4 are complete. The remaining product
+boundary is enough invited technical-alpha use to evaluate whether ten real
+users can complete small remote tasks for two weeks and provide useful feedback.
+
+The current accepted signed build is `0.1.0-alpha.4`; the next source candidate
+is `0.1.0-alpha.5`. Signed builds are shared directly with invited testers.
+There is no public signed APK or GitHub prerelease while Phase 5 is open.
+Testers should obtain the APK and its checksum from the owner through the agreed
+private channel, then follow the
+[technical-alpha guide](docs/alpha-testing.md).
+Alpha.5 must pass the signed update and physical-device regression path before
+it replaces alpha.4 for testers.
+
+Threadline has no supported production release. Do not use the alpha for
+privileged or sensitive systems.
+
+Phase 4 security and persistence is implemented. The app opens on a
 deliberately plain command transcript with a saved multiline composer,
 streaming command cards, bounded ANSI-aware output, lifecycle status,
 interactive-terminal suggestions, and one-tap access to the same persistent raw
@@ -237,12 +255,14 @@ risks are recorded in
 
 ## Project status
 
-Phases 0 through 4 are complete. **Phase 5 — Alpha polish is in progress.** Its
+Phases 0 through 4 are complete. **Phase 5: Alpha polish is in progress.** Its
 accessibility/error, large-output performance, Samsung physical-validation, and
 basic-onboarding slices are implemented. The installed-update preservation
-check is complete. A distribution decision and sufficient technical-alpha use
-remain; additional device and OEM coverage, including Pixel, is opportunistic
-alpha evidence rather than a separate release gate.
+check is complete. Direct invited sharing is the selected alpha distribution
+path, with no public prerelease while Phase 5 remains open. Sufficient
+technical-alpha use is the remaining boundary. Additional device and OEM
+coverage, including Pixel, is opportunistic alpha evidence rather than a
+separate release gate.
 
 Alpha packaging preparation now defines the permanent release/debug identities,
 explicit alpha versioning, interactive off-repository key creation, local
@@ -261,11 +281,12 @@ release/JNI blocker is closed. Two encrypted off-machine signing-key backups
 now exist with separately held decryption material, and independent restores
 verified both copies against the established key identity. Alpha.3 imported-key
 authentication and default diagnostic checks now pass on the physical release
-artifact. Public CI now produces source-bound unsigned candidates while the
+artifact. Public CI now produces source-identified unsigned candidates while the
 permanent signing key remains local. The permanent-key `0.1.0-alpha.4` artifact
 installed over alpha.3 in place, retained onboarding, profiles, trusted hosts,
 transcripts, settings, and the encrypted saved key, then authenticated with that
-key without re-import. The distribution decision and technical-alpha use remain.
+key without re-import. Alpha.5 signed-update acceptance is the next operational
+check; invited technical-alpha use remains the product-validation boundary.
 
 Use these records according to their purpose:
 
