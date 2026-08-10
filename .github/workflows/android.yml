@@ -33,9 +33,16 @@ jobs:
       - name: Install emulator system image
         run: sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
       - name: Create emulator
-        run: echo "no" | avdmanager create avd --force --name threadline-ci --package "system-images;android-35;google_apis;x86_64"
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/threadline-avd
+        run: |
+          mkdir -p "${ANDROID_AVD_HOME}"
+          echo "no" | avdmanager create avd --force --name threadline-ci --package "system-images;android-35;google_apis;x86_64"
+          "${ANDROID_HOME}/emulator/emulator" -list-avds | grep -Fx threadline-ci
       - name: Start emulator
         shell: bash
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/threadline-avd
         run: |
           sudo chmod 666 /dev/kvm
           emulator_log="${RUNNER_TEMP}/threadline-emulator.log"
