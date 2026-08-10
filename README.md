@@ -140,9 +140,11 @@ With an emulator or device running:
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`.
 
-Release signing is deliberately local and secret-free in Git. See the
+Release signing is deliberately local and secret-free in Git. Once the current
+`main` commit passes CI, `./scripts/sign-latest-alpha.sh` downloads and verifies
+its exact candidate before prompting locally for the signing passwords. See the
 [release-signing guide](docs/development/release-signing.md) to create and back
-up the long-lived key, produce a verified signed APK, and generate its checksum.
+up the long-lived key and verify the signed APK.
 The [technical-alpha guide](docs/alpha-testing.md) defines installation, update,
 test, feedback, diagnostics, and metrics boundaries.
 

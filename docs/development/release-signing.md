@@ -161,18 +161,50 @@ validating the Gradle wrapper, checking the wrapper distribution, and enforcing
 Gradle dependency checksums. Review changes to those pins and checksums as
 supply-chain changes before signing a new candidate.
 
-To sign the exact candidate produced by CI, first identify the successful
-`Android` run for the intended commit:
+### Preferred local path
+
+From a clean checkout of current `main`, run:
 
 ```bash
+git switch main
 git pull --ff-only
+./scripts/sign-latest-alpha.sh
+```
+
+The script finds the successful `Android` push run for the exact checked-out
+commit. It refuses tracked local changes, a stale checkout, a failed run, a run
+from another branch, or a mismatched commit. It downloads the uniquely named CI
+artifact into an owner-only temporary directory and passes it to the existing
+signer, which performs the checksum, build-metadata, package, version, alignment,
+and certificate checks. The temporary download is removed on exit.
+
+The standard keystore location from this guide is used automatically:
+`$HOME/.local/share/threadline/signing/threadline-release.p12`. Override the
+non-secret path or alias only when needed:
+
+```bash
+export THREADLINE_RELEASE_STORE_FILE=/path/to/threadline-release.p12
+export THREADLINE_RELEASE_KEY_ALIAS=threadline-release
+./scripts/sign-latest-alpha.sh
+unset THREADLINE_RELEASE_STORE_FILE THREADLINE_RELEASE_KEY_ALIAS
+```
+
+Both passwords are still entered interactively without echoing. They are passed
+to `apksigner` through its process environment, cleared when the signer exits,
+and never written to a file or command-line argument.
+
+### Manual candidate selection
+
+For troubleshooting or deliberate selection of an older successful run, first
+confirm that the run succeeded and its `headSha` equals the local `HEAD`:
+
+```bash
 git rev-parse HEAD
 gh run list --workflow Android --branch main --limit 5
 gh run view RUN_ID --json conclusion,headSha,url
 ```
 
-Confirm that `conclusion` is `success` and `headSha` equals the local `HEAD`.
-Then download and verify the artifact:
+Then download the exact artifact:
 
 ```bash
 threadline_candidate_dir=$(mktemp -d)
@@ -203,8 +235,8 @@ rm -r -- "$threadline_candidate_dir"
 unset threadline_candidate_apk threadline_candidate_dir threadline_candidate_name
 ```
 
-The helper verifies the candidate checksum, source commit, application ID, and
-version before asking for signing passwords. Omitting the APK argument keeps the
+The signing helper verifies the candidate checksum, source commit, application
+ID, and version before asking for passwords. Omitting the APK argument keeps the
 original local-build path and runs `assembleRelease` before signing.
 
 For non-interactive automation, the helper also accepts
