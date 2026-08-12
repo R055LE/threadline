@@ -627,6 +627,9 @@ When ready:
 7. Complete the card when the end marker arrives.
 
 Only one transcript command may be active per shell session in MVP.
+While that command runs, the composer remains editable as a local draft, but
+Send stays disabled until the structured shell returns to ready. Drafting does
+not queue or automatically execute a command.
 
 ### 10.2 Interactive input
 

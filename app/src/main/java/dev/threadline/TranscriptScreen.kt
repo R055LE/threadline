@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -131,6 +132,7 @@ internal fun ConnectedSessionScreen(
     rawTerminal: @Composable (Modifier) -> Unit = { RawTerminal(it) },
 ) {
     var rawModeRequested by rememberSaveable { mutableStateOf(false) }
+    val transcriptStateHolder = rememberSaveableStateHolder()
     val rawModeRequired = structuredShell is StructuredShellState.Unavailable
     val showingRawTerminal = rawModeRequested
 
@@ -193,17 +195,19 @@ internal fun ConnectedSessionScreen(
                     .fillMaxSize(),
             )
         } else {
-            TranscriptSurface(
-                structuredShell = structuredShell,
-                transcript = transcript,
-                onSubmit = onSubmit,
-                onStop = onControlC,
-                onDisconnect = onDisconnect,
-                onOpenTerminal = { rawModeRequested = true },
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize(),
-            )
+            transcriptStateHolder.SaveableStateProvider("transcript") {
+                TranscriptSurface(
+                    structuredShell = structuredShell,
+                    transcript = transcript,
+                    onSubmit = onSubmit,
+                    onStop = onControlC,
+                    onDisconnect = onDisconnect,
+                    onOpenTerminal = { rawModeRequested = true },
+                    modifier = Modifier
+                        .padding(contentPadding)
+                        .fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -458,7 +462,8 @@ internal fun TranscriptSurface(
                     label = { Text("Command") },
                     minLines = 1,
                     maxLines = 5,
-                    enabled = structuredShell is StructuredShellState.Ready,
+                    enabled = structuredShell is StructuredShellState.Ready ||
+                        structuredShell is StructuredShellState.Running,
                     modifier = Modifier
                         .weight(1f)
                         .testTag(TranscriptTags.COMPOSER),
