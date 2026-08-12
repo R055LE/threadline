@@ -87,7 +87,14 @@ is 16 KiB page aligned. Its exact successful merged-`main` candidate was signed
 through `scripts/sign-latest-alpha.sh`. Android accepted it as an in-place
 update over alpha.5, retained local state, and passed the physical password,
 retained imported-key, Diagnostics, structured-command, and same-session
-raw-terminal acceptance path. Alpha.6 is the current accepted tester build.
+raw-terminal acceptance path. Alpha.6 was the accepted tester build at that
+milestone.
+
+Alpha.6 was superseded by alpha.7 after the same merged-main selection and
+local signing path produced an installed build whose drafting and
+retained-session Home slices passed on the physical device. See
+[`STATUS.md`](../STATUS.md) for the current accepted build; preserve the exact
+alpha.6 facts above as release-history evidence.
 
 ## Signing-key boundary
 

@@ -86,7 +86,8 @@ authentication, PTY creation, and shell startup. Alpha.5 is rejected and alpha.4
 remains the latest accepted signed artifact. See the
 [alpha.5 signing and release-shrinker investigation](investigations/2026-08-10-alpha5-signing-update-progress.md).
 
-The accepted tester build is `0.1.0-alpha.6` (`10006`). It preserves the
+Alpha.6 became the accepted tester build after correcting the release-only
+failure. It preserves the
 three cbssh Ed25519 JCA classes whose binary names are part of the provider
 contract, and the renamed release verifier now requires those exact names in
 both the R8 mapping and assembled DEX alongside the existing termlib JNI field
@@ -104,8 +105,9 @@ terminal correctly remained terminal-only rather than creating transcript
 cards. See the
 [alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
 
-Product work continues while invited alpha use is gathered. The current source
-candidate is `0.1.0-alpha.7` (`10007`). Its first slice keeps the structured
+Product work continues while invited alpha use is gathered. The current
+accepted tester build and source version are both `0.1.0-alpha.7` (`10007`). Its
+first slice keeps the structured
 composer editable while a command runs, preserves that local draft through
 same-session terminal switching and Android saved-state restoration, and keeps
 Send disabled until the shell returns to ready. It does not queue or
@@ -114,6 +116,12 @@ the one active SSH session, shows that session with explicit Return and
 Disconnect actions, and prevents starting a second connection. Connected-screen
 draft and mode state survive the round trip and are cleared when the session
 actually ends.
+
+The merged-main alpha.7 candidate passed CI, was signed and installed on the
+Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
+`sleep 10` command ran, the composer accepted a `pwd` draft and kept Send
+disabled. Send enabled when the shell returned to ready, and the draft then ran
+normally. This completes alpha.7 owner-device acceptance.
 
 ## Remaining Phase 5 boundaries
 

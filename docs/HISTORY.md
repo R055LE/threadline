@@ -88,6 +88,11 @@ The alpha.7 source then made the composer available for local drafting while a
 command runs and added Home navigation that retains one active SSH session with
 explicit Return and Disconnect actions. Multiple concurrent sessions remain
 out of scope.
+The merged-main alpha.7 candidate then passed CI, signing, and installation on
+the Galaxy S25 Ultra. The retained-session Home and Return path passed. During a
+running `sleep 10`, the composer accepted a `pwd` draft while Send remained
+disabled; Send enabled when the shell returned to ready and the draft executed
+normally. This made alpha.7 the accepted tester build.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.
