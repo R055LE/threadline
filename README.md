@@ -16,8 +16,8 @@ ten real users can complete small remote tasks for two weeks and provide useful
 feedback.
 
 The current accepted signed build is `0.1.0-alpha.6`; `0.1.0-alpha.5` is an
-immutable rejected artifact. Signed builds are shared directly with invited
-testers.
+immutable rejected artifact. The current source candidate is
+`0.1.0-alpha.7`. Signed builds are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
@@ -104,8 +104,9 @@ connection setup, and saved transcript history.
   state
 - A multiline command composer and neutral command cards with one-shot stop,
   delayed explicit disconnect, Older/Newer command history with draft
-  restoration, copy, edit, rerun, output collapsing, selectable output,
-  confirmed HTTP(S) links, and raw-terminal switching
+  restoration, local drafting while a turn runs, copy, edit, rerun, output
+  collapsing, selectable output, confirmed HTTP(S) links, and raw-terminal
+  switching
 - Advisory detection of alternate-screen, cursor-addressing, mouse-tracking,
   and bracketed-paste control sequences with an explicit same-session terminal
   handoff

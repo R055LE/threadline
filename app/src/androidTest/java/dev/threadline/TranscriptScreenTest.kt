@@ -35,6 +35,7 @@ import dev.threadline.core.shell.ActiveCommand
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
+import dev.threadline.core.shell.CompletedCommand
 import dev.threadline.core.shell.LifecyclePhase
 import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.core.terminal.TerminalKey
@@ -177,6 +178,65 @@ class TranscriptScreenTest {
         assertComposerText("printf history")
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).performClick()
         assertComposerText("printf one\nprintf two")
+    }
+
+    @Test
+    fun runningCommandAllowsDraftingAcrossTerminalAndStateRestoration() {
+        val restorationTester = StateRestorationTester(composeRule)
+        val structuredShell = mutableStateOf<StructuredShellState>(runningShell())
+        var submitted: String? = null
+        restorationTester.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Draft test session",
+                    structuredShell = structuredShell.value,
+                    transcript = CommandTranscriptState(),
+                    onSubmit = { command ->
+                        submitted = command
+                        CommandSubmissionResult.Accepted(CommandId("next-command"))
+                    },
+                    onControlC = {},
+                    onDisconnect = {},
+                    rawTerminal = { modifier ->
+                        Text("Raw draft test surface", modifier = modifier)
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .assertIsEnabled()
+            .performTextInput("printf next")
+        composeRule.onNodeWithTag(TranscriptTags.SEND).assertIsNotEnabled()
+
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        composeRule.onNodeWithText("Raw draft test surface").assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        assertComposerText("printf next")
+
+        restorationTester.emulateSavedInstanceStateRestore()
+        assertComposerText("printf next")
+        composeRule.onNodeWithTag(TranscriptTags.SEND).assertIsNotEnabled()
+
+        composeRule.runOnIdle {
+            structuredShell.value = StructuredShellState.Ready(
+                currentDirectory = "/tmp",
+                lastCommand = CompletedCommand(
+                    id = CommandId("command-42"),
+                    command = "test command",
+                    directoryAtStart = "/tmp",
+                    currentDirectory = "/tmp",
+                    exitStatus = 1,
+                ),
+            )
+        }
+        composeRule.onNodeWithTag(TranscriptTags.SEND)
+            .assertIsEnabled()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals("printf next", submitted)
+        }
+        assertComposerText("")
     }
 
     @Test

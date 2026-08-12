@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-10
+Updated: 2026-08-11
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -103,6 +103,13 @@ same-session raw-terminal acceptance. Commands typed directly in the raw
 terminal correctly remained terminal-only rather than creating transcript
 cards. See the
 [alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
+
+Product work continues while invited alpha use is gathered. The current source
+candidate is `0.1.0-alpha.7` (`10007`). Its first slice keeps the structured
+composer editable while a command runs, preserves that local draft through
+same-session terminal switching and Android saved-state restoration, and keeps
+Send disabled until the shell returns to ready. It does not queue or
+automatically execute commands.
 
 ## Remaining Phase 5 boundaries
 

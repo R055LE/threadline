@@ -92,22 +92,22 @@ Portrait remains the primary phone layout.
 
 ## Drafting and queued commands while a turn runs
 
-**Status:** Deferred interaction design; not a Phase 5 interruption blocker.
+**Status:** Local drafting implemented in the alpha.7 source; command queue
+deferred.
 
-The transcript composer is currently disabled whenever the structured shell is
-not ready. Physical testing showed that interrupt and recovery are fast, but it
-also made the user wait before typing the likely follow-up command.
+Physical testing showed that interrupt and recovery are fast, but disabling the
+composer during a running turn made the user wait before typing the likely
+follow-up command. The alpha.7 source keeps the composer editable while a turn
+runs, preserves the local draft through stopping, failure, raw-mode switching,
+rotation, and saved-state restoration, and enables Send only when the shell is
+ready again.
 
-Treat two possible improvements separately:
-
-1. Allow editing a local draft while a command is running, while keeping Send
-   unavailable until the shell is ready. Preserve the draft through stopping,
-   failure, raw-mode switching, rotation, and saved-state restoration.
-2. Consider an explicit command queue only as a larger feature. It must define
-   ordering, visibility, reordering or removal, behavior after failure or
-   interruption, disconnect handling, and whether queued content is persisted.
-   Never send a queued command merely because the shell returned to readiness
-   unless the UI made that execution contract unambiguous.
+The implemented draft behavior remains separate from an explicit command queue.
+That queue remains a larger feature and must define ordering,
+visibility, reordering or removal, behavior after failure or interruption,
+disconnect handling, and whether queued content is persisted. Never send a
+queued command merely because the shell returned to readiness unless the UI
+made that execution contract unambiguous.
 
 ## Opt-in saved password authentication
 
