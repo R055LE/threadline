@@ -481,6 +481,35 @@ class TranscriptScreenTest {
     }
 
     @Test
+    fun connectedSessionHomeActionDoesNotDisconnect() {
+        var homeCount = 0
+        var disconnectCount = 0
+
+        composeRule.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Test session",
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onControlC = {},
+                    onDisconnect = { disconnectCount += 1 },
+                    onOpenHome = { homeCount += 1 },
+                    rawTerminal = { modifier -> Text("Terminal", modifier = modifier) },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.HOME).performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, homeCount)
+            assertEquals(0, disconnectCount)
+        }
+    }
+
+    @Test
     fun boundedLargeOutputCanExpandAndSwitchViewsWithinFiveSeconds() {
         val output = buildString {
             while (length < 128 * 1024) {
@@ -668,6 +697,7 @@ class TranscriptScreenTest {
             SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
         )
         composeRule.onNodeWithText("Terminal").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Diagnostics").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Disconnect").performScrollTo().assertIsDisplayed()
     }

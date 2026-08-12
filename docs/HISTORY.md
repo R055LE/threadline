@@ -84,6 +84,10 @@ CI passed, and the permanent-key alpha.6 installed over alpha.5 with retained
 state intact. Password and retained imported-key authentication, Diagnostics,
 structured commands, and same-session raw-terminal behavior passed on the
 Galaxy S25 Ultra, making alpha.6 the accepted tester build.
+The alpha.7 source then made the composer available for local drafting while a
+command runs and added Home navigation that retains one active SSH session with
+explicit Return and Disconnect actions. Multiple concurrent sessions remain
+out of scope.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.

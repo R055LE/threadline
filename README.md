@@ -17,7 +17,9 @@ feedback.
 
 The current accepted signed build is `0.1.0-alpha.6`; `0.1.0-alpha.5` is an
 immutable rejected artifact. The current source candidate is
-`0.1.0-alpha.7`. Signed builds are shared directly with invited testers.
+`0.1.0-alpha.7`. It allows drafting the next command while one runs and lets a
+user visit Home without disconnecting the one active SSH session. Signed builds
+are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
@@ -107,6 +109,8 @@ connection setup, and saved transcript history.
   restoration, local drafting while a turn runs, copy, edit, rerun, output
   collapsing, selectable output, confirmed HTTP(S) links, and raw-terminal
   switching
+- One-active-session Home navigation with explicit Return and Disconnect
+  actions; a second connection remains disabled
 - Advisory detection of alternate-screen, cursor-addressing, mouse-tracking,
   and bracketed-paste control sequences with an explicit same-session terminal
   handoff
