@@ -92,8 +92,8 @@ Portrait remains the primary phone layout.
 
 ## Drafting and queued commands while a turn runs
 
-**Status:** Local drafting implemented in the alpha.7 source; command queue
-deferred.
+**Status:** Local drafting implemented and physically accepted in alpha.7;
+command queue deferred.
 
 Physical testing showed that interrupt and recovery are fast, but disabling the
 composer during a running turn made the user wait before typing the likely
@@ -101,6 +101,10 @@ follow-up command. The alpha.7 source keeps the composer editable while a turn
 runs, preserves the local draft through stopping, failure, raw-mode switching,
 rotation, and saved-state restoration, and enables Send only when the shell is
 ready again.
+
+On the signed alpha.7 candidate, a `pwd` draft remained editable while
+`sleep 10` ran, Send stayed disabled until the shell returned to ready, and the
+draft then executed normally.
 
 The implemented draft behavior remains separate from an explicit command queue.
 That queue remains a larger feature and must define ordering,
@@ -139,13 +143,15 @@ and the rule that history must not accidentally become credential storage.
 
 ## Home navigation and session dashboard
 
-**Status:** One retained active session implemented in the alpha.7 source;
-multiple concurrent sessions deferred.
+**Status:** One retained active session implemented and physically accepted in
+alpha.7; multiple concurrent sessions deferred.
 
 Threadline now allows navigation Home while retaining the one active
 foreground-service-backed session. Home identifies the active session, offers
 explicit Return and Disconnect actions, and prevents a second connection while
 the first remains active. Leaving the session screen does not disconnect it.
+The signed alpha.7 candidate passed this Home and Return path on the Galaxy S25
+Ultra.
 
 The remaining scope is separate:
 
@@ -235,14 +241,19 @@ content, host data, or terminal output merely to claim that metrics exist.
 
 ## Automated release-path and device acceptance
 
-**Status:** Deferred test-infrastructure design; alpha.6 physical acceptance is
-complete.
+**Status:** Deferred test-infrastructure design; manual physical acceptance
+through alpha.7 is complete.
 
 The core debug Android suite and static release-shrinker checks run in public CI,
 but alpha.5 showed the remaining gap: assembling a minified APK is not the same
 as connecting through its production runtime. Alpha.6 used an isolated in-app
 minified probe plus a manual signed update on the physical device to close that
 specific regression.
+
+Alpha.7 continued to use the public merged-main gate and local signing path,
+then completed manual drafting and retained-session Home acceptance on the
+physical device. Automating those signed release paths remains future test
+infrastructure work.
 
 A later automation slice should define how to cover a packaged minified app
 through fixture connection, password and imported-key authentication,
