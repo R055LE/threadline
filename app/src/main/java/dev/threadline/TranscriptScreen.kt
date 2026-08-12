@@ -92,6 +92,7 @@ internal object TranscriptTags {
     const val TERMINAL_ALT = "terminal-alt"
     const val SUBMISSION_ERROR = "command-submission-error"
     const val SESSION_ACTIONS = "session-actions"
+    const val HOME = "session-home"
     private const val TERMINAL_KEY_PREFIX = "terminal-key-"
     private const val OUTPUT_PREFIX = "command-output-"
 
@@ -128,6 +129,7 @@ internal fun ConnectedSessionScreen(
     onSubmit: (String) -> CommandSubmissionResult,
     onControlC: () -> Unit,
     onDisconnect: () -> Unit,
+    onOpenHome: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     rawTerminal: @Composable (Modifier) -> Unit = { RawTerminal(it) },
 ) {
@@ -175,6 +177,12 @@ internal fun ConnectedSessionScreen(
                     }
                     if (showingRawTerminal) {
                         TextButton(onClick = onControlC) { Text("Ctrl-C") }
+                    }
+                    TextButton(
+                        onClick = onOpenHome,
+                        modifier = Modifier.testTag(TranscriptTags.HOME),
+                    ) {
+                        Text("Home")
                     }
                     TextButton(
                         onClick = onOpenDiagnostics,

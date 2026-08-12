@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -68,6 +69,44 @@ class ConnectionFormRetentionTest {
             .assertExists()
         compose.onNodeWithTag(ConnectionFormTags.HELP).performClick()
         compose.runOnIdle { assertEquals(1, helpOpenCount) }
+    }
+
+    @Test
+    fun activeSessionCanBeReopenedOrDisconnectedWithoutStartingAnotherConnection() {
+        var returnCount = 0
+        var disconnectCount = 0
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.emptyDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    activeSessionDisplayName = "Barnabas",
+                    connectionEnabled = false,
+                    onReturnToActiveSession = { returnCount += 1 },
+                    onDisconnectActiveSession = { disconnectCount += 1 },
+                    onPrepared = { error("A second connection must stay disabled.") },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.ACTIVE_SESSION).assertExists()
+        compose.onNodeWithText("Barnabas").assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .assertIsNotEnabled()
+
+        compose.onNodeWithTag(ConnectionFormTags.RETURN_TO_SESSION)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.DISCONNECT_SESSION)
+            .performScrollTo()
+            .performClick()
+        compose.runOnIdle {
+            assertEquals(1, returnCount)
+            assertEquals(1, disconnectCount)
+        }
     }
 
     @Test

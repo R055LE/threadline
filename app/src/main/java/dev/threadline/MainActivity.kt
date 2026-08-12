@@ -42,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -179,6 +181,9 @@ internal object ConnectionFormTags {
     const val SAVE_PRIVATE_KEY = "connection-save-private-key"
     const val EPHEMERAL = "connection-ephemeral"
     const val CONNECT = "connection-connect"
+    const val ACTIVE_SESSION = "connection-active-session"
+    const val RETURN_TO_SESSION = "connection-return-to-session"
+    const val DISCONNECT_SESSION = "connection-disconnect-session"
     const val SAVED_KEY_PREFIX = "connection-saved-key-"
     const val RENAME_KEY_PREFIX = "connection-rename-key-"
     const val DELETE_KEY_PREFIX = "connection-delete-key-"
@@ -222,9 +227,17 @@ private fun ThreadlineApp() {
         mutableStateOf(onboardingPreferences.shouldShowIntroduction())
     }
     var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showConnectedSession by rememberSaveable { mutableStateOf(true) }
+    val connectedSessionStateHolder = rememberSaveableStateHolder()
     var diagnosticGeneratedAtMillis by remember { mutableStateOf<Long?>(null) }
     val diagnosticEnvironment = remember(context) { androidDiagnosticEnvironment(context) }
     val openDiagnostics = { diagnosticGeneratedAtMillis = System.currentTimeMillis() }
+
+    LaunchedEffect(state is SessionState.Connected) {
+        if (state !is SessionState.Connected) {
+            connectedSessionStateHolder.removeState("active-session")
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -236,7 +249,9 @@ private fun ThreadlineApp() {
         }
     }
 
-    val canShowIntroduction = state is SessionState.Disconnected || state is SessionState.Failed
+    val canShowIntroduction = state is SessionState.Disconnected ||
+        state is SessionState.Failed ||
+        state is SessionState.Connected && !showConnectedSession
     if (showIntroduction && canShowIntroduction) {
         OnboardingScreen(
             onContinue = {
@@ -244,13 +259,31 @@ private fun ThreadlineApp() {
                 showIntroduction = false
             },
         )
+    } else if (state is SessionState.Connected && showConnectedSession) {
+        connectedSessionStateHolder.SaveableStateProvider("active-session") {
+            ConnectedSessionScreen(
+                displayName = state.displayName,
+                structuredShell = snapshot.structuredShell,
+                transcript = snapshot.transcript,
+                onSubmit = manager::submitCommand,
+                onControlC = manager::sendControlC,
+                onDisconnect = manager::disconnect,
+                onOpenHome = { showConnectedSession = false },
+                onOpenDiagnostics = openDiagnostics,
+            )
+        }
     } else when (val current = state) {
         SessionState.Disconnected,
         is SessionState.Failed,
+        is SessionState.Connected,
         -> HostForm(
             draft = connectionDraft,
             onDraftChange = { connectionDraft = it },
             sessionError = (current as? SessionState.Failed)?.error,
+            activeSessionDisplayName = (current as? SessionState.Connected)?.displayName,
+            connectionEnabled = current !is SessionState.Connected,
+            onReturnToActiveSession = { showConnectedSession = true },
+            onDisconnectActiveSession = manager::disconnect,
             hostProfiles = hostProfiles,
             selectedHostProfileId = selectedHostProfileId,
             onSelectedHostProfileChange = { selectedHostProfileId = it },
@@ -274,6 +307,7 @@ private fun ThreadlineApp() {
             onOpenNotificationSettings = { openNotificationSettings(context) },
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
+                showConnectedSession = true
 
                 if (
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -288,16 +322,6 @@ private fun ThreadlineApp() {
                 }
                 true
             },
-        )
-
-        is SessionState.Connected -> ConnectedSessionScreen(
-            displayName = current.displayName,
-            structuredShell = snapshot.structuredShell,
-            transcript = snapshot.transcript,
-            onSubmit = manager::submitCommand,
-            onControlC = manager::sendControlC,
-            onDisconnect = manager::disconnect,
-            onOpenDiagnostics = openDiagnostics,
         )
 
         is SessionState.Connecting -> ProgressScreen(
@@ -393,6 +417,10 @@ internal fun HostForm(
     draft: ConnectionFormDraft,
     onDraftChange: (ConnectionFormDraft) -> Unit,
     sessionError: SessionError?,
+    activeSessionDisplayName: String? = null,
+    connectionEnabled: Boolean = true,
+    onReturnToActiveSession: () -> Unit = {},
+    onDisconnectActiveSession: () -> Unit = {},
     hostProfiles: List<SavedHostProfile> = emptyList(),
     selectedHostProfileId: String? = null,
     onSelectedHostProfileChange: (String?) -> Unit = {},
@@ -529,6 +557,51 @@ internal fun HostForm(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            activeSessionDisplayName?.let { displayName ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.ACTIVE_SESSION),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(16.dp),
+                    ) {
+                        Text(
+                            "Active session",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        Text(displayName, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "This session remains connected while you use Home.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onReturnToActiveSession,
+                                modifier = Modifier.testTag(
+                                    ConnectionFormTags.RETURN_TO_SESSION,
+                                ),
+                            ) {
+                                Text("Return")
+                            }
+                            TextButton(
+                                onClick = onDisconnectActiveSession,
+                                modifier = Modifier.testTag(
+                                    ConnectionFormTags.DISCONNECT_SESSION,
+                                ),
+                            ) {
+                                Text("Disconnect")
+                            }
+                        }
+                        Text(
+                            "Disconnect this session before connecting to another server.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
             Text(
                 "Connect to a server",
                 style = MaterialTheme.typography.titleMedium,
@@ -1072,7 +1145,7 @@ internal fun HostForm(
                         }
                     }
                 },
-                enabled = !isBusy,
+                enabled = connectionEnabled && !isBusy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(ConnectionFormTags.CONNECT),

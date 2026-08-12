@@ -109,7 +109,11 @@ candidate is `0.1.0-alpha.7` (`10007`). Its first slice keeps the structured
 composer editable while a command runs, preserves that local draft through
 same-session terminal switching and Android saved-state restoration, and keeps
 Send disabled until the shell returns to ready. It does not queue or
-automatically execute commands.
+automatically execute commands. Its second slice adds a Home route that retains
+the one active SSH session, shows that session with explicit Return and
+Disconnect actions, and prevents starting a second connection. Connected-screen
+draft and mode state survive the round trip and are cleared when the session
+actually ends.
 
 ## Remaining Phase 5 boundaries
 

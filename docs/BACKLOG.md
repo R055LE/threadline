@@ -139,21 +139,23 @@ and the rule that history must not accidentally become credential storage.
 
 ## Home navigation and session dashboard
 
-**Status:** Deferred product architecture; current UI owns one visible active
-session.
+**Status:** One retained active session implemented in the alpha.7 source;
+multiple concurrent sessions deferred.
 
-Threadline currently requires disconnecting before returning to host and
-history management. Separate two possible scopes:
+Threadline now allows navigation Home while retaining the one active
+foreground-service-backed session. Home identifies the active session, offers
+explicit Return and Disconnect actions, and prevents a second connection while
+the first remains active. Leaving the session screen does not disconnect it.
 
-1. Allow navigation home while retaining one active foreground-service-backed
-   session, with an obvious route back and an equally obvious disconnect state.
-2. Consider multiple concurrent sessions only as a larger session-manager
-   feature with resource limits, per-session notifications, credential
-   lifetime, failure isolation, transcript ownership, process-death recovery,
-   and explicit close/disconnect semantics.
+The remaining scope is separate:
 
-Do not imply that leaving a session screen disconnected it, or that a retained
-session survived when only its archived transcript remains.
+Consider multiple concurrent sessions only as a larger session-manager feature
+with resource limits, per-session notifications, credential lifetime, failure
+isolation, transcript ownership, process-death recovery, and explicit
+close/disconnect semantics.
+
+Do not imply that a retained session survived when only its archived transcript
+remains.
 
 ## Raw-terminal IME focus reliability
 
