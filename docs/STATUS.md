@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-16
+Updated: 2026-08-17
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -105,10 +105,9 @@ terminal correctly remained terminal-only rather than creating transcript
 cards. See the
 [alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
 
-Product work continues while invited alpha use is gathered. The current
-accepted tester build and source version are both `0.1.0-alpha.7` (`10007`). Its
-first slice keeps the structured
-composer editable while a command runs, preserves that local draft through
+Product work continues while invited alpha use is gathered. The current accepted
+tester build is `0.1.0-alpha.7` (`10007`). Its first slice keeps the structured composer
+editable while a command runs, preserves that local draft through
 same-session terminal switching and Android saved-state restoration, and keeps
 Send disabled until the shell returns to ready. It does not queue or
 automatically execute commands. Its second slice adds a Home route that retains
@@ -123,8 +122,9 @@ Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
 disabled. Send enabled when the shell returned to ready, and the draft then ran
 normally. This completes alpha.7 owner-device acceptance.
 
-Post-alpha.7 source work adds an explicit isolated execution path for
-script-like commands. It runs the exact composer text in a child Bash process,
+The current source candidate is `0.1.0-alpha.8` (`10008`). It adds an explicit
+isolated execution path for script-like commands. It runs the exact composer
+text in a child Bash process,
 reports the child exit status in the normal command card, and leaves the
 persistent shell available after strict-mode failures. Persistent Send remains
 the state-carrying path. Common `set -e`, `set -u`, and long-form strict-option
