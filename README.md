@@ -7,20 +7,20 @@ like responses, while a real terminal remains underneath for interactive work.
 ## Alpha status
 
 **[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
-and owner-device acceptance through alpha.7 are complete. Alpha.5 installed in
+and owner-device acceptance through alpha.8 are complete. Alpha.5 installed in
 place but is rejected because a release-shrinker failure prevents SSH
 connection. Alpha.6 corrects that failure and has passed independent CI,
 permanent signing, in-place update, and physical acceptance. Alpha.7 adds local
-drafting while a command runs and retained-session Home navigation. The
-remaining product boundary is invited technical-alpha use sufficient to
-evaluate whether ten real users can complete small remote tasks for two weeks
-and provide useful feedback.
+drafting while a command runs and retained-session Home navigation. Alpha.8
+adds isolated child-Bash execution for script-like commands so a strict-mode
+failure does not close the persistent SSH shell. The remaining product boundary
+is invited technical-alpha use sufficient to evaluate whether ten real users
+can complete small remote tasks for two weeks and provide useful feedback.
 
-The current accepted signed build is `0.1.0-alpha.7`; the current source
-candidate is `0.1.0-alpha.8`. Alpha.5 is an immutable rejected artifact.
-Alpha.8 adds isolated child-Bash execution for script-like commands so a strict
-mode failure does not close the persistent SSH shell. Owner-device acceptance
-is pending.
+The current accepted signed build and source version are both
+`0.1.0-alpha.8`. Alpha.5 is an immutable rejected artifact. On the owner's
+Galaxy S25 Ultra, an isolated strict-mode failure returned exit 1, preserved the
+persistent shell's state, and allowed the next persistent command to succeed.
 Signed builds are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed

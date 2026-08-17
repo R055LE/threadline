@@ -34,3 +34,4 @@ technical claim.
 | 2026-08-09 | 5 | [Alpha.4 installed-update preservation](2026-08-09-alpha4-update-preservation.md) | public-CI candidate provenance, permanent-key update, retained local state, and imported-key auth without re-import |
 | 2026-08-10 | 5 | [Alpha.5 signing and release-shrinker rejection](2026-08-10-alpha5-signing-update-progress.md) | resumable signing proof, physical connection failure, minified reproduction, and cbssh Ed25519 provider root cause |
 | 2026-08-10 | 5 | [Alpha.6 Ed25519 shrinker correction](2026-08-10-alpha6-ed25519-shrinker-correction.md) | narrow provider keep rule, mapping/DEX regression gate, permanent artifact, and physical acceptance |
+| 2026-08-17 | 5 | [Alpha.8 isolated execution acceptance](2026-08-17-alpha8-isolated-execution-acceptance.md) | permanent artifact, strict failure containment, persistent state recovery, and physical UX findings |

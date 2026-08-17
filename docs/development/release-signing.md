@@ -96,6 +96,19 @@ retained-session Home slices passed on the physical device. See
 [`STATUS.md`](../STATUS.md) for the current accepted build; preserve the exact
 alpha.6 facts above as release-history evidence.
 
+Permanent-key alpha.8 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+5389284c490e8323943f4cac324713928401ad2836f3cfee3b904827e5cafcec
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.8` (`10008`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its exact merged-main candidate passed public CI and
+was selected through `scripts/sign-latest-alpha.sh`. Android installed it on
+the Galaxy S25 Ultra, where isolated strict failure, state containment, and
+persistent-command recovery passed against the disposable fixture.
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this

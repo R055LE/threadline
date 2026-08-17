@@ -49,6 +49,24 @@ selection, styled spans, web-link confirmation, TalkBack traversal, and the
 exact bounded-tail contract intact rather than optimizing only the common
 visual case.
 
+## Transcript viewport with the software keyboard
+
+**Status:** Deferred functional UX bug; alpha.8 command execution remains
+usable, but normal transcript work requires avoidable recovery scrolling.
+
+On the Galaxy S25 Ultra, focusing the transcript composer and sending commands
+with the software keyboard open moved the useful transcript content above the
+visible viewport. The composer remained usable and commands completed, but the
+user had to scroll back up to recover the new cards and output. Connection,
+execution, and data remained intact. The recovery scrolling is repeated
+friction in the primary interaction path.
+
+When this is fixed, test focus, submission, running output, completion,
+tail-following, manual user scrolling, keyboard dismissal, rotation, and large
+font sizes together. The current or newly completed turn should remain easy to
+reach while the composer stays usable. Do not force-scroll a user who has
+deliberately moved into older output.
+
 ## Responsive onboarding and edge-to-edge polish
 
 **Status:** Deferred visual and responsive-layout polish; monitor action
@@ -115,8 +133,8 @@ made that execution contract unambiguous.
 
 ## Persistent-shell exit recovery
 
-**Status:** Isolated execution implemented in post-alpha.7 source; automatic
-shell restart remains deferred.
+**Status:** Isolated execution implemented and physically accepted in alpha.8;
+automatic shell restart remains deferred.
 
 Transcript Send intentionally evaluates inside the persistent Bash shell so
 directory changes, exports, aliases, and functions survive between cards. That
@@ -129,6 +147,11 @@ available for the next command. Common strict-option prologues show an advisory
 warning, isolated cards are labeled, and reruns preserve their execution mode.
 The mode is also retained in saved transcript history. Persistent Send remains
 available because changing live shell state is sometimes intentional.
+
+The permanent-key alpha.8 build passed the physical fixture boundary: an
+isolated strict failure reported exit 1, did not run the command after `false`,
+did not leak its directory or exported-variable changes, and left the original
+persistent state available to the next successful command.
 
 A later recovery slice may retain the transcript and offer a fresh shell when
 the persistent shell itself exits. It must say that shell state was lost. Do
@@ -181,6 +204,12 @@ Physical testing confirmed that persisted sessions and turns can be recovered,
 but the archive presentation is deliberately utilitarian. A later design pass
 may improve session summaries, command-card hierarchy, navigation, search, and
 the distinction between live styled output and persisted plain text.
+
+Alpha.8 exposed one concrete omission: Room retains whether a command ran
+isolated, but the saved-transcript dialog formats only status and exit code. An
+isolated failed turn therefore appears as `Failed · exit 1` without its
+execution contract. Add the execution-mode label to saved cards when history
+presentation is revised, and cover it with a UI test.
 
 Preserve bounded retention, explicit deletion, no-write ephemeral sessions,
 and the rule that history must not accidentally become credential storage.
@@ -286,7 +315,7 @@ content, host data, or terminal output merely to claim that metrics exist.
 ## Automated release-path and device acceptance
 
 **Status:** Deferred test-infrastructure design; manual physical acceptance
-through alpha.7 is complete.
+through alpha.8 is complete.
 
 The core debug Android suite and static release-shrinker checks run in public CI,
 but alpha.5 showed the remaining gap: assembling a minified APK is not the same
@@ -298,6 +327,10 @@ Alpha.7 continued to use the public merged-main gate and local signing path,
 then completed manual drafting and retained-session Home acceptance on the
 physical device. Automating those signed release paths remains future test
 infrastructure work.
+
+Alpha.8 used the same path, then manually proved isolated strict failure,
+state containment, saved transcript recovery, and a successful persistent
+follow-up without reconnecting on the physical device.
 
 A later automation slice should define how to cover a packaged minified app
 through fixture connection, password and imported-key authentication,
