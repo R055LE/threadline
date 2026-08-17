@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
@@ -57,6 +58,13 @@ class RoomTranscriptHistoryStoreTest {
         val turns = (0..RoomTranscriptHistoryStore.MAXIMUM_TURNS_PER_SESSION).map { index ->
             turn(
                 index = index,
+                executionMode = if (
+                    index == RoomTranscriptHistoryStore.MAXIMUM_TURNS_PER_SESSION
+                ) {
+                    CommandExecutionMode.ISOLATED
+                } else {
+                    CommandExecutionMode.PERSISTENT
+                },
                 command = if (index == 0) {
                     "discarded command"
                 } else if (index == RoomTranscriptHistoryStore.MAXIMUM_TURNS_PER_SESSION) {
@@ -98,6 +106,7 @@ class RoomTranscriptHistoryStoreTest {
         )
         assertEquals(retainedOutput, last.turn.output.plainText)
         assertEquals(output.encodeToByteArray().size.toLong(), last.turn.output.byteCount)
+        assertEquals(CommandExecutionMode.ISOLATED, last.turn.executionMode)
 
         val chunkRows = database.transcriptArchives().findChunks(summary.id)
             .filter { it.commandId == last.turn.id.value }
@@ -150,6 +159,7 @@ class RoomTranscriptHistoryStoreTest {
         ThreadlineDatabase.MIGRATION_1_2,
         ThreadlineDatabase.MIGRATION_2_3,
         ThreadlineDatabase.MIGRATION_3_4,
+        ThreadlineDatabase.MIGRATION_4_5,
     ).build()
 
     private fun archive(
@@ -170,11 +180,13 @@ class RoomTranscriptHistoryStoreTest {
 
     private fun turn(
         index: Int,
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
         command: String = "printf $index",
         output: String = "output $index",
     ) = CommandTurn(
         id = CommandId("command-$index"),
         command = command,
+        executionMode = executionMode,
         directoryAtStart = "/tmp",
         submittedAtMillis = 10,
         startedAtMillis = 11,

@@ -17,6 +17,20 @@ object ShellWordQuoter {
     }
 }
 
+enum class CommandExecutionMode(
+    internal val shellToken: String,
+) {
+    PERSISTENT("persistent"),
+    ISOLATED("isolated"),
+}
+
+internal fun commandMayChangePersistentStrictMode(command: String): Boolean =
+    STRICT_SHELL_OPTION_LINE.containsMatchIn(command)
+
+private val STRICT_SHELL_OPTION_LINE = Regex(
+    pattern = """(?m)^[\t ]*set[\t ]+(?:-[A-Za-z]*[eu][A-Za-z]*|-o[\t ]+(?:errexit|nounset|pipefail))(?:[\t ;]|$)""",
+)
+
 /**
  * Builds the temporary Bash integration installed into one persistent PTY
  * shell. The nonce is restricted to safe identifier characters by
@@ -32,6 +46,7 @@ class BashShellIntegration(
         append("() {\n")
         append("  local __tl_id=\"\$1\"\n")
         append("  local __tl_command=\"\$2\"\n")
+        append("  local __tl_mode=\"\$3\"\n")
         append("  local __tl_exit\n")
         append("  local __tl_previous_int_trap\n")
         append("  __tl_previous_int_trap=\"\$(trap -p INT)\"\n")
@@ -48,6 +63,9 @@ class BashShellIntegration(
         append("    printf \"\\033]777;threadline;")
         append(sessionNonce.value)
         append(";end;%s;%s;%s\\007\" \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
+        append("    if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+        append("      return 0\n")
+        append("    fi\n")
         append("    return \"\$__tl_exit\"\n")
         append("  ' INT\n")
         append("  printf '\\033]777;threadline;")
@@ -56,8 +74,16 @@ class BashShellIntegration(
         append("  printf '\\033]777;threadline;")
         append(sessionNonce.value)
         append(";output;%s\\007' \"\$__tl_id\"\n")
-        append("  builtin eval -- \"\$__tl_command\"\n")
-        append("  __tl_exit=\$?\n")
+        append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+        append("    if command bash --noprofile --norc -c \"\$__tl_command\"; then\n")
+        append("      __tl_exit=0\n")
+        append("    else\n")
+        append("      __tl_exit=\$?\n")
+        append("    fi\n")
+        append("  else\n")
+        append("    builtin eval -- \"\$__tl_command\"\n")
+        append("    __tl_exit=\$?\n")
+        append("  fi\n")
         append("  if [[ -n \"\$__tl_previous_int_trap\" ]]; then\n")
         append("    builtin eval -- \"\$__tl_previous_int_trap\"\n")
         append("  else\n")
@@ -66,6 +92,9 @@ class BashShellIntegration(
         append("  printf '\\033]777;threadline;")
         append(sessionNonce.value)
         append(";end;%s;%s;%s\\007' \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
+        append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+        append("    return 0\n")
+        append("  fi\n")
         append("  return \"\$__tl_exit\"\n")
         append("}\n")
         append(invocationText(probeCommandId, NO_OP_COMMAND))
@@ -74,17 +103,21 @@ class BashShellIntegration(
     fun invocation(
         commandId: CommandId,
         command: String,
-    ): ByteArray = invocationText(commandId, command).encodeToByteArray()
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
+    ): ByteArray = invocationText(commandId, command, executionMode).encodeToByteArray()
 
     private fun invocationText(
         commandId: CommandId,
         command: String,
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
     ): String = buildString {
         append(functionName)
         append(' ')
         append(ShellWordQuoter.quote(commandId.value))
         append(' ')
         append(ShellWordQuoter.quote(command))
+        append(' ')
+        append(ShellWordQuoter.quote(executionMode.shellToken))
         append('\n')
     }
 

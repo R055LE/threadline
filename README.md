@@ -110,6 +110,9 @@ connection setup, and saved transcript history.
   restoration, local drafting while a turn runs, copy, edit, rerun, output
   collapsing, selectable output, confirmed HTTP(S) links, and raw-terminal
   switching
+- Explicit persistent and isolated execution paths. Isolated commands run in a
+  child Bash process so strict-mode failures cannot terminate the persistent
+  shell, and their mode survives card reruns and saved transcript history
 - One-active-session Home navigation with explicit Return and Disconnect
   actions; a second connection remains disabled
 - Advisory detection of alternate-screen, cursor-addressing, mouse-tracking,

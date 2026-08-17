@@ -9,6 +9,7 @@ import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
 import dev.threadline.core.security.KnownHostRecord
 import dev.threadline.core.security.KnownHostStore
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
@@ -264,6 +265,7 @@ class SessionManagerIoTest {
             assertEquals("/tmp", turn.currentDirectory)
             assertEquals(1, turn.exitStatus)
             assertEquals(CommandStatus.FAILED, turn.status)
+            assertEquals(CommandExecutionMode.PERSISTENT, turn.executionMode)
             assertEquals(
                 CommandOutput(
                     plainText = "visible output\n",
@@ -277,7 +279,15 @@ class SessionManagerIoTest {
             )
             assertEquals(
                 CommandSubmissionResult.Accepted(CommandId("second-command")),
-                manager.submitCommand("printf next"),
+                manager.submitIsolatedCommand("printf next"),
+            )
+            withTimeout(2_000) {
+                while (session.sent.size < 3) delay(10)
+            }
+            assertTrue(session.sent.last().decodeToString().endsWith("'isolated'\n"))
+            assertEquals(
+                CommandExecutionMode.ISOLATED,
+                manager.transcriptState.value.turns.last().executionMode,
             )
 
             manager.disconnect()

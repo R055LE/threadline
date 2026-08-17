@@ -32,6 +32,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import dev.threadline.core.shell.ActiveCommand
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
@@ -89,6 +90,46 @@ class TranscriptScreenTest {
                     AnnotatedString(""),
                 ),
             )
+    }
+
+    @Test
+    fun strictCommandCanRunIsolatedWithoutUsingPersistentSubmission() {
+        var persistentSubmission: String? = null
+        var isolatedSubmission: String? = null
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(),
+                    onSubmit = { command ->
+                        persistentSubmission = command
+                        CommandSubmissionResult.Accepted(CommandId("persistent"))
+                    },
+                    onSubmitIsolated = { command ->
+                        isolatedSubmission = command
+                        CommandSubmissionResult.Accepted(CommandId("isolated"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+        val command = "set -euo pipefail\nfalse"
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER).performTextInput(command)
+        composeRule.onNodeWithText(
+            "Persistent Send can close the shell after a failure. " +
+                "Run isolated unless those changes need to persist.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.RUN_ISOLATED)
+            .assertIsEnabled()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(null, persistentSubmission)
+            assertEquals(command, isolatedSubmission)
+        }
+        assertComposerText("")
     }
 
     @Test
@@ -273,6 +314,44 @@ class TranscriptScreenTest {
         }
         assertComposerText("printf history")
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).assertIsNotEnabled()
+    }
+
+    @Test
+    fun isolatedCardIsLabeledAndRerunsInIsolatedMode() {
+        var persistentSubmission: String? = null
+        var isolatedSubmission: String? = null
+        val turn = turn(
+            command = "printf isolated",
+            executionMode = CommandExecutionMode.ISOLATED,
+            status = CommandStatus.SUCCEEDED,
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = { command ->
+                        persistentSubmission = command
+                        CommandSubmissionResult.Accepted(CommandId("persistent-rerun"))
+                    },
+                    onSubmitIsolated = { command ->
+                        isolatedSubmission = command
+                        CommandSubmissionResult.Accepted(CommandId("isolated-rerun"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Isolated · Succeeded · /tmp · 35 ms · exit 0")
+            .assertExists()
+        composeRule.onNodeWithText("Rerun").performScrollTo().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(null, persistentSubmission)
+            assertEquals(turn.command, isolatedSubmission)
+        }
     }
 
     @Test
@@ -925,6 +1004,7 @@ class TranscriptScreenTest {
     private fun turn(
         id: String = "command-42",
         command: String = "test command",
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
         status: CommandStatus,
         submittedAtMillis: Long = 100L,
         startedAtMillis: Long? = 110L,
@@ -934,6 +1014,7 @@ class TranscriptScreenTest {
     ) = CommandTurn(
         id = CommandId(id),
         command = command,
+        executionMode = executionMode,
         directoryAtStart = "/tmp",
         submittedAtMillis = submittedAtMillis,
         startedAtMillis = startedAtMillis,

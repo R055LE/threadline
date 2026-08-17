@@ -10,6 +10,7 @@ import dev.threadline.core.model.TerminalSize
 import dev.threadline.core.security.KnownHostStore
 import dev.threadline.core.security.StrictHostKeyGate
 import dev.threadline.core.shell.BashShellIntegration
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
@@ -217,7 +218,20 @@ class SessionManager(
         send(byteArrayOf(0x03))
     }
 
-    fun submitCommand(command: String): CommandSubmissionResult = synchronized(structuredLock) {
+    fun submitCommand(command: String): CommandSubmissionResult = submitCommand(
+        command = command,
+        executionMode = CommandExecutionMode.PERSISTENT,
+    )
+
+    fun submitIsolatedCommand(command: String): CommandSubmissionResult = submitCommand(
+        command = command,
+        executionMode = CommandExecutionMode.ISOLATED,
+    )
+
+    private fun submitCommand(
+        command: String,
+        executionMode: CommandExecutionMode,
+    ): CommandSubmissionResult = synchronized(structuredLock) {
         val currentState = structuredState.value
         if (currentState is StructuredShellState.Running) {
             return@synchronized CommandSubmissionResult.Rejected(
@@ -244,13 +258,14 @@ class SessionManager(
         }
 
         val commandId = commandIdFactory()
-        val invocation = context.integration.invocation(commandId, command)
+        val invocation = context.integration.invocation(commandId, command, executionMode)
         structuredStateMachine.apply(
             StructuredShellEvent.CommandSubmitted(commandId, command),
         )
         commandTranscript.commandSubmitted(
             id = commandId,
             command = command,
+            executionMode = executionMode,
             directoryAtStart = currentState.currentDirectory,
         )
         if (inputRequests.trySend(SessionInput(session, invocation)).isFailure) {

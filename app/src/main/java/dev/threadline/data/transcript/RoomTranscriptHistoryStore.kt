@@ -1,5 +1,6 @@
 package dev.threadline.data.transcript
 
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
@@ -74,6 +75,7 @@ internal class RoomTranscriptHistoryStore(
                 commandId = turn.id.value,
                 turnIndex = index,
                 command = retainedCommand,
+                executionMode = turn.executionMode.name,
                 commandTruncated = retainedCommand.length < turn.command.length,
                 directoryAtStart = turn.directoryAtStart,
                 submittedAtMillis = turn.submittedAtMillis,
@@ -179,6 +181,7 @@ private fun TranscriptSessionRows.toSavedSession(): SavedTranscriptSession {
                 turn = CommandTurn(
                     id = CommandId(entity.commandId),
                     command = entity.command,
+                    executionMode = CommandExecutionMode.valueOf(entity.executionMode),
                     directoryAtStart = entity.directoryAtStart,
                     submittedAtMillis = entity.submittedAtMillis,
                     startedAtMillis = entity.startedAtMillis,

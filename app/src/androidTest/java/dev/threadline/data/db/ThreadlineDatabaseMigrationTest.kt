@@ -144,6 +144,50 @@ class ThreadlineDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromFourMarksExistingTurnsPersistent() {
+        helper.createDatabase(DATABASE_NAME, 4).apply {
+            execSQL(
+                """
+                INSERT INTO transcript_sessions (
+                    session_id, display_name, hostname, port, username,
+                    started_at_millis, ended_at_millis, turns_truncated
+                ) VALUES ('session-id', 'Fixture', 'fixture.test', 22, 'threadline', 10, 20, 0)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO transcript_turns (
+                    session_id, command_id, turn_index, command, command_truncated,
+                    directory_at_start, submitted_at_millis, started_at_millis,
+                    completed_at_millis, status, exit_status, current_directory,
+                    output_truncated, output_approximate, output_byte_count
+                ) VALUES (
+                    'session-id', 'command-id', 0, 'pwd', 0, '/tmp', 11, 12, 13,
+                    'SUCCEEDED', 0, '/tmp', 0, 0, 5
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            DATABASE_NAME,
+            5,
+            true,
+            ThreadlineDatabase.MIGRATION_4_5,
+        )
+
+        migrated.query(
+            "SELECT execution_mode FROM transcript_turns WHERE command_id = 'command-id'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("PERSISTENT", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val DATABASE_NAME = "threadline-migration-test"
     }
