@@ -16,10 +16,11 @@ remaining product boundary is invited technical-alpha use sufficient to
 evaluate whether ten real users can complete small remote tasks for two weeks
 and provide useful feedback.
 
-The current accepted signed build and source version are both
-`0.1.0-alpha.7`. Alpha.5 is an immutable rejected artifact. Alpha.7 allows drafting the
-next command while one runs and lets a user visit Home without disconnecting
-the one active SSH session. Both paths pass on the owner's Galaxy S25 Ultra.
+The current accepted signed build is `0.1.0-alpha.7`; the current source
+candidate is `0.1.0-alpha.8`. Alpha.5 is an immutable rejected artifact.
+Alpha.8 adds isolated child-Bash execution for script-like commands so a strict
+mode failure does not close the persistent SSH shell. Owner-device acceptance
+is pending.
 Signed builds are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
