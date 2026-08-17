@@ -1,5 +1,6 @@
 package dev.threadline.core.shell
 
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -113,9 +114,54 @@ class BashShellIntegrationTest {
 
         assertEquals(
             "__threadline_run_${nonce.value} 'command-42' " +
-                "'printf '\\''%s\n'\\'' \"\$(uname)\"'\n",
+                "'printf '\\''%s\n'\\'' \"\$(uname)\"' 'persistent'\n",
             invocation,
         )
+    }
+
+    @Test
+    fun `isolated strict command cannot terminate the integration shell`() {
+        val persistentStrictId = CommandId("persistent-strict-command")
+        val strictId = CommandId("strict-command")
+        val nextId = CommandId("next-command")
+        val process = ProcessBuilder("bash", "--noprofile", "--norc")
+            .redirectErrorStream(true)
+            .start()
+
+        try {
+            process.outputStream.use { input ->
+                input.write(integration.bootstrap(CommandId("bootstrap-probe")))
+                input.write(
+                    integration.invocation(
+                        commandId = persistentStrictId,
+                        command = "set -euo pipefail",
+                    ),
+                )
+                input.write(
+                    integration.invocation(
+                        commandId = strictId,
+                        command = "set -euo pipefail; false; printf unreachable",
+                        executionMode = CommandExecutionMode.ISOLATED,
+                    ),
+                )
+                input.write(
+                    integration.invocation(
+                        commandId = nextId,
+                        command = "printf 'next-command-ran\\n'",
+                    ),
+                )
+            }
+
+            assertTrue("Bash did not exit", process.waitFor(5, TimeUnit.SECONDS))
+            val output = process.inputStream.readBytes().decodeToString()
+            assertEquals(output, 0, process.exitValue())
+            assertTrue(output.contains(";end;${persistentStrictId.value};0;"))
+            assertTrue(output.contains(";end;${strictId.value};1;"))
+            assertTrue(output.contains("next-command-ran"))
+            assertTrue(output.contains(";end;${nextId.value};0;"))
+        } finally {
+            process.destroyForcibly()
+        }
     }
 
     @Test
@@ -127,6 +173,12 @@ class BashShellIntegrationTest {
         assertTrue(
             bootstrap.contains(
                 "printf '\\033]777;threadline;${nonce.value};start;%s\\007'",
+            ),
+        )
+        assertTrue(bootstrap.contains("[[ \"\$__tl_mode\" == isolated ]]"))
+        assertTrue(
+            bootstrap.contains(
+                "command bash --noprofile --norc -c \"\$__tl_command\"",
             ),
         )
         assertTrue(bootstrap.contains("builtin eval -- \"\$__tl_command\""))
@@ -148,7 +200,7 @@ class BashShellIntegrationTest {
         assertFalse(bootstrap.contains("__tl_interrupted"))
         assertTrue(
             bootstrap.endsWith(
-                "__threadline_run_${nonce.value} 'bootstrap-probe' ':'\n",
+                "__threadline_run_${nonce.value} 'bootstrap-probe' ':' 'persistent'\n",
             ),
         )
         assertFalse(bootstrap.contains("\u001b]"))
@@ -160,5 +212,15 @@ class BashShellIntegrationTest {
 
         assertEquals(36, id.value.length)
         assertTrue(id.value.all { it.isLetterOrDigit() || it == '-' })
+    }
+
+    @Test
+    fun `strict shell option warning recognizes common prologues`() {
+        assertTrue(commandMayChangePersistentStrictMode("set -euo pipefail\nprintf ready"))
+        assertTrue(commandMayChangePersistentStrictMode("  set -o errexit"))
+        assertTrue(commandMayChangePersistentStrictMode("set -o nounset"))
+        assertTrue(commandMayChangePersistentStrictMode("set -o pipefail"))
+        assertFalse(commandMayChangePersistentStrictMode("printf 'set -e'"))
+        assertFalse(commandMayChangePersistentStrictMode("set +e"))
     }
 }

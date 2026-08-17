@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-11
+Updated: 2026-08-16
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -122,6 +122,16 @@ Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
 `sleep 10` command ran, the composer accepted a `pwd` draft and kept Send
 disabled. Send enabled when the shell returned to ready, and the draft then ran
 normally. This completes alpha.7 owner-device acceptance.
+
+Post-alpha.7 source work adds an explicit isolated execution path for
+script-like commands. It runs the exact composer text in a child Bash process,
+reports the child exit status in the normal command card, and leaves the
+persistent shell available after strict-mode failures. Persistent Send remains
+the state-carrying path. Common `set -e`, `set -u`, and long-form strict-option
+prologues produce an advisory warning; isolated cards and saved history retain
+their execution mode. Host-side Bash regression, JVM, Compose, Room migration,
+and fixture-backed production SSH tests cover the new boundary. Owner-device
+acceptance remains pending for the next signed candidate.
 
 ## Remaining Phase 5 boundaries
 

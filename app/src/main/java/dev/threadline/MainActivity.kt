@@ -266,6 +266,7 @@ private fun ThreadlineApp() {
                 structuredShell = snapshot.structuredShell,
                 transcript = snapshot.transcript,
                 onSubmit = manager::submitCommand,
+                onSubmitIsolated = manager::submitIsolatedCommand,
                 onControlC = manager::sendControlC,
                 onDisconnect = manager::disconnect,
                 onOpenHome = { showConnectedSession = false },

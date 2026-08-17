@@ -1,5 +1,6 @@
 package dev.threadline.core.transcript
 
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.ShellLifecycleEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ internal class CommandTranscript(
         id: CommandId,
         command: String,
         directoryAtStart: String?,
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
     ) {
         check(active == null) { "Only one transcript command may be active" }
         while (turns.size >= maximumTurns) {
@@ -33,6 +35,7 @@ internal class CommandTranscript(
         MutableTurn(
             id = id,
             command = command,
+            executionMode = executionMode,
             directoryAtStart = directoryAtStart,
             submittedAtMillis = clockMillis(),
             collector = collectorFactory(),
@@ -153,6 +156,7 @@ internal class CommandTranscript(
     private class MutableTurn(
         val id: CommandId,
         val command: String,
+        val executionMode: CommandExecutionMode,
         val directoryAtStart: String?,
         val submittedAtMillis: Long,
         val collector: TranscriptCollector,
@@ -169,6 +173,7 @@ internal class CommandTranscript(
         fun snapshot() = CommandTurn(
             id = id,
             command = command,
+            executionMode = executionMode,
             directoryAtStart = directoryAtStart,
             submittedAtMillis = submittedAtMillis,
             startedAtMillis = startedAtMillis,

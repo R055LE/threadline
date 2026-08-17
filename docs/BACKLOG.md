@@ -113,6 +113,50 @@ disconnect handling, and whether queued content is persisted. Never send a
 queued command merely because the shell returned to readiness unless the UI
 made that execution contract unambiguous.
 
+## Persistent-shell exit recovery
+
+**Status:** Isolated execution implemented in post-alpha.7 source; automatic
+shell restart remains deferred.
+
+Transcript Send intentionally evaluates inside the persistent Bash shell so
+directory changes, exports, aliases, and functions survive between cards. That
+also means a command can enable `errexit` or `nounset`, call `exit` or `exec`,
+and terminate the shell before Threadline emits its completion marker.
+
+Run isolated now executes script-like input in a child Bash process. A strict
+block can fail with its real exit status while the persistent shell remains
+available for the next command. Common strict-option prologues show an advisory
+warning, isolated cards are labeled, and reruns preserve their execution mode.
+The mode is also retained in saved transcript history. Persistent Send remains
+available because changing live shell state is sometimes intentional.
+
+A later recovery slice may retain the transcript and offer a fresh shell when
+the persistent shell itself exits. It must say that shell state was lost. Do
+not imply that a restarted shell preserved a directory, variable, function, or
+process that died with the old shell.
+
+## Responses to running commands
+
+**Status:** Deferred interaction and security design; same-session raw terminal
+input is the current path.
+
+Plain prompts such as `read -p`, package-manager confirmations, and `sudo`
+password requests do not necessarily emit terminal control sequences. The
+current interactive suggestion can therefore miss them even though the raw
+terminal can already send exact input to the waiting process.
+
+A transcript-mode response control should remain separate from both the next
+command draft and a future command queue. Ordinary replies may be sent as
+ephemeral PTY input without entering command history. Sensitive replies need a
+masked, short-lived entry path that is never persisted or copied into
+diagnostics. Threadline cannot promise that a reply stays out of the transcript
+if the remote program leaves terminal echo enabled or prints it back.
+
+Prompt recognition is advisory only. Remote output is untrusted and any
+program can print text resembling a password request, so Threadline must not
+present a guessed prompt as authenticated `sudo` or inject a guessed answer.
+Keep a manual terminal handoff reachable for every running command.
+
 ## Opt-in saved password authentication
 
 **Status:** Deferred product and security decision; not an assumed future

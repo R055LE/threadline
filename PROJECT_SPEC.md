@@ -631,6 +631,21 @@ While that command runs, the composer remains editable as a local draft, but
 Send stays disabled until the structured shell returns to ready. Drafting does
 not queue or automatically execute a command.
 
+Transcript submission has two explicit execution paths:
+
+- **Send** evaluates the command in the persistent Bash shell. Working-directory
+  changes, exported variables, aliases, functions, and shell options can carry
+  into later turns.
+- **Run isolated** executes the command in a child Bash process. It inherits the
+  current directory and exported environment, but its directory, variable,
+  function, alias, and shell-option changes do not persist.
+
+Use isolated execution for script-like blocks that enable `errexit`, `nounset`,
+or `pipefail`, or that may call `exit` or `exec`. A failing isolated command must
+still emit its exit status and completion marker, and the persistent shell must
+accept the next command. Detection of common strict-mode prologues is advisory;
+Threadline must not silently change the selected execution path.
+
 ### 10.2 Interactive input
 
 When raw mode is open, keyboard and control-key input writes directly to the PTY.
@@ -912,6 +927,8 @@ vim
 Also test:
 
 - Multiline shell blocks
+- An isolated `set -euo pipefail` block that fails, followed by a successful
+  persistent command in the same session
 - Pipes and redirects
 - Command substitutions
 - Here-documents

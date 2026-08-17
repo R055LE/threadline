@@ -248,6 +248,14 @@ class AndroidStructuredShellIntegrationTest {
             assertEquals(1, failed.exitStatus)
             assertEquals("/tmp", failed.currentDirectory)
 
+            val strictFailure = executeIsolated(
+                manager,
+                "set -euo pipefail; false; printf unreachable",
+            )
+            assertEquals(1, strictFailure.exitStatus)
+            assertEquals("/tmp", strictFailure.currentDirectory)
+            assertSuccessful(manager, "printf 'strict-mode-recovered\\n'")
+
             assertSuccessful(
                 manager,
                 "value='two lines'\ntest \"\$value\" = 'two lines'",
@@ -449,6 +457,14 @@ class AndroidStructuredShellIntegrationTest {
         command: String,
     ): CompletedCommand {
         val submission = accepted(manager.submitCommand(command))
+        return awaitCompletion(manager, submission.commandId)
+    }
+
+    private suspend fun executeIsolated(
+        manager: SessionManager,
+        command: String,
+    ): CompletedCommand {
+        val submission = accepted(manager.submitIsolatedCommand(command))
         return awaitCompletion(manager, submission.commandId)
     }
 

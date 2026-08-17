@@ -65,9 +65,11 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.shell.commandMayChangePersistentStrictMode
 import dev.threadline.core.terminal.TerminalKey
 import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.AnsiColor
@@ -84,6 +86,7 @@ internal object TranscriptTags {
     const val TRANSCRIPT = "session-transcript"
     const val COMPOSER = "command-composer"
     const val SEND = "command-send"
+    const val RUN_ISOLATED = "command-run-isolated"
     const val HISTORY_OLDER = "command-history-older"
     const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
@@ -127,6 +130,7 @@ internal fun ConnectedSessionScreen(
     structuredShell: StructuredShellState,
     transcript: CommandTranscriptState,
     onSubmit: (String) -> CommandSubmissionResult,
+    onSubmitIsolated: ((String) -> CommandSubmissionResult)? = null,
     onControlC: () -> Unit,
     onDisconnect: () -> Unit,
     onOpenHome: () -> Unit = {},
@@ -208,6 +212,7 @@ internal fun ConnectedSessionScreen(
                     structuredShell = structuredShell,
                     transcript = transcript,
                     onSubmit = onSubmit,
+                    onSubmitIsolated = onSubmitIsolated,
                     onStop = onControlC,
                     onDisconnect = onDisconnect,
                     onOpenTerminal = { rawModeRequested = true },
@@ -305,6 +310,7 @@ internal fun TranscriptSurface(
     structuredShell: StructuredShellState,
     transcript: CommandTranscriptState,
     onSubmit: (String) -> CommandSubmissionResult,
+    onSubmitIsolated: ((String) -> CommandSubmissionResult)? = null,
     onStop: () -> Unit,
     onDisconnect: () -> Unit,
     onOpenTerminal: () -> Unit = {},
@@ -345,9 +351,17 @@ internal fun TranscriptSurface(
         }
     }
 
-    fun submit(command: String, clearComposer: Boolean) {
+    fun submit(
+        command: String,
+        clearComposer: Boolean,
+        executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
+    ) {
         submissionError = null
-        when (val result = onSubmit(command)) {
+        val result = when (executionMode) {
+            CommandExecutionMode.PERSISTENT -> onSubmit(command)
+            CommandExecutionMode.ISOLATED -> requireNotNull(onSubmitIsolated)(command)
+        }
+        when (result) {
             is CommandSubmissionResult.Accepted -> {
                 if (clearComposer) {
                     composer = ""
@@ -428,7 +442,13 @@ internal fun TranscriptSurface(
                         historyDraft = turn.command
                         submissionError = null
                     },
-                    onRerun = { submit(turn.command, clearComposer = false) },
+                    onRerun = {
+                        submit(
+                            command = turn.command,
+                            clearComposer = false,
+                            executionMode = turn.executionMode,
+                        )
+                    },
                     onOpenUrl = openUrl,
                     onOpenTerminal = onOpenTerminal,
                     clockMillis = clockMillis,
@@ -483,6 +503,37 @@ internal fun TranscriptSurface(
                     modifier = Modifier.testTag(TranscriptTags.SEND),
                 ) {
                     Text("Send")
+                }
+            }
+            if (
+                onSubmitIsolated != null &&
+                commandMayChangePersistentStrictMode(composer)
+            ) {
+                Text(
+                    "Persistent Send can close the shell after a failure. " +
+                        "Run isolated unless those changes need to persist.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (onSubmitIsolated != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = {
+                            submit(
+                                command = composer,
+                                clearComposer = true,
+                                executionMode = CommandExecutionMode.ISOLATED,
+                            )
+                        },
+                        enabled = structuredShell is StructuredShellState.Ready &&
+                            composer.isNotEmpty(),
+                        modifier = Modifier.testTag(TranscriptTags.RUN_ISOLATED),
+                    ) {
+                        Text("Run isolated")
+                    }
                 }
             }
             if (historyCommands.isNotEmpty()) {
@@ -753,6 +804,7 @@ private fun rememberTurnTime(
 }
 
 private fun CommandTurn.metadataLabel(nowMillis: Long): String = buildList {
+    if (executionMode == CommandExecutionMode.ISOLATED) add("Isolated")
     add(status.label)
     directoryAtStart?.let(::add)
     durationMillis(nowMillis)?.let { add(formatDuration(it)) }

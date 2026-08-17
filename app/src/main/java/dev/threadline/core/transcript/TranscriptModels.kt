@@ -1,5 +1,6 @@
 package dev.threadline.core.transcript
 
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 
 enum class CommandStatus {
@@ -74,6 +75,7 @@ enum class InteractiveTerminalHint {
 data class CommandTurn(
     val id: CommandId,
     val command: String,
+    val executionMode: CommandExecutionMode = CommandExecutionMode.PERSISTENT,
     val directoryAtStart: String?,
     val submittedAtMillis: Long,
     val startedAtMillis: Long?,

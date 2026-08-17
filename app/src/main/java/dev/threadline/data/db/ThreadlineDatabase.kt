@@ -233,6 +233,8 @@ internal data class TranscriptTurnEntity(
     @ColumnInfo(name = "turn_index")
     val turnIndex: Int,
     val command: String,
+    @ColumnInfo(name = "execution_mode")
+    val executionMode: String,
     @ColumnInfo(name = "command_truncated")
     val commandTruncated: Boolean,
     @ColumnInfo(name = "directory_at_start")
@@ -398,7 +400,7 @@ internal interface TranscriptArchiveDao {
         TranscriptTurnEntity::class,
         TranscriptOutputChunkEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 internal abstract class ThreadlineDatabase : RoomDatabase() {
@@ -415,7 +417,12 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 context.applicationContext,
                 ThreadlineDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+            ).addMigrations(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+            ).build()
 
         internal val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -520,6 +527,15 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS " +
                         "`index_transcript_output_chunks_session_id_command_id` " +
                         "ON `transcript_output_chunks` (`session_id`, `command_id`)",
+                )
+            }
+        }
+
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `transcript_turns` ADD COLUMN " +
+                        "`execution_mode` TEXT NOT NULL DEFAULT 'PERSISTENT'",
                 )
             }
         }
