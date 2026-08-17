@@ -105,10 +105,10 @@ terminal correctly remained terminal-only rather than creating transcript
 cards. See the
 [alpha.6 Ed25519 shrinker correction](investigations/2026-08-10-alpha6-ed25519-shrinker-correction.md).
 
-Product work continues while invited alpha use is gathered. The current accepted
-tester build is `0.1.0-alpha.7` (`10007`). Its first slice keeps the structured composer
-editable while a command runs, preserves that local draft through
-same-session terminal switching and Android saved-state restoration, and keeps
+Product work continues while invited alpha use is gathered. Alpha.7's first
+slice keeps the structured composer editable while a command runs, preserves
+that local draft through same-session terminal switching and Android
+saved-state restoration, and keeps
 Send disabled until the shell returns to ready. It does not queue or
 automatically execute commands. Its second slice adds a Home route that retains
 the one active SSH session, shows that session with explicit Return and
@@ -122,16 +122,25 @@ Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
 disabled. Send enabled when the shell returned to ready, and the draft then ran
 normally. This completes alpha.7 owner-device acceptance.
 
-The current source candidate is `0.1.0-alpha.8` (`10008`). It adds an explicit
-isolated execution path for script-like commands. It runs the exact composer
-text in a child Bash process,
+The current accepted tester build and source version are both
+`0.1.0-alpha.8` (`10008`). It adds an explicit isolated execution path for
+script-like commands. It runs the exact composer text in a child Bash process,
 reports the child exit status in the normal command card, and leaves the
 persistent shell available after strict-mode failures. Persistent Send remains
 the state-carrying path. Common `set -e`, `set -u`, and long-form strict-option
 prologues produce an advisory warning; isolated cards and saved history retain
 their execution mode. Host-side Bash regression, JVM, Compose, Room migration,
-and fixture-backed production SSH tests cover the new boundary. Owner-device
-acceptance remains pending for the next signed candidate.
+and fixture-backed production SSH tests cover the new boundary.
+
+The exact merged-main candidate passed CI, permanent signing, checksum,
+certificate, v2/v3 signature, package identity, and 16 KiB alignment checks.
+Android installed it on the Galaxy S25 Ultra. Against the real fixture, a
+persistent command established an exported marker and `/tmp` working directory.
+An isolated strict block changed both values inside the child, printed those
+child values, stopped at `false` with exit 1, and omitted its unreachable line.
+The next persistent command returned the original marker and `/tmp`, with exit
+0 and without reconnecting. This closes alpha.8 owner-device acceptance. See the
+[alpha.8 isolated-execution investigation](investigations/2026-08-17-alpha8-isolated-execution-acceptance.md).
 
 ## Remaining Phase 5 boundaries
 

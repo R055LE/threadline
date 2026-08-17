@@ -93,6 +93,16 @@ the Galaxy S25 Ultra. The retained-session Home and Return path passed. During a
 running `sleep 10`, the composer accepted a `pwd` draft while Send remained
 disabled; Send enabled when the shell returned to ready and the draft executed
 normally. This made alpha.7 the accepted tester build.
+
+Alpha.8 then added an explicit child-Bash execution path for script-like input
+while retaining persistent Send for state-carrying commands. The merged-main
+candidate passed CI and permanent signing, then installed on the Galaxy S25
+Ultra. A physical fixture run proved that an isolated `set -euo pipefail` block
+returned exit 1 without its unreachable line, kept child directory and export
+changes out of the persistent shell, and allowed the next persistent command to
+succeed with its original state. Alpha.8 became the accepted tester build. The
+same run exposed deferred transcript keyboard anchoring and saved-history mode
+label issues without invalidating command execution.
 Additional device and OEM coverage is opportunistic alpha evidence rather than a separate Pixel
 gate. See
 [STATUS.md](STATUS.md) rather than this chronology for the active boundary.
