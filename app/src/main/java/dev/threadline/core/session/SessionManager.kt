@@ -344,9 +344,9 @@ class SessionManager(
             )
             liveSession = session
             markTranscriptSessionConnected()
+            startStructuredShell(session)
             stateMachine.apply(SessionEvent.ShellReady(terminal.size))
             startSessionJobs(session)
-            startStructuredShell(session)
         } catch (failure: SshAdapterException) {
             val mapped = if (failure.error is SessionError.HostKeyRejected) {
                 gate.rejection ?: failure.error
