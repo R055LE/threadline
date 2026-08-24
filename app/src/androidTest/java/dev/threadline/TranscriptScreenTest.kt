@@ -1,25 +1,30 @@
 package dev.threadline
 
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -31,6 +36,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.threadline.core.shell.ActiveCommand
 import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
@@ -53,7 +61,7 @@ import org.junit.Test
 
 class TranscriptScreenTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
     fun composerSubmitsExactMultilineCommandAndClearsAfterAcceptance() {
@@ -979,6 +987,87 @@ class TranscriptScreenTest {
                     ?.key,
             )
         }
+    }
+
+    @Test
+    fun transcriptKeepsLatestTurnVisibleWhenImeInsetsArrive() {
+        composeRule.runOnIdle {
+            composeRule.activity.enableEdgeToEdge()
+        }
+        lateinit var composeView: View
+        val latestTurnId = "ime-command"
+        val transcript = mutableStateOf(
+            CommandTranscriptState(
+                turns = (0 until 6).map { index ->
+                    turn(
+                        id = "command-$index",
+                        command = "printf command-$index",
+                        status = CommandStatus.SUCCEEDED,
+                        output = "result-$index",
+                    )
+                },
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Keyboard viewport test",
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = transcript.value,
+                    onSubmit = { command ->
+                        transcript.value = CommandTranscriptState(
+                            turns = transcript.value.turns + turn(
+                                id = latestTurnId,
+                                command = command,
+                                status = CommandStatus.SUCCEEDED,
+                                output = "latest result",
+                            ),
+                        )
+                        CommandSubmissionResult.Accepted(CommandId(latestTurnId))
+                    },
+                    onControlC = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag(TranscriptTags.output("command-5"))
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performClick()
+            .assertIsFocused()
+        composeRule.runOnIdle {
+            composeView = composeRule.activity
+                .findViewById<ViewGroup>(android.R.id.content)
+                .getChildAt(0)
+            WindowInsetsControllerCompat(
+                composeRule.activity.window,
+                composeView,
+            ).show(WindowInsetsCompat.Type.ime())
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            ViewCompat.getRootWindowInsets(composeView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+        val composerBottom = composeRule
+            .onNodeWithTag(TranscriptTags.COMPOSER)
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .bottom
+        val visibleBottom = ViewCompat.getRootWindowInsets(composeView)
+            ?.getInsets(WindowInsetsCompat.Type.ime())
+            ?.let { composeView.height - it.bottom }
+        assertTrue(
+            "Composer bottom $composerBottom exceeded IME top $visibleBottom",
+            visibleBottom != null && composerBottom <= visibleBottom,
+        )
+        composeRule.onNodeWithTag(TranscriptTags.output("command-5"))
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performTextInput("printf latest")
+        composeRule.onNodeWithTag(TranscriptTags.SEND).performClick()
+
+        composeRule.onNodeWithTag(TranscriptTags.output(latestTurnId))
+            .assertIsDisplayed()
     }
 
     private fun runningShell() = StructuredShellState.Running(

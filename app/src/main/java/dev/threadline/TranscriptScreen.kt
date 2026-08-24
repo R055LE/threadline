@@ -339,13 +339,16 @@ internal fun TranscriptSurface(
     val outputRevision = lastTurn?.let {
         "${it.id.value}:${it.status}:${it.output.plainText.length}"
     }
+    val viewportHeight by remember {
+        derivedStateOf { listState.layoutInfo.viewportSize.height }
+    }
 
     LaunchedEffect(userDragging, atBottom) {
         if (userDragging || atBottom) {
             followOutput = atBottom
         }
     }
-    LaunchedEffect(transcript.turns.size, outputRevision) {
+    LaunchedEffect(transcript.turns.size, outputRevision, viewportHeight) {
         if (followOutput && transcript.turns.isNotEmpty()) {
             listState.scrollToItem(transcript.turns.size)
         }
