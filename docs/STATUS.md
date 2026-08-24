@@ -142,6 +142,14 @@ The next persistent command returned the original marker and `/tmp`, with exit
 0 and without reconnecting. This closes alpha.8 owner-device acceptance. See the
 [alpha.8 isolated-execution investigation](investigations/2026-08-17-alpha8-isolated-execution-acceptance.md).
 
+Post-alpha.8 source work keeps a followed transcript tail anchored when the
+software keyboard changes the list viewport height. A connected-session
+emulator regression using the real Gboard window reproduces the prior loss of
+the newest useful card, then verifies that the composer, previous result, and a
+newly submitted result remain visible after the fix. Deliberate user scrolling
+still disables tail-following, and the raw terminal path is unchanged.
+Owner-device acceptance and the next signed tester build remain pending.
+
 ## Remaining Phase 5 boundaries
 
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.

@@ -51,8 +51,8 @@ visual case.
 
 ## Transcript viewport with the software keyboard
 
-**Status:** Deferred functional UX bug; alpha.8 command execution remains
-usable, but normal transcript work requires avoidable recovery scrolling.
+**Status:** Implemented in source with emulator regression coverage; physical
+owner-device validation remains pending.
 
 On the Galaxy S25 Ultra, focusing the transcript composer and sending commands
 with the software keyboard open moved the useful transcript content above the
@@ -61,11 +61,19 @@ user had to scroll back up to recover the new cards and output. Connection,
 execution, and data remained intact. The recovery scrolling is repeated
 friction in the primary interaction path.
 
-When this is fixed, test focus, submission, running output, completion,
-tail-following, manual user scrolling, keyboard dismissal, rotation, and large
-font sizes together. The current or newly completed turn should remain easy to
-reach while the composer stays usable. Do not force-scroll a user who has
-deliberately moved into older output.
+The transcript followed new output but did not re-anchor the followed tail when
+the software keyboard changed the list viewport height. Tail-following now
+reacts to viewport resizes while preserving the IME padding that keeps the
+composer above the keyboard. An instrumented emulator regression uses the real
+Gboard window and the full connected-session layout. It failed against the old
+layout and verifies that the composer, previous result, and newly submitted
+result all remain visible after the fix. The raw terminal keeps its separate
+IME handling.
+
+Owner-device acceptance should repeat focus, submission, running output,
+completion, keyboard dismissal, rotation, and large-font checks. Existing
+tail-following behavior is unchanged, including the rule that deliberate user
+scrolling into older output must not be overridden.
 
 ## Responsive onboarding and edge-to-edge polish
 
