@@ -39,7 +39,7 @@ jobs:
           ANDROID_AVD_HOME: ${{ runner.temp }}/threadline-avd
         run: |
           mkdir -p "${ANDROID_AVD_HOME}"
-          echo "no" | avdmanager create avd --force --name threadline-ci --package "system-images;android-35;google_apis;x86_64"
+          echo "no" | avdmanager create avd --force --name threadline-ci --package "system-images;android-35;google_apis;x86_64" --device pixel_6
           "${ANDROID_HOME}/emulator/emulator" -list-avds | grep -Fx threadline-ci
       - name: Start emulator
         shell: bash
