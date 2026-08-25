@@ -142,15 +142,27 @@ The next persistent command returned the original marker and `/tmp`, with exit
 0 and without reconnecting. This closes alpha.8 owner-device acceptance. See the
 [alpha.8 isolated-execution investigation](investigations/2026-08-17-alpha8-isolated-execution-acceptance.md).
 
-The current source candidate is `0.1.0-alpha.9` (`10009`). It keeps a followed
-transcript tail anchored when the software keyboard changes the list viewport
-height. A connected-session emulator regression using the real Gboard window
-reproduces the prior loss of the newest useful card, then verifies that the
-composer, previous result, and a newly submitted result remain visible after
-the fix. CI runs the regression on an explicit Pixel 6 AVD profile. Deliberate
-user scrolling still disables tail-following, and the raw terminal path is
-unchanged. Exact merged-main CI, permanent signing, update installation, and
-owner-device acceptance remain pending.
+The exact merged-main alpha.9 candidate passed CI, was signed with the permanent
+key, and installed on the Galaxy S25 Ultra. Its certificate, v2/v3 signatures,
+package identity, version, checksum, and 16 KiB alignment verify. Physical
+testing then rejected it: after Gboard opened over an empty transcript, a
+completed first turn existed but remained above the visible window until the
+keyboard closed. The session and command remained functional.
+
+The failure exposed a production boundary missing from the emulator regression.
+`MainActivity` enabled edge-to-edge layout but left its soft-input adjustment
+unspecified. The Pixel emulator resized the generic test activity, while the
+Samsung device panned the production window. The viewport-follow effect could
+only react to the resize path.
+
+The current source candidate is `0.1.0-alpha.10` (`10010`). It explicitly makes
+the production activity resize for the software keyboard, adds an instrumented
+contract for that manifest setting, and starts the Gboard regression from the
+same empty-transcript first-command sequence. Deliberate user scrolling still
+disables tail-following, and the raw terminal path is unchanged. Exact
+merged-main CI, permanent signing, update installation, and owner-device
+acceptance remain pending. See the
+[alpha.9 IME physical rejection](investigations/2026-08-24-alpha9-ime-physical-rejection.md).
 
 ## Remaining Phase 5 boundaries
 

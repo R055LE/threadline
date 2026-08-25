@@ -13,21 +13,23 @@ connection. Alpha.6 corrects that failure and has passed independent CI,
 permanent signing, in-place update, and physical acceptance. Alpha.7 adds local
 drafting while a command runs and retained-session Home navigation. Alpha.8
 adds isolated child-Bash execution for script-like commands so a strict-mode
-failure does not close the persistent SSH shell. Alpha.9 is the current source
-candidate and keeps the followed transcript tail visible when the software
-keyboard changes the viewport. The remaining product boundary is invited
-technical-alpha use sufficient to evaluate whether ten real users can complete
-small remote tasks for two weeks and provide useful feedback.
+failure does not close the persistent SSH shell. Alpha.9 attempted to keep the
+followed transcript tail visible when the software keyboard changed the
+viewport, but the signed build failed that check on the owner device. Alpha.10
+is the current source candidate and makes the production activity resize for
+the keyboard. The remaining product boundary is invited technical-alpha use
+sufficient to evaluate whether ten real users can complete small remote tasks
+for two weeks and provide useful feedback.
 
 The current accepted signed build is `0.1.0-alpha.8`; the current source
-candidate is `0.1.0-alpha.9`. Alpha.5 is an immutable rejected artifact.
-Alpha.9 owner-device acceptance is pending. Signed builds are shared directly
-with invited testers.
+candidate is `0.1.0-alpha.10`. Alpha.5 and alpha.9 are immutable rejected
+artifacts. Alpha.10 owner-device acceptance is pending. Signed builds are
+shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
 [technical-alpha guide](docs/alpha-testing.md).
-Do not distribute alpha.5.
+Do not distribute alpha.5 or alpha.9.
 
 Threadline has no supported production release. Do not use the alpha for
 privileged or sensitive systems.
