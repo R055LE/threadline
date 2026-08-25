@@ -1,8 +1,10 @@
 package dev.threadline
 
+import android.content.ComponentName
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.lazy.LazyListState
@@ -989,25 +991,46 @@ class TranscriptScreenTest {
         }
     }
 
+    @Suppress("DEPRECATION")
+    @Test
+    fun mainActivityRequestsResizeForIme() {
+        val activityInfo = composeRule.activity.packageManager.getActivityInfo(
+            ComponentName(composeRule.activity, MainActivity::class.java),
+            0,
+        )
+
+        assertEquals(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+            activityInfo.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
+        )
+    }
+
     @Test
     fun transcriptKeepsLatestTurnVisibleWhenImeInsetsArrive() {
+        assertSubmittedTurnVisibleWithIme(
+            initialTurns = (0 until 6).map { index ->
+                turn(
+                    id = "command-$index",
+                    command = "printf command-$index",
+                    status = CommandStatus.SUCCEEDED,
+                    output = "result-$index",
+                )
+            },
+        )
+    }
+
+    @Test
+    fun transcriptKeepsFirstTurnVisibleWhenImeInsetsArrive() {
+        assertSubmittedTurnVisibleWithIme(initialTurns = emptyList())
+    }
+
+    private fun assertSubmittedTurnVisibleWithIme(initialTurns: List<CommandTurn>) {
         composeRule.runOnIdle {
             composeRule.activity.enableEdgeToEdge()
         }
         lateinit var composeView: View
         val latestTurnId = "ime-command"
-        val transcript = mutableStateOf(
-            CommandTranscriptState(
-                turns = (0 until 6).map { index ->
-                    turn(
-                        id = "command-$index",
-                        command = "printf command-$index",
-                        status = CommandStatus.SUCCEEDED,
-                        output = "result-$index",
-                    )
-                },
-            ),
-        )
+        val transcript = mutableStateOf(CommandTranscriptState(turns = initialTurns))
         composeRule.setContent {
             MaterialTheme {
                 ConnectedSessionScreen(
@@ -1030,8 +1053,10 @@ class TranscriptScreenTest {
                 )
             }
         }
-        composeRule.onNodeWithTag(TranscriptTags.output("command-5"))
-            .assertIsDisplayed()
+        initialTurns.lastOrNull()?.let { lastTurn ->
+            composeRule.onNodeWithTag(TranscriptTags.output(lastTurn.id.value))
+                .assertIsDisplayed()
+        }
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
             .performClick()
             .assertIsFocused()
@@ -1060,8 +1085,10 @@ class TranscriptScreenTest {
             "Composer bottom $composerBottom exceeded IME top $visibleBottom",
             visibleBottom != null && composerBottom <= visibleBottom,
         )
-        composeRule.onNodeWithTag(TranscriptTags.output("command-5"))
-            .assertIsDisplayed()
+        initialTurns.lastOrNull()?.let { lastTurn ->
+            composeRule.onNodeWithTag(TranscriptTags.output(lastTurn.id.value))
+                .assertIsDisplayed()
+        }
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
             .performTextInput("printf latest")
         composeRule.onNodeWithTag(TranscriptTags.SEND).performClick()

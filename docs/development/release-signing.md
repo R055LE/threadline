@@ -109,6 +109,22 @@ was selected through `scripts/sign-latest-alpha.sh`. Android installed it on
 the Galaxy S25 Ultra, where isolated strict failure, state containment, and
 persistent-command recovery passed against the disposable fixture.
 
+Permanent-key alpha.9 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+446b9c048cf720bd35bc2721f43e3ac49ba22660b116fda00da3342fa7862e7d
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.9` (`10009`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its exact merged-main candidate passed public CI and
+was selected through `scripts/sign-latest-alpha.sh`. Android installed it on
+the Galaxy S25 Ultra, but the followed transcript tail still moved outside the
+visible window when Gboard opened. Alpha.9 is rejected and must not be
+distributed or overwritten. Preserve it as immutable evidence and advance the
+corrected build to alpha.10. See the
+[alpha.9 IME physical rejection](../investigations/2026-08-24-alpha9-ime-physical-rejection.md).
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this

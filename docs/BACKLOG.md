@@ -51,7 +51,8 @@ visual case.
 
 ## Transcript viewport with the software keyboard
 
-**Status:** Implemented in source with emulator regression coverage; physical
+**Status:** The signed alpha.9 build failed physical validation. An alpha.10
+correction is implemented in source with emulator regression coverage; physical
 owner-device validation remains pending.
 
 On the Galaxy S25 Ultra, focusing the transcript composer and sending commands
@@ -61,14 +62,18 @@ user had to scroll back up to recover the new cards and output. Connection,
 execution, and data remained intact. The recovery scrolling is repeated
 friction in the primary interaction path.
 
-The transcript followed new output but did not re-anchor the followed tail when
-the software keyboard changed the list viewport height. Tail-following now
-reacts to viewport resizes while preserving the IME padding that keeps the
-composer above the keyboard. An instrumented emulator regression uses the real
-Gboard window and the full connected-session layout. It failed against the old
-layout and verifies that the composer, previous result, and newly submitted
-result all remain visible after the fix. The raw terminal keeps its separate
-IME handling.
+Alpha.9 made tail-following react to list viewport resizes while preserving the
+IME padding that keeps the composer above the keyboard. Its first physical
+check exposed a second boundary: the production activity left soft-input
+adjustment unspecified, so the Galaxy S25 Ultra panned the whole window instead
+of resizing the viewport. A completed first turn existed but remained outside
+the visible window until the keyboard closed. The session and command remained
+functional.
+
+Alpha.10 explicitly requests resize behavior for `MainActivity`. An
+instrumented contract checks the production manifest, and the real-Gboard
+connected-session regression now starts from an empty transcript and submits
+the first turn. The raw terminal keeps its separate IME handling.
 
 Owner-device acceptance should repeat focus, submission, running output,
 completion, keyboard dismissal, rotation, and large-font checks. Existing
