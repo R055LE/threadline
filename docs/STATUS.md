@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-17
+Updated: 2026-08-24
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -122,15 +122,15 @@ Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
 disabled. Send enabled when the shell returned to ready, and the draft then ran
 normally. This completes alpha.7 owner-device acceptance.
 
-The current accepted tester build and source version are both
-`0.1.0-alpha.8` (`10008`). It adds an explicit isolated execution path for
-script-like commands. It runs the exact composer text in a child Bash process,
-reports the child exit status in the normal command card, and leaves the
-persistent shell available after strict-mode failures. Persistent Send remains
-the state-carrying path. Common `set -e`, `set -u`, and long-form strict-option
-prologues produce an advisory warning; isolated cards and saved history retain
-their execution mode. Host-side Bash regression, JVM, Compose, Room migration,
-and fixture-backed production SSH tests cover the new boundary.
+The current accepted tester build is `0.1.0-alpha.8` (`10008`). It adds an
+explicit isolated execution path for script-like commands. It runs the exact
+composer text in a child Bash process, reports the child exit status in the
+normal command card, and leaves the persistent shell available after
+strict-mode failures. Persistent Send remains the state-carrying path. Common
+`set -e`, `set -u`, and long-form strict-option prologues produce an advisory
+warning; isolated cards and saved history retain their execution mode.
+Host-side Bash regression, JVM, Compose, Room migration, and fixture-backed
+production SSH tests cover the boundary.
 
 The exact merged-main candidate passed CI, permanent signing, checksum,
 certificate, v2/v3 signature, package identity, and 16 KiB alignment checks.
@@ -142,13 +142,15 @@ The next persistent command returned the original marker and `/tmp`, with exit
 0 and without reconnecting. This closes alpha.8 owner-device acceptance. See the
 [alpha.8 isolated-execution investigation](investigations/2026-08-17-alpha8-isolated-execution-acceptance.md).
 
-Post-alpha.8 source work keeps a followed transcript tail anchored when the
-software keyboard changes the list viewport height. A connected-session
-emulator regression using the real Gboard window reproduces the prior loss of
-the newest useful card, then verifies that the composer, previous result, and a
-newly submitted result remain visible after the fix. Deliberate user scrolling
-still disables tail-following, and the raw terminal path is unchanged.
-Owner-device acceptance and the next signed tester build remain pending.
+The current source candidate is `0.1.0-alpha.9` (`10009`). It keeps a followed
+transcript tail anchored when the software keyboard changes the list viewport
+height. A connected-session emulator regression using the real Gboard window
+reproduces the prior loss of the newest useful card, then verifies that the
+composer, previous result, and a newly submitted result remain visible after
+the fix. CI runs the regression on an explicit Pixel 6 AVD profile. Deliberate
+user scrolling still disables tail-following, and the raw terminal path is
+unchanged. Exact merged-main CI, permanent signing, update installation, and
+owner-device acceptance remain pending.
 
 ## Remaining Phase 5 boundaries
 
