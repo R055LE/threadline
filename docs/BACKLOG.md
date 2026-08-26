@@ -51,9 +51,9 @@ visual case.
 
 ## Transcript viewport with the software keyboard
 
-**Status:** The signed alpha.9 build failed physical validation. An alpha.10
-correction is implemented in source with emulator regression coverage; physical
-owner-device validation remains pending.
+**Status:** The signed alpha.9 and alpha.10 builds failed physical validation.
+An alpha.11 correction is implemented in source with emulator regression
+coverage; physical owner-device validation remains pending.
 
 On the Galaxy S25 Ultra, focusing the transcript composer and sending commands
 with the software keyboard open moved the useful transcript content above the
@@ -72,8 +72,17 @@ functional.
 
 Alpha.10 explicitly requests resize behavior for `MainActivity`. An
 instrumented contract checks the production manifest, and the real-Gboard
-connected-session regression now starts from an empty transcript and submits
-the first turn. The raw terminal keeps its separate IME handling.
+connected-session regression starts from an empty transcript and submits the
+first turn. Its physical test confirmed that the header stayed stable and the
+viewport resized, but tail-following aligned the bottom action rows of the new
+card. The command, status, and output remained above the visible window until
+the keyboard closed.
+
+Alpha.11 anchors a completed turn at the start of its card. Active streamed
+output still follows the transcript tail. A constrained-height regression
+requires the first completed card to stay at offset 0 with its output visible;
+the unchanged alpha.10 policy failed it at a 218 px offset. The raw terminal
+keeps its separate IME handling.
 
 Owner-device acceptance should repeat focus, submission, running output,
 completion, keyboard dismissal, rotation, and large-font checks. Existing
@@ -249,20 +258,36 @@ close/disconnect semantics.
 Do not imply that a retained session survived when only its archived transcript
 remains.
 
-## Raw-terminal IME focus reliability
+## Raw-terminal keyboard recovery
 
-**Status:** Monitor during Pixel and alpha validation; one Samsung miss was not
-reproducible.
+**Status:** Planned for the next terminal-control slice; separate from the
+alpha.11 transcript correction.
 
-On the first physical transition into raw mode, one tap on the terminal surface
-did not summon the software keyboard. A later tap worked without any app or
-device change, and the problem did not recur through subsequent terminal input
-or rotation checks.
+Physical testing found two related paths. On one early transition, tapping the
+terminal did not summon the software keyboard, though later taps worked. More
+importantly, once the keyboard is deliberately dismissed in raw mode, the UI
+has no explicit way to request it again.
 
-If it recurs, capture the entry path, orientation, current IME, prior focus,
-and whether a second tap succeeds. Then evaluate an explicit focus requester
-and post-attachment IME request rather than treating repeated tapping as the
-product behavior.
+Add a visible Keyboard control to raw mode so recovery is deterministic. A tap
+on the terminal surface may remain a convenience, but it should not be the only
+contract because taps are also used for positioning, selection, and scrolling.
+Keep the control reachable when the keyboard is hidden and verify recovery
+after mode switching, rotation, and background return.
+
+## Transcript and terminal switch reachability
+
+**Status:** Planned for the next terminal-control slice; handedness mode is
+deferred.
+
+The current Transcript/Terminal switch is the first item in the connected
+action row, placing it at the far-left edge on a portrait phone. That is poor
+thumb reach for the right-handed owner-device path even though it remains
+functional and accessible.
+
+Move the mode switch into a stable, thumb-reachable control surface while
+keeping it available in both views. Do not add a left/right-handed setting for
+one control. Reconsider handedness when several directional controls create a
+coherent layout choice that can be tested in both modes.
 
 ## Deferred connection-profile options
 
