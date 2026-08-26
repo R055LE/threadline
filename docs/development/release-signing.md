@@ -125,6 +125,23 @@ distributed or overwritten. Preserve it as immutable evidence and advance the
 corrected build to alpha.10. See the
 [alpha.9 IME physical rejection](../investigations/2026-08-24-alpha9-ime-physical-rejection.md).
 
+Permanent-key alpha.10 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+94f1add7585cacbac177455dffbb9e553f2dd5c7de0dfd4a8620e62bce86f04f
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.10` (`10010`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its exact merged-main candidate passed public CI and
+was selected through `scripts/sign-latest-alpha.sh`. Android installed it over
+alpha.9 with app data preserved, and SSH remained functional. Physical testing
+confirmed the production IME resize correction but rejected the completed-card
+presentation: only the card's bottom actions were visible above Gboard until
+the keyboard closed. Preserve alpha.10 as immutable evidence and advance the
+corrected build to alpha.11. See the
+[alpha.10 partial correction](../investigations/2026-08-26-alpha10-ime-partial-correction.md).
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this

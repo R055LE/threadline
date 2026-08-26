@@ -350,7 +350,12 @@ internal fun TranscriptSurface(
     }
     LaunchedEffect(transcript.turns.size, outputRevision, viewportHeight) {
         if (followOutput && transcript.turns.isNotEmpty()) {
-            listState.scrollToItem(transcript.turns.size)
+            val targetIndex = if (lastTurn?.status?.isActive() == true) {
+                transcript.turns.size
+            } else {
+                transcript.turns.lastIndex
+            }
+            listState.scrollToItem(targetIndex)
         }
     }
 

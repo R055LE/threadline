@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-24
+Updated: 2026-08-26
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -155,14 +155,29 @@ unspecified. The Pixel emulator resized the generic test activity, while the
 Samsung device panned the production window. The viewport-follow effect could
 only react to the resize path.
 
-The current source candidate is `0.1.0-alpha.10` (`10010`). It explicitly makes
-the production activity resize for the software keyboard, adds an instrumented
-contract for that manifest setting, and starts the Gboard regression from the
-same empty-transcript first-command sequence. Deliberate user scrolling still
-disables tail-following, and the raw terminal path is unchanged. Exact
-merged-main CI, permanent signing, update installation, and owner-device
+The exact merged-main alpha.10 candidate passed CI and was signed with the
+permanent key. Its package identity, version, certificate, v2/v3 signatures,
+checksum, and 16 KiB alignment verify. Android installed it over alpha.9 with
+retained app data, and the SSH session remained functional.
+
+Alpha.10 corrected the production window behavior: when Gboard opened, the
+connected header stayed in place and the transcript viewport resized above the
+composer. A completed first turn still failed the useful-content check. Only
+the bottom action rows of the new card were visible until the keyboard closed;
+its command, status, and output remained above the viewport. The transcript
+was still following the synthetic tail item, which aligns the bottom of a card
+taller than the constrained viewport.
+
+The current source candidate is `0.1.0-alpha.11` (`10011`). Completed turns now
+anchor at the start of the newest card, while active output retains bottom-tail
+following. A constrained-height regression first reproduced alpha.10 with a
+218 px card offset, then passed at offset 0 with the command output visible.
+The existing production-manifest and real-Gboard regressions remain in place.
+Exact merged-main CI, permanent signing, update installation, and owner-device
 acceptance remain pending. See the
-[alpha.9 IME physical rejection](investigations/2026-08-24-alpha9-ime-physical-rejection.md).
+[alpha.9 IME physical rejection](investigations/2026-08-24-alpha9-ime-physical-rejection.md)
+and
+[alpha.10 partial correction](investigations/2026-08-26-alpha10-ime-partial-correction.md).
 
 ## Remaining Phase 5 boundaries
 

@@ -16,20 +16,24 @@ adds isolated child-Bash execution for script-like commands so a strict-mode
 failure does not close the persistent SSH shell. Alpha.9 attempted to keep the
 followed transcript tail visible when the software keyboard changed the
 viewport, but the signed build failed that check on the owner device. Alpha.10
-is the current source candidate and makes the production activity resize for
-the keyboard. The remaining product boundary is invited technical-alpha use
+made the production activity resize for the keyboard. Its signed physical test
+kept the header stable and exposed the bottom of the completed card, but the
+command, status, and output still remained above the visible window. Alpha.11
+is the current source candidate and anchors completed turns at the start of the
+new card while preserving bottom-follow for active output. The remaining
+product boundary is invited technical-alpha use
 sufficient to evaluate whether ten real users can complete small remote tasks
 for two weeks and provide useful feedback.
 
 The current accepted signed build is `0.1.0-alpha.8`; the current source
-candidate is `0.1.0-alpha.10`. Alpha.5 and alpha.9 are immutable rejected
-artifacts. Alpha.10 owner-device acceptance is pending. Signed builds are
-shared directly with invited testers.
+candidate is `0.1.0-alpha.11`. Alpha.5, alpha.9, and alpha.10 are immutable
+rejected artifacts. Alpha.11 owner-device acceptance is pending. Signed builds
+are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
 [technical-alpha guide](docs/alpha-testing.md).
-Do not distribute alpha.5 or alpha.9.
+Do not distribute alpha.5, alpha.9, or alpha.10.
 
 Threadline has no supported production release. Do not use the alpha for
 privileged or sensitive systems.

@@ -7,12 +7,14 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -38,6 +40,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -927,7 +930,7 @@ class TranscriptScreenTest {
     }
 
     @Test
-    fun transcriptFollowsNewTurnsWhileAlreadyFollowingOutput() {
+    fun transcriptFollowsActiveOutputWhileAlreadyFollowing() {
         var listState: LazyListState? = null
         val transcript = mutableStateOf(
             CommandTranscriptState(
@@ -935,7 +938,11 @@ class TranscriptScreenTest {
                     turn(
                         id = "command-$index",
                         command = "printf command-$index",
-                        status = CommandStatus.SUCCEEDED,
+                        status = if (index == 9) {
+                            CommandStatus.RUNNING
+                        } else {
+                            CommandStatus.SUCCEEDED
+                        },
                     )
                 },
             ),
@@ -970,11 +977,13 @@ class TranscriptScreenTest {
         }
         composeRule.runOnIdle {
             transcript.value = CommandTranscriptState(
-                turns = transcript.value.turns + turn(
-                    id = "command-10",
-                    command = "printf command-10",
-                    status = CommandStatus.SUCCEEDED,
-                ),
+                turns = transcript.value.turns.dropLast(1) +
+                    transcript.value.turns.last().copy(status = CommandStatus.SUCCEEDED) +
+                    turn(
+                        id = "command-10",
+                        command = "printf command-10",
+                        status = CommandStatus.RUNNING,
+                    ),
             )
         }
 
@@ -1022,6 +1031,54 @@ class TranscriptScreenTest {
     @Test
     fun transcriptKeepsFirstTurnVisibleWhenImeInsetsArrive() {
         assertSubmittedTurnVisibleWithIme(initialTurns = emptyList())
+    }
+
+    @Test
+    fun completedFirstTurnAnchorsUsefulContentInConstrainedViewport() {
+        var listState: LazyListState? = null
+        val latestTurnId = "constrained-command"
+        val transcript = mutableStateOf(CommandTranscriptState())
+        composeRule.setContent {
+            MaterialTheme {
+                val rememberedListState = rememberLazyListState()
+                listState = rememberedListState
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = transcript.value,
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onSubmitIsolated = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                    modifier = Modifier.height(340.dp),
+                    listState = rememberedListState,
+                )
+            }
+        }
+
+        composeRule.runOnIdle {
+            transcript.value = CommandTranscriptState(
+                turns = listOf(
+                    turn(
+                        id = latestTurnId,
+                        command = "printf latest",
+                        status = CommandStatus.SUCCEEDED,
+                        output = "latest result",
+                    ),
+                ),
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(0, requireNotNull(listState).firstVisibleItemIndex)
+            assertEquals(0, requireNotNull(listState).firstVisibleItemScrollOffset)
+        }
+        composeRule.onNodeWithTag(TranscriptTags.output(latestTurnId))
+            .assertIsDisplayed()
     }
 
     private fun assertSubmittedTurnVisibleWithIme(initialTurns: List<CommandTurn>) {
