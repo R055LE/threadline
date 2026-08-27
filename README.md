@@ -7,7 +7,7 @@ like responses, while a real terminal remains underneath for interactive work.
 ## Alpha status
 
 **[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
-and owner-device acceptance through alpha.8 are complete. Alpha.5 installed in
+and owner-device acceptance through alpha.11 are complete. Alpha.5 installed in
 place but is rejected because a release-shrinker failure prevents SSH
 connection. Alpha.6 corrects that failure and has passed independent CI,
 permanent signing, in-place update, and physical acceptance. Alpha.7 adds local
@@ -19,16 +19,15 @@ viewport, but the signed build failed that check on the owner device. Alpha.10
 made the production activity resize for the keyboard. Its signed physical test
 kept the header stable and exposed the bottom of the completed card, but the
 command, status, and output still remained above the visible window. Alpha.11
-is the current source candidate and anchors completed turns at the start of the
-new card while preserving bottom-follow for active output. The remaining
-product boundary is invited technical-alpha use
-sufficient to evaluate whether ten real users can complete small remote tasks
-for two weeks and provide useful feedback.
+anchors completed turns at the start of the new card while preserving
+bottom-follow for active output. Its signed owner-device check passed the same
+four-step sequence. The remaining product boundary is invited technical-alpha
+use sufficient to evaluate whether ten real users can complete small remote
+tasks for two weeks and provide useful feedback.
 
-The current accepted signed build is `0.1.0-alpha.8`; the current source
-candidate is `0.1.0-alpha.11`. Alpha.5, alpha.9, and alpha.10 are immutable
-rejected artifacts. Alpha.11 owner-device acceptance is pending. Signed builds
-are shared directly with invited testers.
+The current source version and accepted signed build are both
+`0.1.0-alpha.11`. Alpha.5, alpha.9, and alpha.10 are immutable rejected
+artifacts. Signed builds are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the

@@ -142,6 +142,22 @@ the keyboard closed. Preserve alpha.10 as immutable evidence and advance the
 corrected build to alpha.11. See the
 [alpha.10 partial correction](../investigations/2026-08-26-alpha10-ime-partial-correction.md).
 
+Permanent-key alpha.11 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+60e8df47b8438584c18d559a246c2cdd462645e855c1ac77afb2c5e98b5c06fa
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.11` (`10011`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its embedded version-control record identifies exact
+merged-main commit `8085deafd107f4b80445869677f1bda8b59930dd`, which passed
+public CI before selection through `scripts/sign-latest-alpha.sh`. Android
+installed it on the Galaxy S25 Ultra, where the four-step transcript and Gboard
+sequence passed without recovery scrolling. Alpha.11 is the current accepted
+tester build. See the
+[alpha.11 IME physical acceptance](../investigations/2026-08-27-alpha11-ime-physical-acceptance.md).
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this
