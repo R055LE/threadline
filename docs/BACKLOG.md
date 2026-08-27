@@ -51,9 +51,8 @@ visual case.
 
 ## Transcript viewport with the software keyboard
 
-**Status:** The signed alpha.9 and alpha.10 builds failed physical validation.
-An alpha.11 correction is implemented in source with emulator regression
-coverage; physical owner-device validation remains pending.
+**Status:** Closed in the signed alpha.11 build after alpha.9 and alpha.10
+failed physical validation. Keep the regressions.
 
 On the Galaxy S25 Ultra, focusing the transcript composer and sending commands
 with the software keyboard open moved the useful transcript content above the
@@ -84,10 +83,12 @@ requires the first completed card to stay at offset 0 with its output visible;
 the unchanged alpha.10 policy failed it at a 218 px offset. The raw terminal
 keeps its separate IME handling.
 
-Owner-device acceptance should repeat focus, submission, running output,
-completion, keyboard dismissal, rotation, and large-font checks. Existing
-tail-following behavior is unchanged, including the rule that deliberate user
-scrolling into older output must not be overridden.
+The signed alpha.11 owner-device sequence passed. With Gboard still open, the
+completed first card showed its command, success metadata, working directory,
+timing, exit code, and output without a recovery scroll. Dismissing Gboard
+immediately exposed the full card and actions. Existing tail-following behavior
+is unchanged, including the rule that deliberate user scrolling into older
+output must not be overridden.
 
 ## Responsive onboarding and edge-to-edge polish
 

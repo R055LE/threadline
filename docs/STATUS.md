@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-26
+Updated: 2026-08-27
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -122,8 +122,8 @@ Galaxy S25 Ultra, and passed the retained-session Home and Return path. While a
 disabled. Send enabled when the shell returned to ready, and the draft then ran
 normally. This completes alpha.7 owner-device acceptance.
 
-The current accepted tester build is `0.1.0-alpha.8` (`10008`). It adds an
-explicit isolated execution path for script-like commands. It runs the exact
+Alpha.8 added an explicit isolated execution path for script-like commands. It
+runs the exact
 composer text in a child Bash process, reports the child exit status in the
 normal command card, and leaves the persistent shell available after
 strict-mode failures. Persistent Send remains the state-carrying path. Common
@@ -168,16 +168,30 @@ its command, status, and output remained above the viewport. The transcript
 was still following the synthetic tail item, which aligns the bottom of a card
 taller than the constrained viewport.
 
-The current source candidate is `0.1.0-alpha.11` (`10011`). Completed turns now
+The current accepted tester build and source version is `0.1.0-alpha.11`
+(`10011`). Completed turns now
 anchor at the start of the newest card, while active output retains bottom-tail
 following. A constrained-height regression first reproduced alpha.10 with a
 218 px card offset, then passed at offset 0 with the command output visible.
 The existing production-manifest and real-Gboard regressions remain in place.
-Exact merged-main CI, permanent signing, update installation, and owner-device
-acceptance remain pending. See the
-[alpha.9 IME physical rejection](investigations/2026-08-24-alpha9-ime-physical-rejection.md)
+
+The exact merged-main commit `8085deafd107f4b80445869677f1bda8b59930dd`
+passed public CI and was selected through the local signing helper. The APK
+matches the permanent certificate, verifies with signature schemes v2 and v3,
+is 16 KiB page aligned, and has SHA-256
+`60e8df47b8438584c18d559a246c2cdd462645e855c1ac77afb2c5e98b5c06fa`.
+Android installed it on the Galaxy S25 Ultra.
+
+The same four-step physical sequence now passes. Gboard opened over the empty
+transcript without moving the connected header. After a short command
+completed, the card start remained visible above Gboard with the command,
+success metadata, working directory, timing, exit code, and output. No recovery
+scroll was needed. Closing Gboard exposed the full card and its actions. This
+closes the transcript IME viewport boundary. See the
+[alpha.9 IME physical rejection](investigations/2026-08-24-alpha9-ime-physical-rejection.md),
+[alpha.10 partial correction](investigations/2026-08-26-alpha10-ime-partial-correction.md),
 and
-[alpha.10 partial correction](investigations/2026-08-26-alpha10-ime-partial-correction.md).
+[alpha.11 IME physical acceptance](investigations/2026-08-27-alpha11-ime-physical-acceptance.md).
 
 ## Remaining Phase 5 boundaries
 
