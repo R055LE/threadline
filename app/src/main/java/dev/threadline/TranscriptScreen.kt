@@ -45,6 +45,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -93,6 +94,7 @@ internal object TranscriptTags {
     const val INTERACTIVE_OPEN = "interactive-open-terminal"
     const val TERMINAL_CONTROL = "terminal-control"
     const val TERMINAL_ALT = "terminal-alt"
+    const val TERMINAL_KEYBOARD = "terminal-keyboard"
     const val SUBMISSION_ERROR = "command-submission-error"
     const val SESSION_ACTIONS = "session-actions"
     const val HOME = "session-home"
@@ -149,19 +151,36 @@ internal fun ConnectedSessionScreen(
     Scaffold(
         topBar = {
             Column(modifier = Modifier.statusBarsPadding()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        displayName,
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    Text(
-                        structuredShell.statusLabel(),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+                    ) {
+                        Text(
+                            displayName,
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        Text(
+                            structuredShell.statusLabel(),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    if (!rawModeRequired || transcript.turns.isNotEmpty()) {
+                        TextButton(
+                            onClick = { rawModeRequested = !rawModeRequested },
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .testTag(TranscriptTags.MODE_SWITCH),
+                        ) {
+                            Text(if (showingRawTerminal) "Transcript" else "Terminal")
+                        }
+                    }
                 }
                 Row(
                     modifier = Modifier
@@ -171,14 +190,6 @@ internal fun ConnectedSessionScreen(
                         .testTag(TranscriptTags.SESSION_ACTIONS),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    if (!rawModeRequired || transcript.turns.isNotEmpty()) {
-                        TextButton(
-                            onClick = { rawModeRequested = !rawModeRequested },
-                            modifier = Modifier.testTag(TranscriptTags.MODE_SWITCH),
-                        ) {
-                            Text(if (showingRawTerminal) "Transcript" else "Terminal")
-                        }
-                    }
                     if (showingRawTerminal) {
                         TextButton(onClick = onControlC) { Text("Ctrl-C") }
                     }
@@ -229,6 +240,13 @@ internal fun ConnectedSessionScreen(
 private fun RawTerminal(modifier: Modifier = Modifier) {
     val bridge = SessionRuntime.terminal
     val modifiers by bridge.modifiers.collectAsState()
+    var showSoftKeyboard by remember { mutableStateOf(true) }
+    LaunchedEffect(showSoftKeyboard) {
+        if (!showSoftKeyboard) {
+            delay(100)
+            showSoftKeyboard = true
+        }
+    }
     DisposableEffect(bridge) {
         bridge.clearModifiers()
         onDispose(bridge::clearModifiers)
@@ -247,7 +265,7 @@ private fun RawTerminal(modifier: Modifier = Modifier) {
             Terminal(
                 terminalEmulator = bridge.emulator,
                 keyboardEnabled = true,
-                showSoftKeyboard = true,
+                showSoftKeyboard = showSoftKeyboard,
                 onHyperlinkClick = {},
                 modifier = Modifier.fillMaxSize(),
             )
@@ -258,6 +276,7 @@ private fun RawTerminal(modifier: Modifier = Modifier) {
             onToggleControl = bridge::toggleControl,
             onToggleAlt = bridge::toggleAlt,
             onKey = bridge::sendKey,
+            onShowKeyboard = { showSoftKeyboard = false },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -269,38 +288,53 @@ internal fun TerminalExtraKeyRow(
     onToggleControl: () -> Unit,
     onToggleAlt: () -> Unit,
     onKey: (TerminalKey) -> Unit,
+    onShowKeyboard: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface)
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(vertical = 4.dp),
     ) {
-        FilterChip(
-            selected = modifiers.control,
-            onClick = onToggleControl,
-            label = { Text("Ctrl") },
-            modifier = Modifier.testTag(TranscriptTags.TERMINAL_CONTROL),
-        )
-        FilterChip(
-            selected = modifiers.alt,
-            onClick = onToggleAlt,
-            label = { Text("Alt") },
-            modifier = Modifier.testTag(TranscriptTags.TERMINAL_ALT),
-        )
-        terminalExtraKeys.forEach { extraKey ->
-            TextButton(
-                onClick = { onKey(extraKey.key) },
-                modifier = Modifier
-                    .testTag(TranscriptTags.terminalKey(extraKey.key))
-                    .semantics {
-                        contentDescription = extraKey.accessibilityLabel
-                    },
-            ) {
-                Text(extraKey.label)
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            FilterChip(
+                selected = modifiers.control,
+                onClick = onToggleControl,
+                label = { Text("Ctrl") },
+                modifier = Modifier.testTag(TranscriptTags.TERMINAL_CONTROL),
+            )
+            FilterChip(
+                selected = modifiers.alt,
+                onClick = onToggleAlt,
+                label = { Text("Alt") },
+                modifier = Modifier.testTag(TranscriptTags.TERMINAL_ALT),
+            )
+            terminalExtraKeys.forEach { extraKey ->
+                TextButton(
+                    onClick = { onKey(extraKey.key) },
+                    modifier = Modifier
+                        .testTag(TranscriptTags.terminalKey(extraKey.key))
+                        .semantics {
+                            contentDescription = extraKey.accessibilityLabel
+                        },
+                ) {
+                    Text(extraKey.label)
+                }
             }
+        }
+        TextButton(
+            onClick = onShowKeyboard,
+            modifier = Modifier
+                .padding(end = 8.dp)
+                .testTag(TranscriptTags.TERMINAL_KEYBOARD),
+        ) {
+            Text("Keyboard")
         }
     }
 }

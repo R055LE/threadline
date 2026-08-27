@@ -193,6 +193,16 @@ closes the transcript IME viewport boundary. See the
 and
 [alpha.11 IME physical acceptance](investigations/2026-08-27-alpha11-ime-physical-acceptance.md).
 
+The current source candidate is `0.1.0-alpha.12` (`10012`). Raw terminal mode
+now keeps a Keyboard action fixed at the right end of its mobile-key row. The
+action reasserts terminal input focus and software-keyboard visibility after a
+dismissal. The Transcript/Terminal switch has also moved out of the scrolling
+secondary-action row to the right side of the connected header in both views.
+API 35 instrumentation dismisses and restores the real terminal IME, and the
+200% font-scale regression requires the mode switch to remain displayed in the
+trailing half of the screen. Exact merged-main CI, permanent signing, update
+installation, and owner-device acceptance remain pending.
+
 ## Remaining Phase 5 boundaries
 
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.

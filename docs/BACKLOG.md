@@ -261,34 +261,40 @@ remains.
 
 ## Raw-terminal keyboard recovery
 
-**Status:** Planned for the next terminal-control slice; separate from the
-alpha.11 transcript correction.
+**Status:** Implemented in the alpha.12 source candidate with API 35 regression
+coverage; owner-device validation remains pending.
 
 Physical testing found two related paths. On one early transition, tapping the
 terminal did not summon the software keyboard, though later taps worked. More
 importantly, once the keyboard is deliberately dismissed in raw mode, the UI
 has no explicit way to request it again.
 
-Add a visible Keyboard control to raw mode so recovery is deterministic. A tap
+Alpha.12 adds a fixed Keyboard control at the right end of the raw-terminal key
+row. It reasserts the terminal library's software-keyboard request, including
+input focus. An instrumented regression opens the real terminal, dismisses the
+IME, uses the new control, and observes the IME return. A tap
 on the terminal surface may remain a convenience, but it should not be the only
 contract because taps are also used for positioning, selection, and scrolling.
-Keep the control reachable when the keyboard is hidden and verify recovery
-after mode switching, rotation, and background return.
+The owner-device check still needs to cover recovery after mode switching,
+rotation, and background return.
 
 ## Transcript and terminal switch reachability
 
-**Status:** Planned for the next terminal-control slice; handedness mode is
-deferred.
+**Status:** Implemented in the alpha.12 source candidate with Compose
+regression coverage; owner-device validation remains pending and handedness
+mode is deferred.
 
 The current Transcript/Terminal switch is the first item in the connected
 action row, placing it at the far-left edge on a portrait phone. That is poor
 thumb reach for the right-handed owner-device path even though it remains
 functional and accessible.
 
-Move the mode switch into a stable, thumb-reachable control surface while
-keeping it available in both views. Do not add a left/right-handed setting for
-one control. Reconsider handedness when several directional controls create a
-coherent layout choice that can be tested in both modes.
+Alpha.12 moves the switch out of the horizontally scrolling secondary-action
+row and fixes it at the right side of the connected header in both views. A
+200% font-scale regression requires it to remain displayed in the trailing
+half of the screen. Do not add a left/right-handed setting for one control.
+Reconsider handedness when several directional controls create a coherent
+layout choice that can be tested in both modes.
 
 ## Deferred connection-profile options
 
