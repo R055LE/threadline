@@ -21,13 +21,16 @@ kept the header stable and exposed the bottom of the completed card, but the
 command, status, and output still remained above the visible window. Alpha.11
 anchors completed turns at the start of the new card while preserving
 bottom-follow for active output. Its signed owner-device check passed the same
-four-step sequence. The remaining product boundary is invited technical-alpha
-use sufficient to evaluate whether ten real users can complete small remote
-tasks for two weeks and provide useful feedback.
+four-step sequence. Alpha.12 is the current source candidate. It adds an
+explicit raw-terminal Keyboard action and keeps the Transcript/Terminal switch
+at the right side of the connected header in both views. The remaining product
+boundary is invited technical-alpha use sufficient to evaluate whether ten real
+users can complete small remote tasks for two weeks and provide useful feedback.
 
-The current source version and accepted signed build are both
-`0.1.0-alpha.11`. Alpha.5, alpha.9, and alpha.10 are immutable rejected
-artifacts. Signed builds are shared directly with invited testers.
+The current accepted signed build is `0.1.0-alpha.11`; the current source
+candidate is `0.1.0-alpha.12`. Alpha.5, alpha.9, and alpha.10 are immutable
+rejected artifacts. Alpha.12 owner-device acceptance is pending. Signed builds
+are shared directly with invited testers.
 There is no public signed APK or GitHub prerelease while Phase 5 is open.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the

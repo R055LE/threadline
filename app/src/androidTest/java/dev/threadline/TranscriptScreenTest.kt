@@ -34,6 +34,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -653,7 +654,7 @@ class TranscriptScreenTest {
         )
 
         val terminalStarted = SystemClock.elapsedRealtime()
-        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performScrollTo().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Raw performance surface").assertIsDisplayed()
         assertTrue(
@@ -662,7 +663,7 @@ class TranscriptScreenTest {
         )
 
         val transcriptStarted = SystemClock.elapsedRealtime()
-        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performScrollTo().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(TranscriptTags.TRANSCRIPT).assertExists()
         assertTrue(
@@ -675,6 +676,7 @@ class TranscriptScreenTest {
     fun terminalExtraKeyRowExposesOneShotModifiersAndTerminalKeys() {
         val modifiers = mutableStateOf(TerminalModifiers())
         var sentKey: TerminalKey? = null
+        var keyboardRequests = 0
         composeRule.setContent {
             MaterialTheme {
                 TerminalExtraKeyRow(
@@ -693,8 +695,16 @@ class TranscriptScreenTest {
                         sentKey = it
                         modifiers.value = TerminalModifiers()
                     },
+                    onShowKeyboard = { keyboardRequests += 1 },
                 )
             }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_KEYBOARD)
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, keyboardRequests)
         }
 
         composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL)
@@ -722,6 +732,56 @@ class TranscriptScreenTest {
         }
         composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertIsNotSelected()
         composeRule.onNodeWithTag(TranscriptTags.TERMINAL_ALT).assertIsNotSelected()
+    }
+
+    @Test
+    fun rawTerminalKeyboardControlRestoresDismissedIme() {
+        composeRule.runOnIdle {
+            composeRule.activity.enableEdgeToEdge()
+        }
+        lateinit var composeView: View
+        composeRule.setContent {
+            MaterialTheme {
+                ConnectedSessionScreen(
+                    displayName = "Keyboard recovery session",
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onControlC = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_KEYBOARD).assertIsDisplayed()
+        composeRule.runOnIdle {
+            composeView = composeRule.activity
+                .findViewById<ViewGroup>(android.R.id.content)
+                .getChildAt(0)
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            ViewCompat.getRootWindowInsets(composeView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+
+        composeRule.runOnIdle {
+            WindowInsetsControllerCompat(
+                composeRule.activity.window,
+                composeView,
+            ).hide(WindowInsetsCompat.Type.ime())
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            ViewCompat.getRootWindowInsets(composeView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == false
+        }
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_KEYBOARD).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            ViewCompat.getRootWindowInsets(composeView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
     }
 
     @Test
@@ -788,7 +848,26 @@ class TranscriptScreenTest {
         composeRule.onNodeWithText("Accessibility test session", useUnmergedTree = true).assert(
             SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
         )
-        composeRule.onNodeWithText("Terminal").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).assertIsDisplayed()
+        val switchCenter = composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH)
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .center
+        val screenCenter = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.center
+        assertTrue(
+            "Mode switch center $switchCenter was not on the trailing half of $screenCenter",
+            switchCenter.x > screenCenter.x,
+        )
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        val rawSwitchCenter = composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH)
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .center
+        assertTrue(
+            "Raw mode switch center $rawSwitchCenter was not on the trailing half of $screenCenter",
+            rawSwitchCenter.x > screenCenter.x,
+        )
         composeRule.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Diagnostics").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Disconnect").performScrollTo().assertIsDisplayed()
