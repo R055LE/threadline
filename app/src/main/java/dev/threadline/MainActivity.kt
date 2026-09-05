@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -201,6 +203,9 @@ internal object ConnectionFormTags {
     const val CONFIRM_DELETE_TRUST = "connection-confirm-delete-trust"
     const val SESSION_ERROR = "connection-session-error"
     const val ERROR_ACTION = "connection-error-action"
+    const val VALIDATION_ERROR = "connection-validation-error"
+    const val PREPARATION_ERROR = "connection-preparation-error"
+    const val CHOOSE_PRIVATE_KEY = "connection-choose-private-key"
     const val HELP = "connection-help"
 }
 
@@ -486,6 +491,8 @@ internal fun HostForm(
     var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
+    var validationError by remember { mutableStateOf<ConnectionValidationError?>(null) }
+    var connectionPreparationError by remember { mutableStateOf<String?>(null) }
     var isPreparing by remember { mutableStateOf(false) }
     var isManagingProfile by remember { mutableStateOf(false) }
     var profilePendingDeletion by remember { mutableStateOf<SavedHostProfile?>(null) }
@@ -495,8 +502,12 @@ internal fun HostForm(
     var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
+    val displayNameFocusRequester = remember { FocusRequester() }
     val hostnameFocusRequester = remember { FocusRequester() }
+    val portFocusRequester = remember { FocusRequester() }
+    val usernameFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
+    val privateKeyBringIntoViewRequester = remember { BringIntoViewRequester() }
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
     val isBusy = isPreparing || isManagingProfile || isManagingKnownHost || isManagingKey
@@ -507,13 +518,43 @@ internal fun HostForm(
         selectedKeyUri = null
         selectedSavedKeyId = null
         savePrivateKey = false
+        validationError = null
+        connectionPreparationError = null
     }
+
+    fun clearValidationError(field: ConnectionValidationField) {
+        if (validationError?.field == field) validationError = null
+        connectionPreparationError = null
+    }
+
+    fun showValidationError(error: ConnectionValidationError) {
+        validationError = error
+        connectionPreparationError = null
+        formError = null
+    }
+
+    LaunchedEffect(validationError) {
+        val field = validationError?.field ?: return@LaunchedEffect
+        when (field) {
+            ConnectionValidationField.DISPLAY_NAME -> displayNameFocusRequester.requestFocus()
+            ConnectionValidationField.HOSTNAME -> hostnameFocusRequester.requestFocus()
+            ConnectionValidationField.PORT -> portFocusRequester.requestFocus()
+            ConnectionValidationField.USERNAME -> usernameFocusRequester.requestFocus()
+            ConnectionValidationField.PASSWORD -> passwordFocusRequester.requestFocus()
+            ConnectionValidationField.PRIVATE_KEY ->
+                privateKeyBringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    fun validationMessage(field: ConnectionValidationField): String? =
+        validationError?.takeIf { it.field == field }?.message
 
     val keyPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri ->
         selectedKeyUri = uri?.toString()
         if (uri != null) selectedSavedKeyId = null
+        clearValidationError(ConnectionValidationField.PRIVATE_KEY)
         formError = null
     }
 
@@ -774,17 +815,32 @@ internal fun HostForm(
 
             OutlinedTextField(
                 value = draft.displayName,
-                onValueChange = { onDraftChange(draft.copy(displayName = it)) },
+                onValueChange = {
+                    clearValidationError(ConnectionValidationField.DISPLAY_NAME)
+                    onDraftChange(draft.copy(displayName = it))
+                },
                 label = { Text("Display name") },
+                supportingText = validationMessage(ConnectionValidationField.DISPLAY_NAME)?.let {
+                    { ConnectionValidationMessage(it) }
+                },
+                isError = validationMessage(ConnectionValidationField.DISPLAY_NAME) != null,
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(displayNameFocusRequester)
                     .testTag(ConnectionFormTags.DISPLAY_NAME),
             )
             OutlinedTextField(
                 value = draft.hostname,
-                onValueChange = { onDraftChange(draft.copy(hostname = it)) },
+                onValueChange = {
+                    clearValidationError(ConnectionValidationField.HOSTNAME)
+                    onDraftChange(draft.copy(hostname = it))
+                },
                 label = { Text("Hostname or IP") },
+                supportingText = validationMessage(ConnectionValidationField.HOSTNAME)?.let {
+                    { ConnectionValidationMessage(it) }
+                },
+                isError = validationMessage(ConnectionValidationField.HOSTNAME) != null,
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -798,22 +854,36 @@ internal fun HostForm(
                 OutlinedTextField(
                     value = draft.port,
                     onValueChange = {
+                        clearValidationError(ConnectionValidationField.PORT)
                         onDraftChange(draft.copy(port = it.filter(Char::isDigit)))
                     },
                     label = { Text("Port") },
+                    supportingText = validationMessage(ConnectionValidationField.PORT)?.let {
+                        { ConnectionValidationMessage(it) }
+                    },
+                    isError = validationMessage(ConnectionValidationField.PORT) != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     modifier = Modifier
                         .weight(0.35f)
+                        .focusRequester(portFocusRequester)
                         .testTag(ConnectionFormTags.PORT),
                 )
                 OutlinedTextField(
                     value = draft.username,
-                    onValueChange = { onDraftChange(draft.copy(username = it)) },
+                    onValueChange = {
+                        clearValidationError(ConnectionValidationField.USERNAME)
+                        onDraftChange(draft.copy(username = it))
+                    },
                     label = { Text("Username") },
+                    supportingText = validationMessage(ConnectionValidationField.USERNAME)?.let {
+                        { ConnectionValidationMessage(it) }
+                    },
+                    isError = validationMessage(ConnectionValidationField.USERNAME) != null,
                     singleLine = true,
                     modifier = Modifier
                         .weight(0.65f)
+                        .focusRequester(usernameFocusRequester)
                         .testTag(ConnectionFormTags.USERNAME),
                 )
             }
@@ -826,11 +896,12 @@ internal fun HostForm(
                 Button(
                     onClick = {
                         if (isBusy) return@Button
-                        val profile = draft.toHostProfileOrNull()
-                        if (profile == null) {
-                            formError = INVALID_HOST_PROFILE_MESSAGE
+                        val invalidField = draft.validationErrorOrNull()
+                        if (invalidField != null) {
+                            showValidationError(invalidField)
                             return@Button
                         }
+                        val profile = draft.toHostProfile()
                         formError = null
                         isManagingProfile = true
                         coroutineScope.launch {
@@ -892,6 +963,8 @@ internal fun HostForm(
                 FilterChip(
                     selected = draft.authenticationMode == AuthenticationMode.PASSWORD,
                     onClick = {
+                        validationError = null
+                        connectionPreparationError = null
                         onDraftChange(
                             draft.copy(authenticationMode = AuthenticationMode.PASSWORD),
                         )
@@ -903,6 +976,8 @@ internal fun HostForm(
                 FilterChip(
                     selected = draft.authenticationMode == AuthenticationMode.PRIVATE_KEY,
                     onClick = {
+                        validationError = null
+                        connectionPreparationError = null
                         onDraftChange(
                             draft.copy(authenticationMode = AuthenticationMode.PRIVATE_KEY),
                         )
@@ -916,8 +991,15 @@ internal fun HostForm(
             when (draft.authenticationMode) {
                 AuthenticationMode.PASSWORD -> OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = {
+                        clearValidationError(ConnectionValidationField.PASSWORD)
+                        password = it
+                    },
                     label = { Text("Password") },
+                    supportingText = validationMessage(ConnectionValidationField.PASSWORD)?.let {
+                        { ConnectionValidationMessage(it) }
+                    },
+                    isError = validationMessage(ConnectionValidationField.PASSWORD) != null,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
@@ -942,6 +1024,7 @@ internal fun HostForm(
                                         selectedSavedKeyId = key.id
                                         selectedKeyUri = null
                                         savePrivateKey = false
+                                        clearValidationError(ConnectionValidationField.PRIVATE_KEY)
                                         formError = null
                                     },
                                     enabled = !isBusy,
@@ -992,13 +1075,22 @@ internal fun HostForm(
                         }
                     }
                     OutlinedButton(
-                        onClick = { keyPicker.launch("*/*") },
+                        onClick = {
+                            clearValidationError(ConnectionValidationField.PRIVATE_KEY)
+                            keyPicker.launch("*/*")
+                        },
                         enabled = !isBusy,
+                        modifier = Modifier
+                            .bringIntoViewRequester(privateKeyBringIntoViewRequester)
+                            .testTag(ConnectionFormTags.CHOOSE_PRIVATE_KEY),
                     ) {
                         Text(
                             selectedKeyUri?.let { it.toUri().lastPathSegment }
                                 ?: "Choose OpenSSH private key",
                         )
+                    }
+                    validationMessage(ConnectionValidationField.PRIVATE_KEY)?.let {
+                        ConnectionValidationMessage(it)
                     }
                     if (selectedKeyUri != null) {
                         Row(
@@ -1018,7 +1110,10 @@ internal fun HostForm(
                     }
                     OutlinedTextField(
                         value = keyPassphrase,
-                        onValueChange = { keyPassphrase = it },
+                        onValueChange = {
+                            connectionPreparationError = null
+                            keyPassphrase = it
+                        },
                         label = { Text("Key passphrase (optional)") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -1059,25 +1154,65 @@ internal fun HostForm(
                 style = MaterialTheme.typography.bodySmall,
             )
 
+            connectionPreparationError?.let {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.PREPARATION_ERROR)
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
+                ) {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            }
+
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
                     if (isBusy) return@Button
                     formError = null
-                    val profile = draft.toHostProfileOrNull()
-                    if (profile == null) {
-                        formError = INVALID_HOST_PROFILE_MESSAGE
+                    connectionPreparationError = null
+                    val invalidField = draft.validationErrorOrNull()
+                    if (invalidField != null) {
+                        showValidationError(invalidField)
                         return@Button
                     }
+                    if (
+                        draft.authenticationMode == AuthenticationMode.PASSWORD &&
+                        password.isEmpty()
+                    ) {
+                        showValidationError(
+                            ConnectionValidationError(
+                                ConnectionValidationField.PASSWORD,
+                                "Enter the password.",
+                            ),
+                        )
+                        return@Button
+                    }
+                    if (
+                        draft.authenticationMode == AuthenticationMode.PRIVATE_KEY &&
+                        selectedSavedKeyId == null &&
+                        selectedKeyUri == null
+                    ) {
+                        showValidationError(
+                            ConnectionValidationError(
+                                ConnectionValidationField.PRIVATE_KEY,
+                                "Choose a private key.",
+                            ),
+                        )
+                        return@Button
+                    }
+                    validationError = null
+                    val profile = draft.toHostProfile()
 
                     isPreparing = true
                     coroutineScope.launch {
                         try {
                             val credential = when (draft.authenticationMode) {
                                 AuthenticationMode.PASSWORD -> {
-                                    if (password.isEmpty()) {
-                                        error("Enter the password.")
-                                    }
                                     val characters = password.toCharArray()
                                     try {
                                         SessionCredential.Password.from(characters)
@@ -1095,8 +1230,7 @@ internal fun HostForm(
                                         if (savedId != null) {
                                             onLoadPrivateKey(savedId, passphrase)
                                         } else {
-                                            val uri = selectedKeyUri?.toUri()
-                                                ?: error("Choose a private key.")
+                                            val uri = requireNotNull(selectedKeyUri).toUri()
                                             val keyBytes = withContext(Dispatchers.IO) {
                                                 readPrivateKey(context, uri)
                                             }
@@ -1134,12 +1268,13 @@ internal fun HostForm(
                                 password = ""
                                 keyPassphrase = ""
                             } else {
-                                formError = "Another SSH session is already active."
+                                connectionPreparationError =
+                                    "Another SSH session is already active."
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            formError = failure.message
+                            connectionPreparationError = failure.message
                                 ?: "Could not prepare the selected private key."
                         } finally {
                             isPreparing = false
@@ -1509,6 +1644,17 @@ private fun ProgressScreen(
 }
 
 @Composable
+private fun ConnectionValidationMessage(message: String) {
+    Text(
+        text = message,
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier
+            .testTag(ConnectionFormTags.VALIDATION_ERROR)
+            .semantics { liveRegion = LiveRegionMode.Assertive },
+    )
+}
+
+@Composable
 private fun HostKeyDialog(
     prompt: HostKeyPrompt,
     onDecision: (HostKeyDecision) -> Boolean,
@@ -1581,23 +1727,49 @@ private fun formatKnownHostTimestamp(timestampMillis: Long): String =
         Date(timestampMillis),
     )
 
-private fun ConnectionFormDraft.toHostProfileOrNull(): HostProfile? {
+private enum class ConnectionValidationField {
+    DISPLAY_NAME,
+    HOSTNAME,
+    PORT,
+    USERNAME,
+    PASSWORD,
+    PRIVATE_KEY,
+}
+
+private data class ConnectionValidationError(
+    val field: ConnectionValidationField,
+    val message: String,
+)
+
+private fun ConnectionFormDraft.validationErrorOrNull(): ConnectionValidationError? {
     val parsedPort = port.toIntOrNull()
-    if (
-        displayName.isBlank() ||
-        hostname.isBlank() ||
-        username.isBlank() ||
-        parsedPort == null ||
-        parsedPort !in 1..65535
-    ) {
-        return null
+    return when {
+        displayName.isBlank() -> ConnectionValidationError(
+            ConnectionValidationField.DISPLAY_NAME,
+            "Enter a display name.",
+        )
+        hostname.isBlank() -> ConnectionValidationError(
+            ConnectionValidationField.HOSTNAME,
+            "Enter a hostname or IP address.",
+        )
+        parsedPort == null || parsedPort !in 1..65535 -> ConnectionValidationError(
+            ConnectionValidationField.PORT,
+            "Enter a port from 1 to 65535.",
+        )
+        username.isBlank() -> ConnectionValidationError(
+            ConnectionValidationField.USERNAME,
+            "Enter a username.",
+        )
+        else -> null
     }
-    return HostProfile(
+}
+
+private fun ConnectionFormDraft.toHostProfile(): HostProfile =
+    HostProfile(
         displayName = displayName.trim(),
-        endpoint = HostEndpoint(hostname.trim(), parsedPort),
+        endpoint = HostEndpoint(hostname.trim(), port.toInt()),
         username = username.trim(),
     )
-}
 
 private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
     fun clear() {
@@ -1607,5 +1779,3 @@ private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
 }
 
 private const val MAX_PRIVATE_KEY_BYTES = 1024 * 1024
-private const val INVALID_HOST_PROFILE_MESSAGE =
-    "Enter a display name, host, valid port, and username."
