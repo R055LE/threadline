@@ -1,16 +1,19 @@
 package dev.threadline
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsFocused
@@ -24,6 +27,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Density
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
@@ -110,15 +114,20 @@ class ConnectionFormRetentionTest {
     }
 
     @Test
-    fun blankPasswordUsesProductionSafeValidationCopy() {
+    fun blankPasswordFocusesVisibleValidationAtLargeFontScale() {
         compose.setContent {
-            MaterialTheme {
-                HostForm(
-                    draft = ConnectionFormDraft.fixtureDefaults(),
-                    onDraftChange = {},
-                    sessionError = null,
-                    onPrepared = { true },
-                )
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    HostForm(
+                        draft = ConnectionFormDraft.fixtureDefaults(),
+                        onDraftChange = {},
+                        sessionError = null,
+                        onPrepared = { true },
+                    )
+                }
             }
         }
 
@@ -131,8 +140,140 @@ class ConnectionFormRetentionTest {
                 .isNotEmpty()
         }
 
-        compose.onNodeWithText("Enter the password.").assertExists()
+        compose.onNodeWithText("Enter the password.").assertIsDisplayed().assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.LiveRegion,
+                LiveRegionMode.Assertive,
+            ),
+        )
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .assertIsDisplayed()
+            .assertIsFocused()
         compose.onAllNodesWithText("Enter the fixture password.").assertCountEquals(0)
+    }
+
+    @Test
+    fun hostValidationFocusesEachFirstInvalidField() {
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(
+                    ConnectionFormDraft.emptyDefaults().copy(port = ""),
+                )
+            }
+            MaterialTheme {
+                HostForm(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sessionError = null,
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        fun connect() {
+            compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+                .performScrollTo()
+                .performClick()
+            compose.waitForIdle()
+        }
+
+        connect()
+        compose.onNodeWithText("Enter a display name.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME).assertIsFocused()
+
+        compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
+            .performTextReplacement("Fixture")
+        connect()
+        compose.onNodeWithText("Enter a hostname or IP address.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME).assertIsFocused()
+
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
+            .performTextReplacement("fixture.test")
+        connect()
+        compose.onNodeWithText("Enter a port from 1 to 65535.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.PORT).assertIsFocused()
+
+        compose.onNodeWithTag(ConnectionFormTags.PORT).performTextReplacement("22")
+        connect()
+        compose.onNodeWithText("Enter a username.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.USERNAME).assertIsFocused()
+    }
+
+    @Test
+    fun missingPrivateKeyBringsVisibleSelectionErrorIntoView() {
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    HostForm(
+                        draft = ConnectionFormDraft.fixtureDefaults().copy(
+                            authenticationMode = AuthenticationMode.PRIVATE_KEY,
+                        ),
+                        onDraftChange = {},
+                        sessionError = null,
+                        onPrepared = { true },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Choose a private key.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.CHOOSE_PRIVATE_KEY)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun savedKeyPreparationFailureRemainsVisibleByConnectAction() {
+        val savedKey = ImportedPrivateKeyMetadata(
+            id = "unreadable-id",
+            displayName = "Unreadable key",
+            format = "OpenSSH",
+            keyType = "ssh-ed25519",
+            publicKeyFingerprint = "SHA256:fixture",
+            createdAtMillis = 1,
+        )
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults().copy(
+                        authenticationMode = AuthenticationMode.PRIVATE_KEY,
+                    ),
+                    onDraftChange = {},
+                    sessionError = null,
+                    importedPrivateKeys = listOf(savedKey),
+                    onLoadPrivateKey = { _, _ -> error("The saved key could not be opened.") },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.waitUntil {
+            compose.onAllNodesWithTag(ConnectionFormTags.PREPARATION_ERROR)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
+        compose.onNodeWithText("The saved key could not be opened.").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.PREPARATION_ERROR).assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.LiveRegion,
+                LiveRegionMode.Assertive,
+            ),
+        )
     }
 
     @Test
