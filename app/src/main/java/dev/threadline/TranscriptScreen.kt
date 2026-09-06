@@ -26,6 +26,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +50,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
@@ -88,6 +96,7 @@ internal object TranscriptTags {
     const val COMPOSER = "command-composer"
     const val SEND = "command-send"
     const val RUN_ISOLATED = "command-run-isolated"
+    const val COMPOSER_OPTIONS = "command-options"
     const val HISTORY_OLDER = "command-history-older"
     const val HISTORY_NEWER = "command-history-newer"
     const val MODE_SWITCH = "session-mode-switch"
@@ -100,8 +109,11 @@ internal object TranscriptTags {
     const val HOME = "session-home"
     private const val TERMINAL_KEY_PREFIX = "terminal-key-"
     private const val OUTPUT_PREFIX = "command-output-"
+    private const val CARD_ACTIONS_PREFIX = "command-actions-"
 
     fun output(commandId: String): String = "$OUTPUT_PREFIX$commandId"
+
+    fun cardActions(commandId: String): String = "$CARD_ACTIONS_PREFIX$commandId"
 
     fun terminalKey(key: TerminalKey): String = "$TERMINAL_KEY_PREFIX${key.name}"
 }
@@ -360,6 +372,7 @@ internal fun TranscriptSurface(
     var historyDraft by rememberSaveable { mutableStateOf("") }
     var submissionError by remember { mutableStateOf<String?>(null) }
     var followOutput by remember { mutableStateOf(true) }
+    var composerOptionsExpanded by remember { mutableStateOf(false) }
     val historyCommands = transcript.turns.map(CommandTurn::command)
     val atBottom by remember {
         derivedStateOf {
@@ -536,6 +549,22 @@ internal fun TranscriptSurface(
                         structuredShell is StructuredShellState.Running,
                     modifier = Modifier
                         .weight(1f)
+                        .onPreviewKeyEvent { event ->
+                            when {
+                                event.type != KeyEventType.KeyDown -> false
+                                structuredShell is StructuredShellState.Ready &&
+                                    event.isCtrlPressed && event.key == Key.DirectionUp -> {
+                                    showOlderCommand()
+                                    true
+                                }
+                                structuredShell is StructuredShellState.Ready &&
+                                    event.isCtrlPressed && event.key == Key.DirectionDown -> {
+                                    showNewerCommand()
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
                         .testTag(TranscriptTags.COMPOSER),
                 )
                 Button(
@@ -546,6 +575,61 @@ internal fun TranscriptSurface(
                 ) {
                     Text("Send")
                 }
+                if (onSubmitIsolated != null || historyCommands.isNotEmpty()) {
+                    Box {
+                        TextButton(
+                            onClick = { composerOptionsExpanded = true },
+                            modifier = Modifier
+                                .testTag(TranscriptTags.COMPOSER_OPTIONS)
+                                .semantics { contentDescription = "Command options" },
+                        ) {
+                            Text("More")
+                        }
+                        DropdownMenu(
+                            expanded = composerOptionsExpanded,
+                            onDismissRequest = { composerOptionsExpanded = false },
+                        ) {
+                            if (onSubmitIsolated != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Run isolated") },
+                                    onClick = {
+                                        composerOptionsExpanded = false
+                                        submit(
+                                            command = composer,
+                                            clearComposer = true,
+                                            executionMode = CommandExecutionMode.ISOLATED,
+                                        )
+                                    },
+                                    enabled = structuredShell is StructuredShellState.Ready &&
+                                        composer.isNotEmpty(),
+                                    modifier = Modifier.testTag(TranscriptTags.RUN_ISOLATED),
+                                )
+                            }
+                            if (historyCommands.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Previous command · Ctrl+↑") },
+                                    onClick = {
+                                        composerOptionsExpanded = false
+                                        showOlderCommand()
+                                    },
+                                    enabled = structuredShell is StructuredShellState.Ready &&
+                                        (historyIndex == null || historyIndex != 0),
+                                    modifier = Modifier.testTag(TranscriptTags.HISTORY_OLDER),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Next command · Ctrl+↓") },
+                                    onClick = {
+                                        composerOptionsExpanded = false
+                                        showNewerCommand()
+                                    },
+                                    enabled = structuredShell is StructuredShellState.Ready &&
+                                        historyIndex != null,
+                                    modifier = Modifier.testTag(TranscriptTags.HISTORY_NEWER),
+                                )
+                            }
+                        }
+                    }
+                }
             }
             if (
                 onSubmitIsolated != null &&
@@ -553,53 +637,9 @@ internal fun TranscriptSurface(
             ) {
                 Text(
                     "Persistent Send can close the shell after a failure. " +
-                        "Run isolated unless those changes need to persist.",
+                        "Choose Run isolated from More unless those changes need to persist.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-            }
-            if (onSubmitIsolated != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(
-                        onClick = {
-                            submit(
-                                command = composer,
-                                clearComposer = true,
-                                executionMode = CommandExecutionMode.ISOLATED,
-                            )
-                        },
-                        enabled = structuredShell is StructuredShellState.Ready &&
-                            composer.isNotEmpty(),
-                        modifier = Modifier.testTag(TranscriptTags.RUN_ISOLATED),
-                    ) {
-                        Text("Run isolated")
-                    }
-                }
-            }
-            if (historyCommands.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(
-                        onClick = ::showOlderCommand,
-                        enabled = structuredShell is StructuredShellState.Ready &&
-                            (historyIndex == null || historyIndex != 0),
-                        modifier = Modifier.testTag(TranscriptTags.HISTORY_OLDER),
-                    ) {
-                        Text("Older")
-                    }
-                    TextButton(
-                        onClick = ::showNewerCommand,
-                        enabled = structuredShell is StructuredShellState.Ready &&
-                            historyIndex != null,
-                        modifier = Modifier.testTag(TranscriptTags.HISTORY_NEWER),
-                    ) {
-                        Text("Newer")
-                    }
-                }
             }
         }
     }
@@ -620,6 +660,7 @@ private fun CommandCard(
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable(turn.id.value) { mutableStateOf(false) }
+    var cardActionsExpanded by remember { mutableStateOf(false) }
     var pendingUrl by rememberSaveable(turn.id.value) { mutableStateOf<String?>(null) }
     var linkOpenFailed by rememberSaveable(turn.id.value) { mutableStateOf(false) }
     val nowMillis = rememberTurnTime(turn, clockMillis)
@@ -727,29 +768,50 @@ private fun CommandCard(
                     }
 
                     else -> {
-                        TextButton(onClick = onEdit) { Text("Edit") }
                         TextButton(onClick = onRerun, enabled = canSubmit) { Text("Rerun") }
                     }
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(
-                    onClick = {
-                        context.copyText("Threadline command", turn.command)
-                    },
-                ) {
-                    Text("Copy command")
-                }
-                if (turn.output.plainText.isNotEmpty()) {
+                Box {
                     TextButton(
-                        onClick = {
-                            context.copyText("Threadline output", turn.output.plainText)
-                        },
+                        onClick = { cardActionsExpanded = true },
+                        modifier = Modifier
+                            .testTag(TranscriptTags.cardActions(turn.id.value))
+                            .semantics { contentDescription = "Command card actions" },
                     ) {
-                        Text("Copy output")
+                        Text("More")
+                    }
+                    DropdownMenu(
+                        expanded = cardActionsExpanded,
+                        onDismissRequest = { cardActionsExpanded = false },
+                    ) {
+                        if (!turn.status.isActive()) {
+                            DropdownMenuItem(
+                                text = { Text("Edit command") },
+                                onClick = {
+                                    cardActionsExpanded = false
+                                    onEdit()
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Copy command") },
+                            onClick = {
+                                cardActionsExpanded = false
+                                context.copyText("Threadline command", turn.command)
+                            },
+                        )
+                        if (turn.output.plainText.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("Copy output") },
+                                onClick = {
+                                    cardActionsExpanded = false
+                                    context.copyText(
+                                        "Threadline output",
+                                        turn.output.plainText,
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }

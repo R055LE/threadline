@@ -7,6 +7,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,7 +16,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -32,10 +36,12 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -133,8 +139,9 @@ class TranscriptScreenTest {
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER).performTextInput(command)
         composeRule.onNodeWithText(
             "Persistent Send can close the shell after a failure. " +
-                "Run isolated unless those changes need to persist.",
+                "Choose Run isolated from More unless those changes need to persist.",
         ).assertIsDisplayed()
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.RUN_ISOLATED)
             .assertIsEnabled()
             .performClick()
@@ -178,25 +185,30 @@ class TranscriptScreenTest {
 
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
             .performTextInput("unfinished draft")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER)
             .assertIsEnabled()
             .performClick()
         assertComposerText("printf second\nprintf line")
 
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER)
             .assertIsEnabled()
             .performClick()
         assertComposerText("printf first")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).assertIsNotEnabled()
 
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER)
             .assertIsEnabled()
             .performClick()
         assertComposerText("printf second\nprintf line")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER)
             .assertIsEnabled()
             .performClick()
         assertComposerText("unfinished draft")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).assertIsNotEnabled()
     }
 
@@ -226,11 +238,13 @@ class TranscriptScreenTest {
 
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
             .performTextInput("printf one\nprintf two")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).performClick()
         assertComposerText("printf history")
         restorationTester.emulateSavedInstanceStateRestore()
 
         assertComposerText("printf history")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).performClick()
         assertComposerText("printf one\nprintf two")
     }
@@ -318,6 +332,7 @@ class TranscriptScreenTest {
 
         composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
             .performTextInput("unfinished draft")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_OLDER).performClick()
         composeRule.onNodeWithText("Rerun")
             .performScrollTo()
@@ -327,7 +342,119 @@ class TranscriptScreenTest {
             assertEquals("printf history", submitted)
         }
         assertComposerText("printf history")
+        openComposerOptions()
         composeRule.onNodeWithTag(TranscriptTags.HISTORY_NEWER).assertIsNotEnabled()
+    }
+
+    @Test
+    fun completedCardKeepsRerunVisibleAndMovesSecondaryActionsUnderMore() {
+        val turn = turn(
+            id = "completed-actions",
+            command = "printf compact",
+            status = CommandStatus.SUCCEEDED,
+            output = "compact output",
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(turns = listOf(turn)),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Rerun").assertIsDisplayed()
+        composeRule.onNodeWithText("Edit command").assertDoesNotExist()
+        composeRule.onNodeWithText("Copy command").assertDoesNotExist()
+        composeRule.onNodeWithText("Copy output").assertDoesNotExist()
+
+        composeRule.onNodeWithTag(TranscriptTags.cardActions(turn.id.value))
+            .performClick()
+
+        composeRule.onNodeWithText("Edit command").assertIsDisplayed()
+        composeRule.onNodeWithText("Copy command").assertIsDisplayed()
+        composeRule.onNodeWithText("Copy output").assertIsDisplayed()
+        composeRule.onNodeWithText("Edit command").performClick()
+        assertComposerText("printf compact")
+    }
+
+    @Test
+    fun controlArrowKeysNavigateHistoryAndRestoreDraft() {
+        val transcript = CommandTranscriptState(
+            turns = listOf(
+                turn(
+                    id = "keyboard-history",
+                    command = "printf history",
+                    status = CommandStatus.SUCCEEDED,
+                ),
+            ),
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = transcript,
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+        val composer = composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+        composer.performTextInput("unfinished draft")
+
+        composer.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            keyDown(Key.DirectionUp)
+            keyUp(Key.DirectionUp)
+            keyUp(Key.CtrlLeft)
+        }
+        assertComposerText("printf history")
+
+        composer.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+            keyUp(Key.CtrlLeft)
+        }
+        assertComposerText("unfinished draft")
+    }
+
+    @Test
+    fun composerOptionsExposeTouchAndTalkBackHistoryControls() {
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = StructuredShellState.Ready("/tmp"),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(
+                            turn(
+                                command = "printf history",
+                                status = CommandStatus.SUCCEEDED,
+                            ),
+                        ),
+                    ),
+                    onSubmit = {
+                        CommandSubmissionResult.Accepted(CommandId("unused"))
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Command options")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText("Previous command · Ctrl+↑").assertIsDisplayed()
+        composeRule.onNodeWithText("Next command · Ctrl+↓").assertIsDisplayed()
     }
 
     @Test
@@ -1120,6 +1247,68 @@ class TranscriptScreenTest {
     }
 
     @Test
+    fun smallCompletedTurnAndComposerRemainVisibleInConstrainedImeViewport() {
+        composeRule.runOnIdle {
+            composeRule.activity.enableEdgeToEdge()
+        }
+        lateinit var composeView: View
+        val turn = turn(
+            id = "constrained-ime-command",
+            command = "pwd",
+            status = CommandStatus.SUCCEEDED,
+            output = "/tmp",
+        )
+        composeRule.setContent {
+            MaterialTheme {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    TranscriptSurface(
+                        structuredShell = StructuredShellState.Ready("/tmp"),
+                        transcript = CommandTranscriptState(turns = listOf(turn)),
+                        onSubmit = {
+                            CommandSubmissionResult.Accepted(CommandId("unused"))
+                        },
+                        onSubmitIsolated = {
+                            CommandSubmissionResult.Accepted(CommandId("unused"))
+                        },
+                        onStop = {},
+                        onDisconnect = {},
+                        modifier = Modifier.height(640.dp),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .performClick()
+            .assertIsFocused()
+        composeRule.runOnIdle {
+            composeView = composeRule.activity
+                .findViewById<ViewGroup>(android.R.id.content)
+                .getChildAt(0)
+            WindowInsetsControllerCompat(
+                composeRule.activity.window,
+                composeView,
+            ).show(WindowInsetsCompat.Type.ime())
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            ViewCompat.getRootWindowInsets(composeView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.output(turn.id.value))
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER)
+            .assertIsDisplayed()
+            .performTextInput("printf usable")
+        composeRule.onNodeWithTag(TranscriptTags.SEND)
+            .assertIsDisplayed()
+            .assertIsEnabled()
+    }
+
+    @Test
     fun completedFirstTurnAnchorsUsefulContentInConstrainedViewport() {
         var listState: LazyListState? = null
         val latestTurnId = "constrained-command"
@@ -1258,6 +1447,10 @@ class TranscriptScreenTest {
                     AnnotatedString(expected),
                 ),
             )
+    }
+
+    private fun openComposerOptions() {
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER_OPTIONS).performClick()
     }
 
     private fun turn(

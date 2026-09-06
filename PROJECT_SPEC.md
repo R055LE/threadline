@@ -156,7 +156,10 @@ The primary session screen contains:
 - Composer:
   - Multiline text editor
   - Send button
-  - Command history button
+  - Compact command-options menu for isolated execution and command history
+
+Command history remains available through labeled touch and screen-reader menu items. Hardware
+keyboards can use `Ctrl+Up` and `Ctrl+Down` without opening the menu.
 
 The raw terminal provides a compact mobile-key row. Adding a separate shortcut row to the
 structured composer is deferred interaction polish; a possible set is:
@@ -193,6 +196,9 @@ A card contains:
   - Edit and rerun
   - Rerun
   - Open at this point in raw terminal, where practical
+
+Keep only the primary action for the card state visible: Stop while running and Rerun after
+completion. Put Edit, Copy command, and Copy output in the card's labeled action menu.
 
 Saved transcript sessions can be deleted from local history. Per-command deletion is deferred
 because it needs an explicit persistence and live-session contract.
@@ -663,7 +669,8 @@ Transcript submission has two explicit execution paths:
 - **Send** evaluates the command in the persistent Bash shell. Working-directory
   changes, exported variables, aliases, functions, and shell options can carry
   into later turns.
-- **Run isolated** executes the command in a child Bash process. It inherits the
+- **Run isolated**, available from the composer's labeled More menu, executes the command in a
+  child Bash process. It inherits the
   current directory and exported environment, but its directory, variable,
   function, alias, and shell-option changes do not persist.
 
@@ -819,7 +826,7 @@ Changed key:
 │ NAME       STATUS       PORTS         │
 │ api        running      0.0.0.0:8080 │
 │ postgres   running      5432          │
-│                         Copy  Rerun   │
+│                         Rerun  More   │
 ├──────────────────────────────────────┤
 │ $ journalctl -u api -n 50             │
 │ /srv/api · running                    │
@@ -829,7 +836,7 @@ Changed key:
 │                                      │
 │                         Stop  Terminal│
 ├──────────────────────────────────────┤
-│ type a command…                 Send │
+│ type a command…           Send  More │
 │ Tab  Ctrl  Esc   /   |   -   ↑   ↓  │
 └──────────────────────────────────────┘
 ```
