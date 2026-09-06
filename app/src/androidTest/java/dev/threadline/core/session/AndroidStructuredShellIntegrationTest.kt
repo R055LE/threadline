@@ -19,6 +19,9 @@ import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.core.ssh.AndroidSshCryptoProvider
 import dev.threadline.core.ssh.ConnectBotSshClientAdapter
 import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
+import dev.threadline.core.ssh.LiveSshSession
+import dev.threadline.core.ssh.ServerHostKeyVerifier
+import dev.threadline.core.ssh.SshClientAdapter
 import dev.threadline.core.terminal.TerminalSink
 import dev.threadline.core.transcript.AnsiColor
 import dev.threadline.core.transcript.CommandStatus
@@ -32,6 +35,8 @@ import dev.threadline.data.transcript.RoomTranscriptHistoryStore
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -189,8 +194,9 @@ class AndroidStructuredShellIntegrationTest {
             AndroidSshCryptoProvider.install(),
         )
         val terminal = RecordingTerminal()
+        val adapter = RecordingSshClientAdapter(ConnectBotSshClientAdapter(hostKeyAlgorithms))
         val manager = SessionManager(
-            adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
+            adapter = adapter,
             knownHostStore = knownHostStore,
             terminal = terminal,
             transcriptArchiveSink = transcriptHistoryStore,
@@ -216,6 +222,8 @@ class AndroidStructuredShellIntegrationTest {
                 manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
             }
             assertEquals("ssh-ed25519", prompt.prompt.algorithm)
+            delay(HOST_KEY_VERIFICATION_DELAY_MILLIS)
+            assertTrue(manager.state.value is SessionState.AwaitingHostKey)
             assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
             withTimeout(CONNECTION_TIMEOUT_MILLIS) {
                 manager.state.filterIsInstance<SessionState.Connected>().first()
@@ -224,7 +232,22 @@ class AndroidStructuredShellIntegrationTest {
                 manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
             }
             assertTrue(initialReady.currentDirectory.isNotEmpty())
-            assertTrue(!terminal.text().contains("builtin eval -- $'"))
+            val initialTerminal = terminal.text()
+            val bootstrapInput = adapter.sent.single()
+            val echoedBootstrap = bootstrapInput.withPtyEchoLineEnding()
+            val rawBytes = terminal.bytes()
+            val inputStart = rawBytes.indexOf(bootstrapInput.copyOf(32))
+            val sharedBytes = if (inputStart >= 0) {
+                echoedBootstrap.commonPrefixLength(rawBytes.copyOfRange(inputStart, rawBytes.size))
+            } else {
+                0
+            }
+            assertTrue(
+                "Bootstrap input reached terminal history: " +
+                    "inputBytes=${bootstrapInput.size}, sharedBytes=$sharedBytes, " +
+                    initialTerminal.substringAfter("builtin eval -- $'", "").take(120),
+                !initialTerminal.contains("builtin eval -- $'"),
+            )
             assertTrue(!terminal.text().contains("__threadline_run_"))
 
             val cdSubmission = accepted(manager.submitCommand("cd /tmp"))
@@ -501,6 +524,7 @@ class AndroidStructuredShellIntegrationTest {
         const val DEFAULT_USER = "threadline"
         const val CONNECTION_TIMEOUT_MILLIS = 20_000L
         const val COMMAND_TIMEOUT_MILLIS = 20_000L
+        const val HOST_KEY_VERIFICATION_DELAY_MILLIS = 31_000L
         const val MAXIMUM_RENDERED_CHARACTERS = 128 * 1024
         const val PRODUCTION_LEGACY_PREFERENCES = "android_structured_known_hosts"
         const val ENCRYPTED_KEY_LEGACY_PREFERENCES = "android_encrypted_key_known_hosts"
@@ -551,4 +575,47 @@ private class RecordingTerminal : TerminalSink {
     fun text(): String = synchronized(received) {
         received.toByteArray().decodeToString()
     }
+
+    fun bytes(): ByteArray = synchronized(received) { received.toByteArray() }
+}
+
+private class RecordingSshClientAdapter(
+    private val delegate: SshClientAdapter,
+) : SshClientAdapter {
+    val sent = CopyOnWriteArrayList<ByteArray>()
+
+    override suspend fun connect(
+        request: ConnectionRequest,
+        verifier: ServerHostKeyVerifier,
+        initialSize: TerminalSize,
+        onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
+    ): LiveSshSession {
+        val session = delegate.connect(request, verifier, initialSize, onStage)
+        return object : LiveSshSession by session {
+            override suspend fun send(bytes: ByteArray) {
+                sent += bytes.copyOf()
+                session.send(bytes)
+            }
+        }
+    }
+}
+
+private fun ByteArray.withPtyEchoLineEnding(): ByteArray = copyOf(size + 1).also {
+    it[lastIndex] = '\r'.code.toByte()
+    it[size] = '\n'.code.toByte()
+}
+
+private fun ByteArray.indexOf(needle: ByteArray): Int {
+    for (start in 0..size - needle.size) {
+        if (needle.indices.all { offset -> this[start + offset] == needle[offset] }) return start
+    }
+    return -1
+}
+
+private fun ByteArray.commonPrefixLength(other: ByteArray): Int {
+    val maximum = minOf(size, other.size)
+    for (index in 0 until maximum) {
+        if (this[index] != other[index]) return index
+    }
+    return maximum
 }

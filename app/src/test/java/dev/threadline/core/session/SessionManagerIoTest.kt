@@ -2,11 +2,14 @@ package dev.threadline.core.session
 
 import dev.threadline.core.model.ConnectionRequest
 import dev.threadline.core.model.HostEndpoint
+import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
+import dev.threadline.core.security.HostKeyFingerprint
+import dev.threadline.core.security.KnownHostKey
 import dev.threadline.core.security.KnownHostRecord
 import dev.threadline.core.security.KnownHostStore
 import dev.threadline.core.shell.CommandExecutionMode
@@ -39,8 +42,111 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 class SessionManagerIoTest {
+    @Test
+    fun `unknown host saves and reconnects after deferred decision`() = runBlocking {
+        val key = byteArrayOf(1, 2, 3, 4)
+        val session = RecordingSession()
+        val adapter = HostKeyCheckingAdapter(listOf(key), session)
+        val store = MutableKnownHostStore()
+        val request = fixtureRequest()
+        val manager = SessionManager(adapter, store, FakeTerminal)
+
+        manager.prepareConnection(request)
+        manager.connectPrepared()
+        val awaiting = withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+        }
+
+        assertEquals("fixture.test", awaiting.prompt.endpoint.hostname)
+        assertEquals(2222, awaiting.prompt.endpoint.port)
+        assertEquals("ssh-ed25519", awaiting.prompt.algorithm)
+        assertEquals(HostKeyFingerprint.sha256(key), awaiting.prompt.fingerprint)
+        delay(100)
+        assertTrue(manager.state.value is SessionState.AwaitingHostKey)
+        assertEquals(1, adapter.attempts)
+
+        assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Connected>().first()
+        }
+        withTimeout(2_000) {
+            while (!request.credential.isCleared()) delay(10)
+        }
+
+        assertEquals(2, adapter.attempts)
+        assertTrue(adapter.credentialWasUsable.all { it })
+        val trusted = requireNotNull(store.record)
+        assertEquals("ssh-ed25519", trusted.key.algorithm)
+        assertArrayEquals(key, trusted.key.encoded)
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+        Unit
+    }
+
+    @Test
+    fun `rejecting unknown host never stores trust or reconnects`() = runBlocking {
+        val session = RecordingSession()
+        val adapter = HostKeyCheckingAdapter(listOf(byteArrayOf(1, 2, 3)), session)
+        val store = MutableKnownHostStore()
+        val manager = SessionManager(adapter, store, FakeTerminal)
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+        }
+        assertTrue(manager.resolveHostKey(HostKeyDecision.REJECT))
+        val failed = withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Failed>().first()
+        }
+
+        assertTrue(failed.error is SessionError.HostKeyRejected)
+        assertEquals(1, adapter.attempts)
+        assertEquals(null, store.record)
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+        Unit
+    }
+
+    @Test
+    fun `host key changed between prompt and reconnect remains blocked`() = runBlocking {
+        val displayedKey = byteArrayOf(1, 2, 3)
+        val replacementKey = byteArrayOf(9, 9, 9)
+        val session = RecordingSession()
+        val adapter = HostKeyCheckingAdapter(listOf(displayedKey, replacementKey), session)
+        val store = MutableKnownHostStore()
+        val manager = SessionManager(adapter, store, FakeTerminal)
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+        }
+        assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
+        val failed = withTimeout(2_000) {
+            manager.state.filterIsInstance<SessionState.Failed>().first()
+        }
+
+        assertTrue(failed.error is SessionError.HostKeyChanged)
+        assertEquals(2, adapter.attempts)
+        assertArrayEquals(displayedKey, requireNotNull(store.record).key.encoded)
+
+        manager.disconnect()
+        withTimeout(2_000) {
+            manager.state.first { it is SessionState.Disconnected }
+        }
+        Unit
+    }
+
     @Test
     fun `internal input echo mismatch fails open byte for byte`() {
         val filter = InternalInputEchoFilter()
@@ -622,6 +728,61 @@ private class ImmediateAdapter(
         initialSize: TerminalSize,
         onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
     ): LiveSshSession = session
+}
+
+private class HostKeyCheckingAdapter(
+    private val presentedKeys: List<ByteArray>,
+    private val session: LiveSshSession,
+) : SshClientAdapter {
+    private val attemptCount = AtomicInteger()
+    val attempts: Int
+        get() = attemptCount.get()
+    val credentialWasUsable = CopyOnWriteArrayList<Boolean>()
+
+    override suspend fun connect(
+        request: ConnectionRequest,
+        verifier: ServerHostKeyVerifier,
+        initialSize: TerminalSize,
+        onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
+    ): LiveSshSession {
+        val attempt = attemptCount.getAndIncrement()
+        val key = presentedKeys.getOrElse(attempt) { presentedKeys.last() }
+        credentialWasUsable += !request.credential.isCleared()
+        if (!verifier.verify("ssh-ed25519", key)) {
+            throw dev.threadline.core.ssh.SshAdapterException(
+                SessionError.HostKeyRejected(null),
+            )
+        }
+        return session
+    }
+}
+
+private class MutableKnownHostStore : KnownHostStore {
+    @Volatile
+    var record: KnownHostRecord? = null
+        private set
+
+    override suspend fun find(endpoint: HostEndpoint): KnownHostRecord? = record
+
+    override suspend fun save(record: KnownHostRecord) {
+        this.record = record.copy(
+            key = KnownHostKey(record.key.algorithm, record.key.encoded.copyOf()),
+        )
+    }
+
+    override suspend fun recordTrustedSeen(
+        endpoint: HostEndpoint,
+        key: KnownHostKey,
+        seenAtMillis: Long,
+    ) {
+        record = requireNotNull(record).copy(lastSeenAtMillis = seenAtMillis)
+    }
+}
+
+private fun SessionCredential.isCleared(): Boolean = when (this) {
+    is SessionCredential.Password -> characters.all { it == '\u0000' }
+    is SessionCredential.PrivateKey ->
+        keyBytes.all { it == 0.toByte() } && passphrase?.all { it == '\u0000' } != false
 }
 
 private class RecordingSession : LiveSshSession {

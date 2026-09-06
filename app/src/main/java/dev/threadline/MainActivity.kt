@@ -1,6 +1,8 @@
 package dev.threadline
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -28,6 +30,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -207,6 +211,14 @@ internal object ConnectionFormTags {
     const val PREPARATION_ERROR = "connection-preparation-error"
     const val CHOOSE_PRIVATE_KEY = "connection-choose-private-key"
     const val HELP = "connection-help"
+}
+
+internal object HostKeyDialogTags {
+    const val ENDPOINT = "host-key-endpoint"
+    const val ALGORITHM = "host-key-algorithm"
+    const val FINGERPRINT = "host-key-fingerprint"
+    const val COPY = "host-key-copy"
+    const val COPY_FEEDBACK = "host-key-copy-feedback"
 }
 
 @Composable
@@ -1655,24 +1667,65 @@ private fun ConnectionValidationMessage(message: String) {
 }
 
 @Composable
-private fun HostKeyDialog(
+internal fun HostKeyDialog(
     prompt: HostKeyPrompt,
     onDecision: (HostKeyDecision) -> Boolean,
 ) {
+    val context = LocalContext.current
+    var fingerprintCopied by remember(prompt) { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = { onDecision(HostKeyDecision.REJECT) },
         title = { Text("Unknown server") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "No saved host key exists for " +
-                        "${prompt.endpoint.hostname}:${prompt.endpoint.port}.",
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("No saved host key exists for this endpoint.")
+                HostKeyValue(
+                    label = "Endpoint",
+                    value = "${prompt.endpoint.hostname}:${prompt.endpoint.port}",
+                    testTag = HostKeyDialogTags.ENDPOINT,
                 )
-                Text("Verify this fingerprint through a trusted channel:")
-                Text(
-                    text = "${prompt.algorithm}\n${prompt.fingerprint}",
-                    fontFamily = FontFamily.Monospace,
+                HostKeyValue(
+                    label = "Host-key algorithm",
+                    value = prompt.algorithm,
+                    testTag = HostKeyDialogTags.ALGORITHM,
                 )
+                HostKeyValue(
+                    label = "SHA-256 fingerprint",
+                    value = prompt.fingerprint,
+                    testTag = HostKeyDialogTags.FINGERPRINT,
+                )
+                Text(
+                    "Compare the fingerprint with the server administrator or a trusted " +
+                        "server console before accepting.",
+                )
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                            as ClipboardManager
+                        clipboard.setPrimaryClip(
+                            ClipData.newPlainText(
+                                "Server host-key fingerprint",
+                                prompt.fingerprint,
+                            ),
+                        )
+                        fingerprintCopied = true
+                    },
+                    modifier = Modifier.testTag(HostKeyDialogTags.COPY),
+                ) {
+                    Text("Copy fingerprint")
+                }
+                if (fingerprintCopied) {
+                    Text(
+                        text = "Fingerprint copied",
+                        modifier = Modifier
+                            .testTag(HostKeyDialogTags.COPY_FEEDBACK)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
             }
         },
         confirmButton = {
@@ -1686,6 +1739,24 @@ private fun HostKeyDialog(
             }
         },
     )
+}
+
+@Composable
+private fun HostKeyValue(
+    label: String,
+    value: String,
+    testTag: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        SelectionContainer {
+            Text(
+                text = value,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.testTag(testTag),
+            )
+        }
+    }
 }
 
 private fun readPrivateKey(

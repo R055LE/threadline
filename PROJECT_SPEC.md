@@ -111,15 +111,16 @@ as current MVP behavior.
 
 ### 4.2 First connection
 
-1. Resolve and connect to the host.
-2. Show the server host-key algorithm and fingerprint.
-3. Require explicit acceptance for an unknown host key.
-4. Store the accepted key.
-5. Block the connection if a previously accepted key changes.
-6. Authenticate.
-7. Start a PTY-backed shell.
-8. Install a temporary, session-scoped shell integration function.
-9. Show the transcript screen.
+1. Resolve and connect far enough to verify the server host key.
+2. For an unknown key, end the probe connection before waiting for the user.
+3. Show the endpoint, host-key algorithm, and SHA-256 fingerprint with selection and copy support.
+4. Require explicit acceptance for an unknown host key.
+5. Store exactly the accepted candidate and reconnect through normal host-key verification.
+6. Block the connection if the key changes before or after acceptance.
+7. Authenticate.
+8. Start a PTY-backed shell.
+9. Install a temporary, session-scoped shell integration function.
+10. Show the transcript screen.
 
 Never implement “accept all host keys.”
 
@@ -760,7 +761,10 @@ Store:
 
 Unknown key:
 
-- Display and require acceptance.
+- Display endpoint, algorithm, and fingerprint and require acceptance.
+- Allow the fingerprint to be selected and copied with accessible confirmation.
+- Wait for the decision outside the SSH library's key-exchange timeout, then reconnect and verify
+  the accepted key again before authentication.
 
 Changed key:
 
