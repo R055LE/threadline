@@ -17,6 +17,34 @@ object ShellWordQuoter {
     }
 }
 
+internal object BashAnsiCWordQuoter {
+    private val hexDigits = "0123456789abcdef".toCharArray()
+
+    fun quote(value: String): String {
+        require('\u0000' !in value) { "Shell words cannot contain NUL bytes" }
+        return buildString(value.length + 3) {
+            append("$'")
+            value.encodeToByteArray().forEach { byte ->
+                val unsigned = byte.toInt() and 0xff
+                when (unsigned) {
+                    '\n'.code -> append("\\n")
+                    '\r'.code -> append("\\r")
+                    '\t'.code -> append("\\t")
+                    '\\'.code -> append("\\\\")
+                    '\''.code -> append("\\'")
+                    in 0x20..0x7e -> append(unsigned.toChar())
+                    else -> {
+                        append("\\x")
+                        append(hexDigits[unsigned ushr 4])
+                        append(hexDigits[unsigned and 0x0f])
+                    }
+                }
+            }
+            append('\'')
+        }
+    }
+}
+
 enum class CommandExecutionMode(
     internal val shellToken: String,
 ) {
@@ -41,64 +69,67 @@ class BashShellIntegration(
 ) {
     val functionName: String = "__threadline_run_${sessionNonce.value}"
 
-    fun bootstrap(probeCommandId: CommandId): ByteArray = buildString {
-        append(functionName)
-        append("() {\n")
-        append("  local __tl_id=\"\$1\"\n")
-        append("  local __tl_command=\"\$2\"\n")
-        append("  local __tl_mode=\"\$3\"\n")
-        append("  local __tl_exit\n")
-        append("  local __tl_previous_int_trap\n")
-        append("  __tl_previous_int_trap=\"\$(trap -p INT)\"\n")
-        // Merely recording INT lets a builtin-only infinite loop resume after the handler.
-        // Install before publishing start so an immediate stop cannot land in a handler gap.
-        // Finish the lifecycle inside the trap, then return directly from this wrapper.
-        append("  trap '\n")
-        append("    __tl_exit=130\n")
-        append("    if [[ -n \"\$__tl_previous_int_trap\" ]]; then\n")
-        append("      builtin eval -- \"\$__tl_previous_int_trap\"\n")
-        append("    else\n")
-        append("      trap - INT\n")
-        append("    fi\n")
-        append("    printf \"\\033]777;threadline;")
-        append(sessionNonce.value)
-        append(";end;%s;%s;%s\\007\" \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
-        append("    if [[ \"\$__tl_mode\" == isolated ]]; then\n")
-        append("      return 0\n")
-        append("    fi\n")
-        append("    return \"\$__tl_exit\"\n")
-        append("  ' INT\n")
-        append("  printf '\\033]777;threadline;")
-        append(sessionNonce.value)
-        append(";start;%s\\007' \"\$__tl_id\"\n")
-        append("  printf '\\033]777;threadline;")
-        append(sessionNonce.value)
-        append(";output;%s\\007' \"\$__tl_id\"\n")
-        append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
-        append("    if command bash --noprofile --norc -c \"\$__tl_command\"; then\n")
-        append("      __tl_exit=0\n")
-        append("    else\n")
-        append("      __tl_exit=\$?\n")
-        append("    fi\n")
-        append("  else\n")
-        append("    builtin eval -- \"\$__tl_command\"\n")
-        append("    __tl_exit=\$?\n")
-        append("  fi\n")
-        append("  if [[ -n \"\$__tl_previous_int_trap\" ]]; then\n")
-        append("    builtin eval -- \"\$__tl_previous_int_trap\"\n")
-        append("  else\n")
-        append("    trap - INT\n")
-        append("  fi\n")
-        append("  printf '\\033]777;threadline;")
-        append(sessionNonce.value)
-        append(";end;%s;%s;%s\\007' \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
-        append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
-        append("    return 0\n")
-        append("  fi\n")
-        append("  return \"\$__tl_exit\"\n")
-        append("}\n")
-        append(invocationText(probeCommandId, NO_OP_COMMAND))
-    }.encodeToByteArray()
+    fun bootstrap(probeCommandId: CommandId): ByteArray {
+        val script = buildString {
+            append(functionName)
+            append("() {\n")
+            append("  local __tl_id=\"\$1\"\n")
+            append("  local __tl_command=\"\$2\"\n")
+            append("  local __tl_mode=\"\$3\"\n")
+            append("  local __tl_exit\n")
+            append("  local __tl_previous_int_trap\n")
+            append("  __tl_previous_int_trap=\"\$(trap -p INT)\"\n")
+            // Merely recording INT lets a builtin-only infinite loop resume after the handler.
+            // Install before publishing start so an immediate stop cannot land in a handler gap.
+            // Finish the lifecycle inside the trap, then return directly from this wrapper.
+            append("  trap '\n")
+            append("    __tl_exit=130\n")
+            append("    if [[ -n \"\$__tl_previous_int_trap\" ]]; then\n")
+            append("      builtin eval -- \"\$__tl_previous_int_trap\"\n")
+            append("    else\n")
+            append("      trap - INT\n")
+            append("    fi\n")
+            append("    printf \"\\033]777;threadline;")
+            append(sessionNonce.value)
+            append(";end;%s;%s;%s\\007\" \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
+            append("    if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+            append("      return 0\n")
+            append("    fi\n")
+            append("    return \"\$__tl_exit\"\n")
+            append("  ' INT\n")
+            append("  printf '\\033]777;threadline;")
+            append(sessionNonce.value)
+            append(";start;%s\\007' \"\$__tl_id\"\n")
+            append("  printf '\\033]777;threadline;")
+            append(sessionNonce.value)
+            append(";output;%s\\007' \"\$__tl_id\"\n")
+            append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+            append("    if command bash --noprofile --norc -c \"\$__tl_command\"; then\n")
+            append("      __tl_exit=0\n")
+            append("    else\n")
+            append("      __tl_exit=\$?\n")
+            append("    fi\n")
+            append("  else\n")
+            append("    builtin eval -- \"\$__tl_command\"\n")
+            append("    __tl_exit=\$?\n")
+            append("  fi\n")
+            append("  if [[ -n \"\$__tl_previous_int_trap\" ]]; then\n")
+            append("    builtin eval -- \"\$__tl_previous_int_trap\"\n")
+            append("  else\n")
+            append("    trap - INT\n")
+            append("  fi\n")
+            append("  printf '\\033]777;threadline;")
+            append(sessionNonce.value)
+            append(";end;%s;%s;%s\\007' \"\$__tl_id\" \"\$__tl_exit\" \"\$PWD\"\n")
+            append("  if [[ \"\$__tl_mode\" == isolated ]]; then\n")
+            append("    return 0\n")
+            append("  fi\n")
+            append("  return \"\$__tl_exit\"\n")
+            append("}\n")
+            append(invocationText(probeCommandId, NO_OP_COMMAND))
+        }
+        return "builtin eval -- ${BashAnsiCWordQuoter.quote(script)}\n".encodeToByteArray()
+    }
 
     fun invocation(
         commandId: CommandId,
@@ -115,7 +146,7 @@ class BashShellIntegration(
         append(' ')
         append(ShellWordQuoter.quote(commandId.value))
         append(' ')
-        append(ShellWordQuoter.quote(command))
+        append(BashAnsiCWordQuoter.quote(command))
         append(' ')
         append(ShellWordQuoter.quote(executionMode.shellToken))
         append('\n')

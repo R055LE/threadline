@@ -37,7 +37,9 @@ These are non-negotiable unless the user explicitly changes the specification:
 1. Commands run in a persistent remote shell.
 2. `cd`, environment changes, aliases, and shell functions must persist.
 3. Transcript mode and raw terminal mode use the same SSH channel and PTY.
-4. The raw terminal receives the exact ordered byte stream even when not visible.
+4. The raw terminal receives the exact ordered remote byte stream even when not visible. An exact
+   PTY echo of Threadline-authored shell-integration input may be omitted from user-facing terminal
+   history; ambiguous bytes pass through unchanged.
 5. Unknown host keys require confirmation.
 6. Changed host keys are blocked by default.
 7. Never use an accept-all host-key verifier.
@@ -102,6 +104,8 @@ Start with one Gradle application module and clear packages. Do not create a lar
 - Enforce maximum marker length.
 - Unknown control sequences pass through to the raw terminal.
 - Recognized protocol markers are not shown in transcript output.
+- Only a byte-for-byte PTY echo of Threadline-authored integration input may be hidden from the raw
+  terminal; any mismatch must fail open.
 - The command quoting function must have exhaustive tests.
 - Do not claim stdout/stderr separation when using a PTY; they are generally merged.
 - Bootstrap failure is a compatibility downgrade, not a connection failure.

@@ -477,7 +477,7 @@ The protocol must:
 - Avoid displaying protocol markers.
 - Associate every event with a command ID.
 - Carry a random session nonce.
-- Leave the raw byte stream usable by the terminal emulator.
+- Leave the remote byte stream usable by the terminal emulator.
 - Fail gracefully into raw mode if bootstrap fails.
 
 ### 8.3 Temporary shell function
@@ -507,10 +507,11 @@ __threadline_run() {
 
 This is illustrative, not production-ready shell code.
 
-The Android client invokes it with:
+The Android client installs and invokes it with one physical Bash input line per internal write,
+using ANSI-C shell words so multiline content does not trigger continuation prompts. It passes:
 
 - A generated command UUID
-- The user command encoded using a rigorously tested shell single-quote function
+- The user command encoded using a rigorously tested Bash ANSI-C quoting function
 
 The quoting function must safely transform any command without a NUL byte into one shell word. Test embedded quotes, newlines, backslashes, Unicode, command substitutions, and here-documents.
 
@@ -549,11 +550,16 @@ Every byte received from the PTY should flow through a single ordered pipeline.
 
 ```text
 SSH PTY bytes
+    ├── Exact internal-input echo filter → Raw terminal emulator
     ├── Protocol marker scanner
     ├── Transcript collector
     ├── Interactive behavior detector
-    └── Raw terminal emulator
 ```
+
+The echo filter may remove only the byte-for-byte PTY echo expected immediately after a
+Threadline-authored shell-integration write. It must tolerate arbitrary chunk boundaries and
+preserve any preceding remote output. A mismatch, timeout, or unexpected lifecycle event flushes
+buffered bytes unchanged and disables that expectation.
 
 ### 9.1 Protocol marker scanner
 
@@ -589,7 +595,11 @@ If it detects terminal operations it cannot represent faithfully, it should:
 
 ### 9.3 Raw terminal emulator
 
-The terminal emulator receives the exact stream in order, including output that arrived while raw mode was not visible.
+The terminal emulator receives the exact remote stream in order, including output that arrived
+while raw mode was not visible. The sole exception is a confirmed exact PTY echo of
+Threadline-authored bootstrap or wrapper input, which is omitted from user-facing history so
+protocol setup does not fill the viewport. Remote output, unknown escape sequences, and ambiguous
+echo candidates pass through unchanged.
 
 The terminal must therefore be a persistent session model, not a composable created only when the raw terminal screen opens.
 
@@ -1159,7 +1169,7 @@ Mitigation:
 
 - Limited, explicit renderer scope
 - Detect unsupported control behavior
-- Preserve exact bytes in raw terminal
+- Preserve exact remote bytes in raw terminal
 - Mark approximate output
 - Switch early rather than pretending
 

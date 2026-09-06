@@ -16,6 +16,7 @@ import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.ProtocolStreamItem
 import dev.threadline.core.shell.SessionNonce
+import dev.threadline.core.shell.ShellLifecycleEvent
 import dev.threadline.core.shell.StructuredShellEvent
 import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.core.shell.StructuredShellStateMachine
@@ -31,6 +32,7 @@ import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.NoOpTranscriptArchiveSink
 import dev.threadline.core.transcript.TranscriptArchiveSink
 import dev.threadline.core.transcript.TranscriptSessionArchive
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -83,6 +85,7 @@ class SessionManager(
     )
     private val inputRequests = Channel<SessionInput>(capacity = INPUT_QUEUE_CAPACITY)
     private val transcriptPublishRequests = Channel<Unit>(capacity = Channel.CONFLATED)
+    private val internalInputEchoFilter = InternalInputEchoFilter()
 
     val state: StateFlow<SessionState> = stateMachine.state
     val structuredState: StateFlow<StructuredShellState> = structuredStateMachine.state
@@ -126,8 +129,14 @@ class SessionManager(
     init {
         scope.launch {
             inputRequests.consumeEach { input ->
-                runCatching { input.session.send(input.bytes) }
+                runCatching {
+                    if (input.hideExactPtyEcho) {
+                        internalInputEchoFilter.expect(input.bytes)
+                    }
+                    input.session.send(input.bytes)
+                }
                     .onFailure {
+                        internalInputEchoFilter.cancel()
                         if (
                             liveSession === input.session &&
                             state.value is SessionState.Connected
@@ -185,6 +194,7 @@ class SessionManager(
         stateMachine.apply(SessionEvent.ConnectRequested(request.profile.displayName))
         commandTranscript.reset()
         resetStructuredShell()
+        internalInputEchoFilter.reset()
         terminal.clear()
         connectJob = scope.launch { establish(request) }
         return true
@@ -268,7 +278,11 @@ class SessionManager(
             executionMode = executionMode,
             directoryAtStart = currentState.currentDirectory,
         )
-        if (inputRequests.trySend(SessionInput(session, invocation)).isFailure) {
+        if (
+            inputRequests.trySend(
+                SessionInput(session, invocation, hideExactPtyEcho = true),
+            ).isFailure
+        ) {
             structuredStateMachine.apply(
                 StructuredShellEvent.CommandSendRejected(commandId),
             )
@@ -384,7 +398,8 @@ class SessionManager(
         outputJob = scope.launch {
             try {
                 for (bytes in session.output) {
-                    terminal.receive(bytes)
+                    val terminalBytes = internalInputEchoFilter.consume(bytes)
+                    if (terminalBytes.isNotEmpty()) terminal.receive(terminalBytes)
                     processStructuredOutput(bytes)
                 }
                 failIfUnexpectedDisconnect()
@@ -452,17 +467,26 @@ class SessionManager(
         bootstrapTimeoutJob?.cancel()
         bootstrapTimeoutJob = scope.launch {
             delay(bootstrapTimeoutMillis)
-            synchronized(structuredLock) {
-                if (structuredContext !== context) return@synchronized
+            val timedOut = synchronized(structuredLock) {
+                if (structuredContext !== context) return@synchronized false
                 val next = structuredStateMachine.apply(
                     StructuredShellEvent.BootstrapTimedOut(context.probeCommandId),
                 )
                 if (next is StructuredShellState.Unavailable) {
                     structuredContext = null
                 }
+                next is StructuredShellState.Unavailable
+            }
+            if (timedOut) {
+                val pendingBytes = internalInputEchoFilter.cancel()
+                if (pendingBytes.isNotEmpty()) terminal.receive(pendingBytes)
             }
         }
-        if (inputRequests.trySend(SessionInput(session, bootstrap)).isFailure) {
+        if (
+            inputRequests.trySend(
+                SessionInput(session, bootstrap, hideExactPtyEcho = true),
+            ).isFailure
+        ) {
             downgradeStructuredShell(
                 context,
                 StructuredShellUnavailableReason.BOOTSTRAP_FAILED,
@@ -470,11 +494,13 @@ class SessionManager(
         }
     }
 
-    private fun processStructuredOutput(bytes: ByteArray) {
+    private suspend fun processStructuredOutput(bytes: ByteArray) {
         val context = structuredContext ?: return
         val scan = try {
             context.parser.consume(bytes)
         } catch (_: Exception) {
+            val pendingBytes = internalInputEchoFilter.cancel()
+            if (pendingBytes.isNotEmpty()) terminal.receive(pendingBytes)
             downgradeStructuredShell(
                 context,
                 StructuredShellUnavailableReason.PARSER_FAILED,
@@ -490,22 +516,32 @@ class SessionManager(
                     }
                 }
 
-                is ProtocolStreamItem.Lifecycle -> synchronized(structuredLock) {
-                    if (structuredContext !== context) return@synchronized
-                    commandTranscript.lifecycle(item.event)
-                    val next = structuredStateMachine.apply(
-                        StructuredShellEvent.Lifecycle(item.event),
-                    )
-                    if (next is StructuredShellState.Unavailable) {
-                        commandTranscript.structuredShellFailed(item.event.commandId)
+                is ProtocolStreamItem.Lifecycle -> {
+                    val pendingBytes = synchronized(structuredLock) {
+                        val pending = if (item.event is ShellLifecycleEvent.CommandStarted) {
+                            internalInputEchoFilter.cancel()
+                        } else {
+                            byteArrayOf()
+                        }
+                        if (structuredContext === context) {
+                            commandTranscript.lifecycle(item.event)
+                            val next = structuredStateMachine.apply(
+                                StructuredShellEvent.Lifecycle(item.event),
+                            )
+                            if (next is StructuredShellState.Unavailable) {
+                                commandTranscript.structuredShellFailed(item.event.commandId)
+                            }
+                            if (next !is StructuredShellState.Bootstrapping) {
+                                bootstrapTimeoutJob?.cancel()
+                                bootstrapTimeoutJob = null
+                            }
+                            if (next is StructuredShellState.Unavailable) {
+                                structuredContext = null
+                            }
+                        }
+                        pending
                     }
-                    if (next !is StructuredShellState.Bootstrapping) {
-                        bootstrapTimeoutJob?.cancel()
-                        bootstrapTimeoutJob = null
-                    }
-                    if (next is StructuredShellState.Unavailable) {
-                        structuredContext = null
-                    }
+                    if (pendingBytes.isNotEmpty()) terminal.receive(pendingBytes)
                 }
             }
         }
@@ -584,6 +620,7 @@ class SessionManager(
     private data class SessionInput(
         val session: LiveSshSession,
         val bytes: ByteArray,
+        val hideExactPtyEcho: Boolean = false,
     )
 
     private data class StructuredShellContext(
@@ -603,5 +640,82 @@ class SessionManager(
         const val INPUT_QUEUE_CAPACITY = 256
         const val DEFAULT_BOOTSTRAP_TIMEOUT_MILLIS = 10_000L
         const val TRANSCRIPT_UPDATE_INTERVAL_MILLIS = 50L
+    }
+}
+
+internal class InternalInputEchoFilter {
+    private var pattern: ByteArray? = null
+    private var prefixLengths = IntArray(0)
+    private var matchedBytes = 0
+
+    @Synchronized
+    fun expect(input: ByteArray) {
+        check(pattern == null) { "Only one internal input echo may be pending" }
+        val expected = input.withPtyEchoLineEnding()
+        pattern = expected
+        prefixLengths = expected.prefixLengths()
+        matchedBytes = 0
+    }
+
+    @Synchronized
+    fun consume(bytes: ByteArray): ByteArray {
+        if (pattern == null) return bytes
+        val output = ByteArrayOutputStream(bytes.size)
+
+        bytes.forEach { byte ->
+            val expected = pattern
+            if (expected == null) {
+                output.write(byte.toInt())
+                return@forEach
+            }
+
+            while (matchedBytes > 0 && byte != expected[matchedBytes]) {
+                val fallback = prefixLengths[matchedBytes - 1]
+                output.write(expected, 0, matchedBytes - fallback)
+                matchedBytes = fallback
+            }
+
+            if (byte == expected[matchedBytes]) {
+                matchedBytes += 1
+                if (matchedBytes == expected.size) reset()
+            } else {
+                output.write(byte.toInt())
+            }
+        }
+
+        return output.toByteArray()
+    }
+
+    @Synchronized
+    fun cancel(): ByteArray {
+        val pending = pattern?.copyOfRange(0, matchedBytes) ?: byteArrayOf()
+        reset()
+        return pending
+    }
+
+    @Synchronized
+    fun reset() {
+        pattern = null
+        prefixLengths = IntArray(0)
+        matchedBytes = 0
+    }
+}
+
+private fun ByteArray.withPtyEchoLineEnding(): ByteArray {
+    require(lastOrNull() == '\n'.code.toByte())
+    return copyOf(size + 1).also {
+        it[size - 1] = '\r'.code.toByte()
+        it[size] = '\n'.code.toByte()
+    }
+}
+
+private fun ByteArray.prefixLengths(): IntArray = IntArray(size).also { prefixes ->
+    var matched = 0
+    for (index in 1 until size) {
+        while (matched > 0 && this[index] != this[matched]) {
+            matched = prefixes[matched - 1]
+        }
+        if (this[index] == this[matched]) matched += 1
+        prefixes[index] = matched
     }
 }
