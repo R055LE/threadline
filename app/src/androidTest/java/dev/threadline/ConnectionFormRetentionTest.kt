@@ -14,10 +14,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -97,9 +96,8 @@ class ConnectionFormRetentionTest {
 
         compose.onNodeWithTag(ConnectionFormTags.ACTIVE_SESSION).assertExists()
         compose.onNodeWithText("Barnabas").assertExists()
-        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
-            .performScrollTo()
-            .assertIsNotEnabled()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION).assertDoesNotExist()
 
         compose.onNodeWithTag(ConnectionFormTags.RETURN_TO_SESSION)
             .performScrollTo()
@@ -111,6 +109,149 @@ class ConnectionFormRetentionTest {
             assertEquals(1, returnCount)
             assertEquals(1, disconnectCount)
         }
+
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_HISTORY)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("History").assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
+    }
+
+    @Test
+    fun savedConnectionAndNewConnectionLeadDirectlyToFocusedEditorAtLargeFontScale() {
+        val profile = SavedHostProfile(
+            id = "saved-profile",
+            displayName = "Barnabas",
+            hostname = "barnabas.example",
+            port = 22,
+            username = "ross",
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+        )
+
+        compose.setContent {
+            var draft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
+                mutableStateOf(ConnectionFormDraft.emptyDefaults())
+            }
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    HostForm(
+                        draft = draft,
+                        onDraftChange = { draft = it },
+                        sessionError = null,
+                        initialTask = HomeTask.OVERVIEW,
+                        hostProfiles = listOf(profile),
+                        knownHosts = listOf(trustedHost()),
+                        transcriptSessions = listOf(transcriptSummary("session-1", "First")),
+                        onPrepared = { true },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
+            .assertEditableTextEquals("barnabas.example")
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(TranscriptHistoryTags.OPEN).assertDoesNotExist()
+        compose.onNodeWithTag(
+            ConnectionFormTags.TRUSTED_HOST_PREFIX + trustedHost().endpointKey,
+        ).assertDoesNotExist()
+
+        compose.onNodeWithTag(ConnectionFormTags.BACK_HOME)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME).assertEditableTextEquals("")
+    }
+
+    @Test
+    fun historyAndSecurityTasksRemainReachableAndSurviveStateRestoration() {
+        val restoration = StateRestorationTester(compose)
+        val trustedHost = trustedHost()
+        val savedKey = savedKey()
+        var helpCount = 0
+        var diagnosticsCount = 0
+
+        restoration.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.emptyDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    initialTask = HomeTask.OVERVIEW,
+                    knownHosts = listOf(trustedHost),
+                    transcriptSessions = listOf(transcriptSummary("session-1", "First")),
+                    importedPrivateKeys = listOf(savedKey),
+                    onOpenIntroduction = { helpCount += 1 },
+                    onOpenDiagnostics = { diagnosticsCount += 1 },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_HISTORY).performClick()
+        compose.onNodeWithText("History").assertIsDisplayed()
+        compose.onNodeWithTag(TranscriptHistoryTags.OPEN).assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("History").assertIsDisplayed()
+
+        compose.onNodeWithTag(ConnectionFormTags.BACK_HOME).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_SECURITY).performClick()
+        compose.onNodeWithTag(
+            ConnectionFormTags.TRUSTED_HOST_PREFIX + trustedHost.endpointKey,
+        ).assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_PREFIX + savedKey.id)
+            .performScrollTo()
+            .assertIsDisplayed()
+
+        compose.onNodeWithTag(ConnectionFormTags.HELP).performClick()
+        compose.onNodeWithTag(DiagnosticTags.OPEN).performClick()
+        compose.runOnIdle {
+            assertEquals(1, helpCount)
+            assertEquals(1, diagnosticsCount)
+        }
+    }
+
+    @Test
+    fun activeSessionActionsRemainReachableAtLargeFontScale() {
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    HostForm(
+                        draft = ConnectionFormDraft.emptyDefaults(),
+                        onDraftChange = {},
+                        sessionError = null,
+                        activeSessionDisplayName = "Barnabas",
+                        initialTask = HomeTask.OVERVIEW,
+                        onPrepared = { error("A second connection must stay unavailable.") },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.RETURN_TO_SESSION)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.DISCONNECT_SESSION)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION).assertDoesNotExist()
     }
 
     @Test
@@ -541,6 +682,7 @@ class ConnectionFormRetentionTest {
                     draft = draft,
                     onDraftChange = { draft = it },
                     sessionError = null,
+                    initialTask = HomeTask.SECURITY,
                     importedPrivateKeys = listOf(savedKey),
                     onRenamePrivateKey = { id, name -> renamed = id to name },
                     onDeletePrivateKey = { id -> deletedId = id },
@@ -549,9 +691,6 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.PRIVATE_KEY_AUTH)
-            .performScrollTo()
-            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.RENAME_KEY_PREFIX + savedKey.id)
             .performScrollTo()
             .performClick()
@@ -561,12 +700,6 @@ class ConnectionFormRetentionTest {
         compose.waitForIdle()
         assertEquals(savedKey.id to "New name", renamed)
 
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
-            .performScrollTo()
-            .performClick()
-        compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
-            .performScrollTo()
-            .performTextReplacement("delete-me")
         compose.onNodeWithTag(ConnectionFormTags.DELETE_KEY_PREFIX + savedKey.id)
             .performScrollTo()
             .performClick()
@@ -578,10 +711,6 @@ class ConnectionFormRetentionTest {
         compose.waitForIdle()
 
         assertEquals(savedKey.id, deletedId)
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_KEY_PREFIX + savedKey.id)
-            .assertIsNotSelected()
-        compose.onNodeWithTag(ConnectionFormTags.KEY_PASSPHRASE)
-            .assertEditableTextEquals("")
     }
 
     @Test
@@ -619,7 +748,10 @@ class ConnectionFormRetentionTest {
                     onUpdateHostProfile = { id, profile ->
                         updatedProfile = id to profile
                     },
-                    onDeleteHostProfile = { id -> deletedId = id },
+                    onDeleteHostProfile = { id ->
+                        deletedId = id
+                        profiles.value = emptyList()
+                    },
                     onPrepared = { true },
                 )
             }
@@ -630,12 +762,14 @@ class ConnectionFormRetentionTest {
             .performClick()
         compose.waitForIdle()
         assertEquals("Local fixture", savedProfile?.displayName)
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
-            .assertIsSelected()
+        compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE).assertExists()
 
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
             .performScrollTo()
             .performTextReplacement("session-only")
+        compose.onNodeWithTag(ConnectionFormTags.BACK_HOME)
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
             .performScrollTo()
             .performClick()
@@ -669,13 +803,14 @@ class ConnectionFormRetentionTest {
             .performClick()
         assertNull(deletedId)
         compose.onNodeWithText("Delete saved profile?").assertExists()
-        compose.onAllNodesWithText("operator@lab.example:2200").assertCountEquals(2)
+        compose.onAllNodesWithText("operator@lab.example:2200").assertCountEquals(1)
         compose.onNodeWithTag(ConnectionFormTags.CONFIRM_DELETE_PROFILE).performClick()
         compose.waitForIdle()
 
         assertEquals(original.id, deletedId)
         compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
-            .assertIsNotSelected()
+            .assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION).performClick()
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
             .assertEditableTextEquals("")
     }
@@ -718,6 +853,8 @@ class ConnectionFormRetentionTest {
         }
 
         compose.onNodeWithText("To replace this trust record", substring = true).assertExists()
+        compose.onNodeWithTag(ConnectionFormTags.BACK_HOME).performClick()
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_SECURITY).performClick()
         compose.onNodeWithTag(ConnectionFormTags.DELETE_TRUST_PREFIX + trustedHost.endpointKey)
             .performScrollTo()
             .performClick()
@@ -829,6 +966,25 @@ private fun transcriptSummary(
     endedAtMillis = 2,
     turnsTruncated = false,
     turnCount = 1,
+)
+
+private fun trustedHost() = KnownHostMetadata(
+    endpointKey = "trusted.example:22",
+    hostname = "trusted.example",
+    port = 22,
+    algorithm = "ssh-ed25519",
+    fingerprint = "SHA256:trusted-fixture",
+    firstSeenAtMillis = 1,
+    lastSeenAtMillis = 2,
+)
+
+private fun savedKey() = ImportedPrivateKeyMetadata(
+    id = "saved-key",
+    displayName = "Saved key",
+    format = "OpenSSH",
+    keyType = "ssh-ed25519",
+    publicKeyFingerprint = "SHA256:saved-fixture",
+    createdAtMillis = 1,
 )
 
 private fun transcriptSession(id: String) = SavedTranscriptSession(

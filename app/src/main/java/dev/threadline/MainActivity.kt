@@ -123,6 +123,13 @@ internal enum class AuthenticationMode {
     PRIVATE_KEY,
 }
 
+internal enum class HomeTask {
+    OVERVIEW,
+    CONNECTION,
+    HISTORY,
+    SECURITY,
+}
+
 internal data class ConnectionFormDraft(
     val displayName: String,
     val hostname: String,
@@ -176,6 +183,11 @@ internal data class ConnectionFormDraft(
 }
 
 internal object ConnectionFormTags {
+    const val HOME = "connection-home"
+    const val NEW_CONNECTION = "connection-new"
+    const val OPEN_HISTORY = "connection-open-history"
+    const val OPEN_SECURITY = "connection-open-security"
+    const val BACK_HOME = "connection-back-home"
     const val DISPLAY_NAME = "connection-display-name"
     const val HOSTNAME = "connection-hostname"
     const val PORT = "connection-port"
@@ -300,6 +312,11 @@ private fun ThreadlineApp() {
             sessionError = (current as? SessionState.Failed)?.error,
             activeSessionDisplayName = (current as? SessionState.Connected)?.displayName,
             connectionEnabled = current !is SessionState.Connected,
+            initialTask = if (current is SessionState.Failed) {
+                HomeTask.CONNECTION
+            } else {
+                HomeTask.OVERVIEW
+            },
             onReturnToActiveSession = { showConnectedSession = true },
             onDisconnectActiveSession = manager::disconnect,
             hostProfiles = hostProfiles,
@@ -437,6 +454,7 @@ internal fun HostForm(
     sessionError: SessionError?,
     activeSessionDisplayName: String? = null,
     connectionEnabled: Boolean = true,
+    initialTask: HomeTask = HomeTask.CONNECTION,
     onReturnToActiveSession: () -> Unit = {},
     onDisconnectActiveSession: () -> Unit = {},
     hostProfiles: List<SavedHostProfile> = emptyList(),
@@ -514,6 +532,7 @@ internal fun HostForm(
     var keyPendingRename by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var keyPendingDeletion by remember { mutableStateOf<ImportedPrivateKeyMetadata?>(null) }
+    var savedTask by rememberSaveable { mutableStateOf(initialTask.name) }
     val displayNameFocusRequester = remember { FocusRequester() }
     val hostnameFocusRequester = remember { FocusRequester() }
     val portFocusRequester = remember { FocusRequester() }
@@ -523,6 +542,21 @@ internal fun HostForm(
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
     val isBusy = isPreparing || isManagingProfile || isManagingKnownHost || isManagingKey
+    val restoredTask = HomeTask.valueOf(savedTask)
+    val task = if (
+        activeSessionDisplayName != null && restoredTask == HomeTask.CONNECTION
+    ) {
+        HomeTask.OVERVIEW
+    } else {
+        restoredTask
+    }
+
+    LaunchedEffect(activeSessionDisplayName, sessionError) {
+        when {
+            activeSessionDisplayName != null -> savedTask = HomeTask.OVERVIEW.name
+            sessionError != null -> savedTask = HomeTask.CONNECTION.name
+        }
+    }
 
     fun clearSessionCredentialInputs() {
         password = ""
@@ -611,51 +645,93 @@ internal fun HostForm(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            activeSessionDisplayName?.let { displayName ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(ConnectionFormTags.ACTIVE_SESSION),
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(16.dp),
-                    ) {
-                        Text(
-                            "Active session",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        Text(displayName, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "This session remains connected while you use Home.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = onReturnToActiveSession,
-                                modifier = Modifier.testTag(
-                                    ConnectionFormTags.RETURN_TO_SESSION,
+            when (task) {
+                HomeTask.OVERVIEW -> {
+                    HomeOverviewContent(
+                        activeSessionDisplayName = activeSessionDisplayName,
+                        hostProfiles = hostProfiles,
+                        onReturnToActiveSession = onReturnToActiveSession,
+                        onDisconnectActiveSession = onDisconnectActiveSession,
+                        onOpenProfile = { profile ->
+                            onSelectedHostProfileChange(profile.id)
+                            onDraftChange(
+                                draft.copy(
+                                    displayName = profile.displayName,
+                                    hostname = profile.hostname,
+                                    port = profile.port.toString(),
+                                    username = profile.username,
                                 ),
-                            ) {
-                                Text("Return")
-                            }
-                            TextButton(
-                                onClick = onDisconnectActiveSession,
-                                modifier = Modifier.testTag(
-                                    ConnectionFormTags.DISCONNECT_SESSION,
-                                ),
-                            ) {
-                                Text("Disconnect")
-                            }
-                        }
-                        Text(
-                            "Disconnect this session before connecting to another server.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
+                            )
+                            clearSessionCredentialInputs()
+                            formError = null
+                            savedTask = HomeTask.CONNECTION.name
+                        },
+                        onNewConnection = {
+                            onSelectedHostProfileChange(null)
+                            onDraftChange(ConnectionFormDraft.emptyDefaults())
+                            clearSessionCredentialInputs()
+                            formError = null
+                            savedTask = HomeTask.CONNECTION.name
+                        },
+                        onOpenHistory = { savedTask = HomeTask.HISTORY.name },
+                        onOpenSecurity = { savedTask = HomeTask.SECURITY.name },
+                        transcriptCount = transcriptSessions.size,
+                    )
+                    return@Column
                 }
+
+                HomeTask.HISTORY -> {
+                    HomeTaskHeader("History") { savedTask = HomeTask.OVERVIEW.name }
+                    if (transcriptSessions.isEmpty() && !transcriptSaveFailed) {
+                        Text("No saved transcripts yet.")
+                    }
+                    TranscriptHistorySection(
+                        sessions = transcriptSessions,
+                        saveFailed = transcriptSaveFailed,
+                        onLoad = onLoadTranscript,
+                        onDelete = onDeleteTranscript,
+                        onClearAll = onClearTranscriptHistory,
+                    )
+                    return@Column
+                }
+
+                HomeTask.SECURITY -> {
+                    HomeTaskHeader("Security & keys") {
+                        savedTask = HomeTask.OVERVIEW.name
+                    }
+                    SecurityManagementContent(
+                        knownHosts = knownHosts,
+                        importedPrivateKeys = importedPrivateKeys,
+                        enabled = !isBusy,
+                        error = formError,
+                        onForgetHost = {
+                            knownHostPendingDeletion = it
+                            formError = null
+                        },
+                        onRenameKey = {
+                            keyPendingRename = it
+                            renameDraft = it.displayName
+                            formError = null
+                        },
+                        onDeleteKey = {
+                            keyPendingDeletion = it
+                            formError = null
+                        },
+                    )
+                    return@Column
+                }
+
+                HomeTask.CONNECTION -> Unit
             }
+
+            HomeTaskHeader(
+                title = selectedHostProfile?.displayName ?: "New connection",
+                onBack = {
+                    clearSessionCredentialInputs()
+                    formError = null
+                    savedTask = HomeTask.OVERVIEW.name
+                },
+            )
             Text(
                 "Connect to a server",
                 style = MaterialTheme.typography.titleMedium,
@@ -704,124 +780,6 @@ internal fun HostForm(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(16.dp),
                     )
-                }
-            }
-
-            TranscriptHistorySection(
-                sessions = transcriptSessions,
-                saveFailed = transcriptSaveFailed,
-                onLoad = onLoadTranscript,
-                onDelete = onDeleteTranscript,
-                onClearAll = onClearTranscriptHistory,
-            )
-
-            if (hostProfiles.isNotEmpty()) {
-                Text("Saved profiles", style = MaterialTheme.typography.labelLarge)
-                hostProfiles.forEach { profile ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        FilterChip(
-                            selected = selectedHostProfileId == profile.id,
-                            onClick = {
-                                onSelectedHostProfileChange(profile.id)
-                                onDraftChange(
-                                    draft.copy(
-                                        displayName = profile.displayName,
-                                        hostname = profile.hostname,
-                                        port = profile.port.toString(),
-                                        username = profile.username,
-                                    ),
-                                )
-                                clearSessionCredentialInputs()
-                                formError = null
-                            },
-                            enabled = !isBusy,
-                            label = {
-                                Column {
-                                    Text(profile.displayName)
-                                    Text(
-                                        "${profile.username}@${profile.hostname}:${profile.port}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(
-                                    ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id,
-                                ),
-                        )
-                        TextButton(
-                            onClick = {
-                                profilePendingDeletion = profile
-                                formError = null
-                            },
-                            enabled = !isBusy,
-                            modifier = Modifier.testTag(
-                                ConnectionFormTags.DELETE_PROFILE_PREFIX + profile.id,
-                            ),
-                        ) {
-                            Text("Delete")
-                        }
-                    }
-                }
-            }
-
-            if (knownHosts.isNotEmpty()) {
-                Text("Trusted servers", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    "Forgetting a server removes only its saved host-key decision. " +
-                        "A later connection must be verified and accepted again.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                knownHosts.forEach { host ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag(ConnectionFormTags.TRUSTED_HOST_PREFIX + host.endpointKey),
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(12.dp),
-                            ) {
-                                Text(
-                                    "${host.hostname}:${host.port}",
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    "${host.algorithm} · ${host.fingerprint}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    "First trusted ${formatKnownHostTimestamp(host.firstSeenAtMillis)}; " +
-                                        "last verified ${formatKnownHostTimestamp(host.lastSeenAtMillis)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                        TextButton(
-                            onClick = {
-                                knownHostPendingDeletion = host
-                                formError = null
-                            },
-                            enabled = !isBusy,
-                            modifier = Modifier.testTag(
-                                ConnectionFormTags.DELETE_TRUST_PREFIX + host.endpointKey,
-                            ),
-                        ) {
-                            Text("Forget")
-                        }
-                    }
                 }
             }
 
@@ -900,64 +858,74 @@ internal fun HostForm(
                 )
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Button(
-                    onClick = {
-                        if (isBusy) return@Button
-                        val invalidField = draft.validationErrorOrNull()
-                        if (invalidField != null) {
-                            showValidationError(invalidField)
-                            return@Button
-                        }
-                        val profile = draft.toHostProfile()
-                        formError = null
-                        isManagingProfile = true
-                        coroutineScope.launch {
-                            try {
-                                val selectedId = selectedHostProfile?.id
-                                if (selectedId == null) {
-                                    val saved = onSaveHostProfile(profile)
-                                    onSelectedHostProfileChange(saved.id)
-                                } else {
-                                    onUpdateHostProfile(selectedId, profile)
-                                }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (failure: Exception) {
-                                formError = failure.message
-                                    ?: "The host profile could not be saved."
-                            } finally {
-                                isManagingProfile = false
+            Button(
+                onClick = {
+                    if (isBusy) return@Button
+                    val invalidField = draft.validationErrorOrNull()
+                    if (invalidField != null) {
+                        showValidationError(invalidField)
+                        return@Button
+                    }
+                    val profile = draft.toHostProfile()
+                    formError = null
+                    isManagingProfile = true
+                    coroutineScope.launch {
+                        try {
+                            val selectedId = selectedHostProfile?.id
+                            if (selectedId == null) {
+                                val saved = onSaveHostProfile(profile)
+                                onSelectedHostProfileChange(saved.id)
+                            } else {
+                                onUpdateHostProfile(selectedId, profile)
                             }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            formError = failure.message
+                                ?: "The host profile could not be saved."
+                        } finally {
+                            isManagingProfile = false
                         }
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.testTag(
+                    }
+                },
+                enabled = !isBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(
                         if (selectedHostProfile == null) {
                             ConnectionFormTags.SAVE_PROFILE
                         } else {
                             ConnectionFormTags.UPDATE_PROFILE
                         },
                     ),
+            ) {
+                Text(if (selectedHostProfile == null) "Save profile" else "Update profile")
+            }
+            selectedHostProfile?.let { profile ->
+                OutlinedButton(
+                    onClick = {
+                        onSelectedHostProfileChange(null)
+                        clearSessionCredentialInputs()
+                        formError = null
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.USE_PROFILE_AS_NEW),
                 ) {
-                    Text(if (selectedHostProfile == null) "Save profile" else "Update profile")
+                    Text("Use details as new connection")
                 }
-                if (selectedHostProfile != null) {
-                    TextButton(
-                        onClick = {
-                            onSelectedHostProfileChange(null)
-                            clearSessionCredentialInputs()
-                            formError = null
-                        },
-                        enabled = !isBusy,
-                        modifier = Modifier.testTag(ConnectionFormTags.USE_PROFILE_AS_NEW),
-                    ) {
-                        Text("Use as new")
-                    }
+                TextButton(
+                    onClick = {
+                        profilePendingDeletion = profile
+                        formError = null
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + profile.id),
+                ) {
+                    Text("Delete saved profile")
                 }
             }
             Text(
@@ -1025,65 +993,45 @@ internal fun HostForm(
                     if (importedPrivateKeys.isNotEmpty()) {
                         Text("Saved keys", style = MaterialTheme.typography.labelLarge)
                         importedPrivateKeys.forEach { key ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                FilterChip(
-                                    selected = selectedSavedKeyId == key.id,
-                                    onClick = {
-                                        selectedSavedKeyId = key.id
-                                        selectedKeyUri = null
-                                        savePrivateKey = false
-                                        clearValidationError(ConnectionValidationField.PRIVATE_KEY)
-                                        formError = null
-                                    },
-                                    enabled = !isBusy,
-                                    label = {
-                                        Column {
-                                            Text(key.displayName)
-                                            Text(
-                                                "${key.keyType} · ${key.publicKeyFingerprint}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag(
-                                            ConnectionFormTags.SAVED_KEY_PREFIX + key.id,
-                                        ),
-                                )
-                                Column(horizontalAlignment = Alignment.End) {
-                                    TextButton(
-                                        onClick = {
-                                            keyPendingRename = key
-                                            renameDraft = key.displayName
-                                            formError = null
-                                        },
-                                        enabled = !isBusy,
-                                        modifier = Modifier.testTag(
-                                            ConnectionFormTags.RENAME_KEY_PREFIX + key.id,
-                                        ),
-                                    ) {
-                                        Text("Rename")
+                            FilterChip(
+                                selected = selectedSavedKeyId == key.id,
+                                onClick = {
+                                    selectedSavedKeyId = key.id
+                                    selectedKeyUri = null
+                                    savePrivateKey = false
+                                    clearValidationError(ConnectionValidationField.PRIVATE_KEY)
+                                    formError = null
+                                },
+                                enabled = !isBusy,
+                                label = {
+                                    Column {
+                                        Text(key.displayName)
+                                        Text(
+                                            "${key.keyType} · ${key.publicKeyFingerprint}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
                                     }
-                                    TextButton(
-                                        onClick = {
-                                            keyPendingDeletion = key
-                                            formError = null
-                                        },
-                                        enabled = !isBusy,
-                                        modifier = Modifier.testTag(
-                                            ConnectionFormTags.DELETE_KEY_PREFIX + key.id,
-                                        ),
-                                    ) {
-                                        Text("Delete")
-                                    }
-                                }
-                            }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag(
+                                        ConnectionFormTags.SAVED_KEY_PREFIX + key.id,
+                                    ),
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                clearSessionCredentialInputs()
+                                formError = null
+                                savedTask = HomeTask.SECURITY.name
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(ConnectionFormTags.OPEN_SECURITY),
+                        ) {
+                            Text("Manage saved keys")
                         }
                     }
                     OutlinedButton(
@@ -1333,7 +1281,9 @@ internal fun HostForm(
                                 onDeleteHostProfile(profile.id)
                                 if (selectedHostProfileId == profile.id) {
                                     onSelectedHostProfileChange(null)
+                                    onDraftChange(ConnectionFormDraft.emptyDefaults())
                                     clearSessionCredentialInputs()
+                                    savedTask = HomeTask.OVERVIEW.name
                                 }
                                 profilePendingDeletion = null
                             } catch (cancelled: CancellationException) {
@@ -1544,6 +1494,271 @@ internal fun HostForm(
 }
 
 @Composable
+private fun HomeOverviewContent(
+    activeSessionDisplayName: String?,
+    hostProfiles: List<SavedHostProfile>,
+    transcriptCount: Int,
+    onReturnToActiveSession: () -> Unit,
+    onDisconnectActiveSession: () -> Unit,
+    onOpenProfile: (SavedHostProfile) -> Unit,
+    onNewConnection: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenSecurity: () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(ConnectionFormTags.HOME),
+    ) {
+        Text(
+            "Home",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
+        if (activeSessionDisplayName != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.ACTIVE_SESSION),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(16.dp),
+                ) {
+                    Text(
+                        "Active session",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(activeSessionDisplayName, style = MaterialTheme.typography.bodyLarge)
+                    Text("This session remains connected while you use Home.")
+                    Button(
+                        onClick = onReturnToActiveSession,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.RETURN_TO_SESSION),
+                    ) {
+                        Text("Return to session")
+                    }
+                    TextButton(
+                        onClick = onDisconnectActiveSession,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.DISCONNECT_SESSION),
+                    ) {
+                        Text("Disconnect")
+                    }
+                }
+            }
+        } else {
+            Text(
+                "Connections",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
+            if (hostProfiles.isEmpty()) {
+                Text("No saved connections yet. Start with a new connection.")
+            } else {
+                Text("Choose a saved connection. Credentials are entered each time.")
+                hostProfiles.forEach { profile ->
+                    OutlinedButton(
+                        onClick = { onOpenProfile(profile) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id),
+                        contentPadding = PaddingValues(14.dp),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(profile.displayName)
+                            Text(
+                                "${profile.username}@${profile.hostname}:${profile.port}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            }
+            Button(
+                onClick = onNewConnection,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.NEW_CONNECTION),
+                contentPadding = PaddingValues(vertical = 14.dp),
+            ) {
+                Text("New connection")
+            }
+        }
+
+        HorizontalDivider()
+        Text(
+            "Manage",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        OutlinedButton(
+            onClick = onOpenHistory,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(ConnectionFormTags.OPEN_HISTORY),
+        ) {
+            Text("History ($transcriptCount)")
+        }
+        OutlinedButton(
+            onClick = onOpenSecurity,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(ConnectionFormTags.OPEN_SECURITY),
+        ) {
+            Text("Security & keys")
+        }
+    }
+}
+
+@Composable
+private fun HomeTaskHeader(
+    title: String,
+    onBack: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier.testTag(ConnectionFormTags.BACK_HOME),
+        ) {
+            Text("Back")
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
+    }
+}
+
+@Composable
+private fun SecurityManagementContent(
+    knownHosts: List<KnownHostMetadata>,
+    importedPrivateKeys: List<ImportedPrivateKeyMetadata>,
+    enabled: Boolean,
+    error: String?,
+    onForgetHost: (KnownHostMetadata) -> Unit,
+    onRenameKey: (ImportedPrivateKeyMetadata) -> Unit,
+    onDeleteKey: (ImportedPrivateKeyMetadata) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        error?.let {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+        Text(
+            "Trusted servers",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            "Forgetting a server removes its saved host-key decision. The next connection " +
+                "must be verified and accepted again.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (knownHosts.isEmpty()) {
+            Text("No trusted servers saved.")
+        }
+        knownHosts.forEach { host ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ConnectionFormTags.TRUSTED_HOST_PREFIX + host.endpointKey),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(12.dp),
+                ) {
+                    Text("${host.hostname}:${host.port}", fontFamily = FontFamily.Monospace)
+                    Text(
+                        "${host.algorithm} · ${host.fingerprint}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Text(
+                        "First trusted ${formatKnownHostTimestamp(host.firstSeenAtMillis)}; " +
+                            "last verified ${formatKnownHostTimestamp(host.lastSeenAtMillis)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(
+                        onClick = { onForgetHost(host) },
+                        enabled = enabled,
+                        modifier = Modifier.testTag(
+                            ConnectionFormTags.DELETE_TRUST_PREFIX + host.endpointKey,
+                        ),
+                    ) {
+                        Text("Forget")
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider()
+        Text(
+            "Saved private keys",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            "New keys are imported while setting up a private-key connection.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (importedPrivateKeys.isEmpty()) {
+            Text("No private keys saved.")
+        }
+        importedPrivateKeys.forEach { key ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(12.dp),
+                ) {
+                    Text(key.displayName)
+                    Text(
+                        "${key.keyType} · ${key.publicKeyFingerprint}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = { onRenameKey(key) },
+                            enabled = enabled,
+                            modifier = Modifier.testTag(
+                                ConnectionFormTags.RENAME_KEY_PREFIX + key.id,
+                            ),
+                        ) {
+                            Text("Rename")
+                        }
+                        TextButton(
+                            onClick = { onDeleteKey(key) },
+                            enabled = enabled,
+                            modifier = Modifier.testTag(
+                                ConnectionFormTags.DELETE_KEY_PREFIX + key.id,
+                            ),
+                        ) {
+                            Text("Delete")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ErrorCard(
     error: SessionError,
     onAction: (SessionErrorAction) -> Unit,
@@ -1589,9 +1804,9 @@ private fun ErrorCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "To replace this trust record, forget the matching trusted server below, " +
-                        "reconnect, verify the new fingerprint through a trusted channel, " +
-                        "and explicitly accept it.",
+                    "To replace this trust record, open Security & keys from Home and forget " +
+                        "the matching trusted server. Then reconnect, verify the new fingerprint " +
+                        "through a trusted channel, and explicitly accept it.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

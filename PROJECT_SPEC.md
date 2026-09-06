@@ -87,8 +87,24 @@ On the first app launch, the user sees one compact, scrollable introduction that
 The introduction is acknowledged explicitly, its version is stored in app-private preferences,
 and it can be reopened from Help. It is not an account setup flow or a multi-page tutorial.
 
-After the introduction, the user sees saved host profiles and a blank connection form. Only the
-standard SSH port `22` is prefilled; development-fixture values are never production defaults.
+After the introduction, the user sees Home. With no active session, Home shows saved connections
+and a primary action for starting a new connection. Selecting either opens the focused connection
+editor; users do not cross transcript history or trust-management content to reach credentials and
+the connect action. Only the standard SSH port `22` is prefilled for a new connection;
+development-fixture values are never production defaults.
+
+Home has explicit task states:
+
+- **No session:** choose a saved connection, start a new one, or open History or Security & keys.
+- **Active session:** foreground the active session name, Return, and Disconnect. Do not expose the
+  connection editor while a session is active.
+- **Connection editing:** show only connection details, profile actions, authentication, retention,
+  and the primary connect action, with a direct route back to Home.
+- **Management:** keep transcript history and trusted-server/private-key management on dedicated
+  Home tasks rather than in the connection path.
+
+The selected Home task and non-secret connection draft survive Android saved-state restoration.
+Returning Home from the active session always starts at its active-session dashboard.
 
 A saved host profile contains:
 
