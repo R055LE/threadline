@@ -106,6 +106,12 @@ Home has explicit task states:
 The selected Home task and non-secret connection draft survive Android saved-state restoration.
 Returning Home from the active session always starts at its active-session dashboard.
 
+On Android versions that require notification permission, explain the ongoing session notification
+and resolve permission before showing credential inputs. A denial leaves the non-secret connection
+draft in place, offers one retry plus Android notification settings, and routes repeated denial to
+Settings. Recheck permission when the app resumes. Never prepare or start SSH while Threadline's
+required session notification is unavailable.
+
 A saved host profile contains:
 
 - Display name
