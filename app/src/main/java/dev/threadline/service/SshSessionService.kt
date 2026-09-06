@@ -1,5 +1,6 @@
 package dev.threadline.service
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,6 +9,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -64,7 +66,17 @@ class SshSessionService : Service() {
 
     private fun startPreparedConnection() {
         handlesSessionCommand = true
-        if (!SessionRuntime.manager.connectPrepared()) {
+        if (
+            !connectPreparedWithNotificationPermission(
+                permissionGranted = hasSessionNotificationPermission(this),
+                onPermissionMissing = {
+                    SessionRuntime.manager.cancelPrepared(
+                        SessionError.NotificationPermissionRequired,
+                    )
+                },
+                connectPrepared = SessionRuntime.manager::connectPrepared,
+            )
+        ) {
             handlesSessionCommand = false
             stopSelf()
             return
@@ -183,4 +195,23 @@ class SshSessionService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
     }
+}
+
+internal fun hasSessionNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
+internal fun connectPreparedWithNotificationPermission(
+    permissionGranted: Boolean,
+    onPermissionMissing: () -> Unit,
+    connectPrepared: () -> Boolean,
+): Boolean {
+    if (!permissionGranted) {
+        onPermissionMissing()
+        return false
+    }
+    return connectPrepared()
 }

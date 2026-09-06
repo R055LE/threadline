@@ -5,7 +5,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -49,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,8 +72,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.threadline.core.model.ConnectionRequest
 import dev.threadline.core.model.HostEndpoint
@@ -95,6 +96,7 @@ import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.data.transcript.SavedTranscriptSession
 import dev.threadline.data.transcript.SavedTranscriptSessionSummary
 import dev.threadline.service.SshSessionService
+import dev.threadline.service.hasSessionNotificationPermission
 import java.io.ByteArrayOutputStream
 import java.text.DateFormat
 import java.util.Date
@@ -128,6 +130,28 @@ internal enum class HomeTask {
     CONNECTION,
     HISTORY,
     SECURITY,
+}
+
+internal enum class SessionNotificationPermissionState {
+    GRANTED,
+    REQUESTABLE,
+    DENIED,
+    SETTINGS_REQUIRED,
+    ;
+
+    val allowsCredentialEntry: Boolean
+        get() = this == GRANTED
+}
+
+internal fun sessionNotificationPermissionState(
+    granted: Boolean,
+    denialCount: Int,
+): SessionNotificationPermissionState = when {
+    granted -> SessionNotificationPermissionState.GRANTED
+    denialCount >= REPEATED_NOTIFICATION_PERMISSION_DENIAL_COUNT ->
+        SessionNotificationPermissionState.SETTINGS_REQUIRED
+    denialCount > 0 -> SessionNotificationPermissionState.DENIED
+    else -> SessionNotificationPermissionState.REQUESTABLE
 }
 
 internal data class ConnectionFormDraft(
@@ -221,6 +245,9 @@ internal object ConnectionFormTags {
     const val ERROR_ACTION = "connection-error-action"
     const val VALIDATION_ERROR = "connection-validation-error"
     const val PREPARATION_ERROR = "connection-preparation-error"
+    const val NOTIFICATION_PERMISSION = "connection-notification-permission"
+    const val REQUEST_NOTIFICATION_PERMISSION = "connection-request-notification-permission"
+    const val OPEN_NOTIFICATION_SETTINGS = "connection-open-notification-settings"
     const val CHOOSE_PRIVATE_KEY = "connection-choose-private-key"
     const val HELP = "connection-help"
 }
@@ -261,6 +288,23 @@ private fun ThreadlineApp() {
     var diagnosticGeneratedAtMillis by remember { mutableStateOf<Long?>(null) }
     val diagnosticEnvironment = remember(context) { androidDiagnosticEnvironment(context) }
     val openDiagnostics = { diagnosticGeneratedAtMillis = System.currentTimeMillis() }
+    val notificationPermissionPreferences = remember(context) {
+        context.getSharedPreferences(
+            NOTIFICATION_PERMISSION_PREFERENCES,
+            Context.MODE_PRIVATE,
+        )
+    }
+    var notificationPermissionGranted by remember {
+        mutableStateOf(hasSessionNotificationPermission(context))
+    }
+    var notificationPermissionDenialCount by remember {
+        mutableIntStateOf(
+            notificationPermissionPreferences.getInt(
+                NOTIFICATION_PERMISSION_DENIAL_COUNT,
+                0,
+            ),
+        )
+    }
 
     LaunchedEffect(state is SessionState.Connected) {
         if (state !is SessionState.Connected) {
@@ -271,10 +315,33 @@ private fun ThreadlineApp() {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        notificationPermissionGranted = granted
         if (granted) {
-            startSessionService(context)
+            notificationPermissionDenialCount = 0
+            notificationPermissionPreferences.edit()
+                .remove(NOTIFICATION_PERMISSION_DENIAL_COUNT)
+                .apply()
         } else {
-            manager.cancelPrepared(SessionError.NotificationPermissionRequired)
+            notificationPermissionDenialCount =
+                (notificationPermissionDenialCount + 1).coerceAtMost(
+                    REPEATED_NOTIFICATION_PERMISSION_DENIAL_COUNT,
+                )
+            notificationPermissionPreferences.edit()
+                .putInt(
+                    NOTIFICATION_PERMISSION_DENIAL_COUNT,
+                    notificationPermissionDenialCount,
+                )
+                .apply()
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationPermissionGranted = hasSessionNotificationPermission(context)
+        if (notificationPermissionGranted && notificationPermissionDenialCount > 0) {
+            notificationPermissionDenialCount = 0
+            notificationPermissionPreferences.edit()
+                .remove(NOTIFICATION_PERMISSION_DENIAL_COUNT)
+                .apply()
         }
     }
 
@@ -309,7 +376,9 @@ private fun ThreadlineApp() {
         -> HostForm(
             draft = connectionDraft,
             onDraftChange = { connectionDraft = it },
-            sessionError = (current as? SessionState.Failed)?.error,
+            sessionError = (current as? SessionState.Failed)
+                ?.error
+                ?.takeUnless { it == SessionError.NotificationPermissionRequired },
             activeSessionDisplayName = (current as? SessionState.Connected)?.displayName,
             connectionEnabled = current !is SessionState.Connected,
             initialTask = if (current is SessionState.Failed) {
@@ -340,21 +409,17 @@ private fun ThreadlineApp() {
             onOpenIntroduction = { showIntroduction = true },
             onOpenDiagnostics = openDiagnostics,
             onOpenNotificationSettings = { openNotificationSettings(context) },
+            notificationPermissionState = sessionNotificationPermissionState(
+                granted = notificationPermissionGranted,
+                denialCount = notificationPermissionDenialCount,
+            ),
+            onRequestNotificationPermission = {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
             onPrepared = prepared@{ request ->
                 if (!manager.prepareConnection(request)) return@prepared false
                 showConnectedSession = true
-
-                if (
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.POST_NOTIFICATIONS,
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    startSessionService(context)
-                }
+                startSessionService(context)
                 true
             },
         )
@@ -448,6 +513,90 @@ private fun openNotificationSettings(context: Context) {
 }
 
 @Composable
+private fun NotificationPermissionCard(
+    state: SessionNotificationPermissionState,
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(ConnectionFormTags.NOTIFICATION_PERMISSION)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                if (state == SessionNotificationPermissionState.REQUESTABLE) {
+                    "Keep active SSH sessions visible"
+                } else {
+                    "Notification access is still off"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                when (state) {
+                    SessionNotificationPermissionState.REQUESTABLE ->
+                        "Threadline uses an ongoing notification so an active SSH session stays " +
+                            "visible and can be disconnected. Allow session notifications " +
+                            "before entering a password or passphrase."
+                    SessionNotificationPermissionState.DENIED ->
+                        "No connection was started, and your server details are still here. " +
+                            "Try the permission again or allow it in Android settings."
+                    SessionNotificationPermissionState.SETTINGS_REQUIRED ->
+                        "No connection was started, and your server details are still here. " +
+                            "Allow session notifications in Android settings to continue."
+                    SessionNotificationPermissionState.GRANTED -> ""
+                },
+            )
+            when (state) {
+                SessionNotificationPermissionState.REQUESTABLE -> Button(
+                    onClick = onRequestPermission,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION),
+                ) {
+                    Text("Allow session notifications")
+                }
+
+                SessionNotificationPermissionState.DENIED -> {
+                    Button(
+                        onClick = onRequestPermission,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION),
+                    ) {
+                        Text("Try permission again")
+                    }
+                    TextButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.OPEN_NOTIFICATION_SETTINGS),
+                    ) {
+                        Text("Open notification settings")
+                    }
+                }
+
+                SessionNotificationPermissionState.SETTINGS_REQUIRED -> Button(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ConnectionFormTags.OPEN_NOTIFICATION_SETTINGS),
+                ) {
+                    Text("Open notification settings")
+                }
+
+                SessionNotificationPermissionState.GRANTED -> Unit
+            }
+        }
+    }
+}
+
+@Composable
 internal fun HostForm(
     draft: ConnectionFormDraft,
     onDraftChange: (ConnectionFormDraft) -> Unit,
@@ -510,6 +659,9 @@ internal fun HostForm(
     onOpenIntroduction: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
+    notificationPermissionState: SessionNotificationPermissionState =
+        SessionNotificationPermissionState.GRANTED,
+    onRequestNotificationPermission: () -> Unit = {},
     onPrepared: (ConnectionRequest) -> Boolean,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -566,6 +718,12 @@ internal fun HostForm(
         savePrivateKey = false
         validationError = null
         connectionPreparationError = null
+    }
+
+    LaunchedEffect(notificationPermissionState) {
+        if (!notificationPermissionState.allowsCredentialEntry) {
+            clearSessionCredentialInputs()
+        }
     }
 
     fun clearValidationError(field: ConnectionValidationField) {
@@ -933,6 +1091,15 @@ internal fun HostForm(
                     "passphrases are never saved.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            if (!notificationPermissionState.allowsCredentialEntry) {
+                NotificationPermissionCard(
+                    state = notificationPermissionState,
+                    onRequestPermission = onRequestNotificationPermission,
+                    onOpenSettings = onOpenNotificationSettings,
+                )
+                return@Column
+            }
 
             Text(
                 "Authentication",
@@ -2065,3 +2232,6 @@ private class ClearingByteArrayOutputStream : ByteArrayOutputStream() {
 }
 
 private const val MAX_PRIVATE_KEY_BYTES = 1024 * 1024
+private const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
+private const val NOTIFICATION_PERMISSION_DENIAL_COUNT = "denial_count"
+private const val REPEATED_NOTIFICATION_PERMISSION_DENIAL_COUNT = 2

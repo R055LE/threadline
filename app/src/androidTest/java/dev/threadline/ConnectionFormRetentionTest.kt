@@ -929,6 +929,204 @@ class ConnectionFormRetentionTest {
     }
 
     @Test
+    fun notificationPermissionStateTracksFirstAndRepeatedDenial() {
+        assertEquals(
+            SessionNotificationPermissionState.REQUESTABLE,
+            sessionNotificationPermissionState(granted = false, denialCount = 0),
+        )
+        assertEquals(
+            SessionNotificationPermissionState.DENIED,
+            sessionNotificationPermissionState(granted = false, denialCount = 1),
+        )
+        assertEquals(
+            SessionNotificationPermissionState.SETTINGS_REQUIRED,
+            sessionNotificationPermissionState(granted = false, denialCount = 2),
+        )
+        assertEquals(
+            SessionNotificationPermissionState.GRANTED,
+            sessionNotificationPermissionState(granted = true, denialCount = 2),
+        )
+    }
+
+    @Test
+    fun notificationPermissionIsExplainedBeforeCredentialEntryAndFirstGrantUnlocksForm() {
+        val permissionState = mutableStateOf(SessionNotificationPermissionState.REQUESTABLE)
+        var requestCount = 0
+        var preparedCount = 0
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    notificationPermissionState = permissionState.value,
+                    onRequestNotificationPermission = { requestCount += 1 },
+                    onPrepared = {
+                        preparedCount += 1
+                        it.credential.clear()
+                        true
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Keep active SSH sessions visible")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText(
+            "Allow session notifications before entering a password or passphrase.",
+            substring = true,
+        ).assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
+
+        compose.onNodeWithTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION)
+            .performClick()
+        compose.runOnIdle {
+            assertEquals(1, requestCount)
+            assertEquals(0, preparedCount)
+            permissionState.value = SessionNotificationPermissionState.GRANTED
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertExists()
+    }
+
+    @Test
+    fun notificationDenialAllowsRetryAndRepeatedDenialRoutesToSettings() {
+        val draft = mutableStateOf(ConnectionFormDraft.fixtureDefaults())
+        val permissionState = mutableStateOf(SessionNotificationPermissionState.REQUESTABLE)
+        var requestCount = 0
+        var settingsOpenCount = 0
+        var preparedCount = 0
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = draft.value,
+                    onDraftChange = { draft.value = it },
+                    sessionError = null,
+                    notificationPermissionState = permissionState.value,
+                    onRequestNotificationPermission = { requestCount += 1 },
+                    onOpenNotificationSettings = { settingsOpenCount += 1 },
+                    onPrepared = {
+                        preparedCount += 1
+                        it.credential.clear()
+                        true
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
+            .performTextReplacement("changed.example")
+        compose.onNodeWithTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION)
+            .performScrollTo()
+            .performClick()
+        compose.runOnIdle {
+            permissionState.value = SessionNotificationPermissionState.DENIED
+        }
+        compose.onNodeWithText("Notification access is still off")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.HOSTNAME)
+            .assertEditableTextEquals("changed.example")
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_NOTIFICATION_SETTINGS)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION)
+            .performScrollTo()
+            .performClick()
+
+        compose.runOnIdle {
+            assertEquals(2, requestCount)
+            assertEquals(1, settingsOpenCount)
+            assertEquals(0, preparedCount)
+            permissionState.value = SessionNotificationPermissionState.SETTINGS_REQUIRED
+        }
+        compose.onNodeWithTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION)
+            .assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_NOTIFICATION_SETTINGS)
+            .performScrollTo()
+            .performClick()
+        compose.runOnIdle {
+            assertEquals(2, settingsOpenCount)
+            assertEquals(0, preparedCount)
+        }
+    }
+
+    @Test
+    fun settingsRecoveryRevealsAnEmptyCredentialField() {
+        val permissionState = mutableStateOf(SessionNotificationPermissionState.GRANTED)
+        var settingsOpenCount = 0
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    notificationPermissionState = permissionState.value,
+                    onOpenNotificationSettings = { settingsOpenCount += 1 },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performTextReplacement("session-only")
+        compose.runOnIdle {
+            permissionState.value = SessionNotificationPermissionState.SETTINGS_REQUIRED
+        }
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_NOTIFICATION_SETTINGS)
+            .performScrollTo()
+            .performClick()
+        compose.runOnIdle {
+            assertEquals(1, settingsOpenCount)
+            permissionState.value = SessionNotificationPermissionState.GRANTED
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performScrollTo()
+            .assertEditableTextEquals("")
+    }
+
+    @Test
+    fun alreadyGrantedPermissionConnectsWithoutShowingTheGate() {
+        var preparedCount = 0
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    notificationPermissionState = SessionNotificationPermissionState.GRANTED,
+                    onPrepared = {
+                        preparedCount += 1
+                        it.credential.clear()
+                        true
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.NOTIFICATION_PERMISSION).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
+            .performScrollTo()
+            .performTextReplacement("session-only")
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+
+        compose.runOnIdle { assertEquals(1, preparedCount) }
+        compose.onNodeWithTag(ConnectionFormTags.PASSWORD).assertEditableTextEquals("")
+    }
+
+    @Test
     fun notificationFailureOnlyOpensSettingsAfterTheUserAction() {
         var settingsOpenCount = 0
         compose.setContent {
