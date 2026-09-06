@@ -670,6 +670,13 @@ class TranscriptScreenTest {
             "Returning to the expanded transcript exceeded five seconds",
             SystemClock.elapsedRealtime() - transcriptStarted <= UI_RESPONSE_LIMIT_MILLIS,
         )
+
+        repeat(2) {
+            composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+            composeRule.onNodeWithText("Raw performance surface").assertIsDisplayed()
+            composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+            composeRule.onNodeWithTag(TranscriptTags.TRANSCRIPT).assertExists()
+        }
     }
 
     @Test

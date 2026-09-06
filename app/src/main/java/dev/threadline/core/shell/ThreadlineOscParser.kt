@@ -90,8 +90,9 @@ class ProtocolScanResult(
 
 /**
  * Removes valid Threadline lifecycle markers from transcript bytes while leaving
- * every unrecognized sequence untouched. Callers must send the original input
- * bytes, rather than [ProtocolScanResult.transcriptBytes], to the raw terminal.
+ * every unrecognized sequence untouched. Raw-terminal filtering is limited to
+ * confirmed echoes of Threadline-authored input and happens outside this parser;
+ * callers must not use [ProtocolScanResult.transcriptBytes] for the raw terminal.
  */
 class ThreadlineOscParser(
     private val sessionNonce: SessionNonce,

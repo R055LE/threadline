@@ -42,6 +42,29 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class SessionManagerIoTest {
     @Test
+    fun `internal input echo mismatch fails open byte for byte`() {
+        val filter = InternalInputEchoFilter()
+        val input = "abcab\n".encodeToByteArray()
+        val observed = "server output\r\nabcax\r\n".encodeToByteArray()
+
+        filter.expect(input)
+
+        assertArrayEquals(observed, filter.consume(observed))
+    }
+
+    @Test
+    fun `cancelling input echo expectation releases a partial match`() {
+        val filter = InternalInputEchoFilter()
+        filter.expect("bootstrap\n".encodeToByteArray())
+
+        assertArrayEquals(
+            "remote ".encodeToByteArray(),
+            filter.consume("remote b".encodeToByteArray()),
+        )
+        assertArrayEquals("b".encodeToByteArray(), filter.cancel())
+    }
+
+    @Test
     fun `rapid input bytes reach the SSH session in order`() = runBlocking {
         val session = RecordingSession()
         val manager = SessionManager(
@@ -203,19 +226,25 @@ class SessionManagerIoTest {
                 while (session.sent.isEmpty()) delay(10)
             }
             assertTrue(
-                session.sent.first().decodeToString().contains(
-                    "__threadline_run_${nonce.value}",
-                ),
+                session.sent.first().decodeToString().startsWith("builtin eval -- $'"),
             )
 
+            val bootstrapEcho = ptyEcho(session.sent.first())
             val bootstrapRaw = lifecycleBytes(
                 nonce = nonce,
                 commandId = CommandId("bootstrap-probe"),
                 exitStatus = 0,
                 currentDirectory = "/home/threadline",
             )
-            session.output.send(bootstrapRaw.copyOfRange(0, 17))
-            session.output.send(bootstrapRaw.copyOfRange(17, bootstrapRaw.size))
+            val bootstrapStream = bootstrapEcho + bootstrapRaw
+            val bootstrapEchoSplit = bootstrapEcho.size / 2
+            session.output.send(bootstrapStream.copyOfRange(0, bootstrapEchoSplit))
+            session.output.send(
+                bootstrapStream.copyOfRange(bootstrapEchoSplit, bootstrapEcho.size + 17),
+            )
+            session.output.send(
+                bootstrapStream.copyOfRange(bootstrapEcho.size + 17, bootstrapStream.size),
+            )
             withTimeout(2_000) {
                 manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
             }
@@ -242,7 +271,11 @@ class SessionManagerIoTest {
                 currentDirectory = "/tmp",
                 output = "visible output\r\n",
             )
-            session.output.send(commandRaw)
+            val backgroundOutput = "background output\r\n".encodeToByteArray()
+            val commandEcho = ptyEcho(session.sent[1])
+            val commandStream = backgroundOutput + commandEcho + commandRaw
+            session.output.send(commandStream.copyOfRange(0, backgroundOutput.size + 7))
+            session.output.send(commandStream.copyOfRange(backgroundOutput.size + 7, commandStream.size))
             val ready = withTimeout(2_000) {
                 manager.structuredState.filterIsInstance<StructuredShellState.Ready>()
                     .first { it.lastCommand != null }
@@ -274,7 +307,7 @@ class SessionManagerIoTest {
                 turn.output,
             )
             assertArrayEquals(
-                bootstrapRaw + commandRaw,
+                bootstrapRaw + backgroundOutput + commandRaw,
                 terminal.received.flattenBytes(),
             )
             assertEquals(
@@ -464,19 +497,25 @@ class SessionManagerIoTest {
     @Test
     fun `bootstrap timeout downgrades to raw mode without failing connection`() = runBlocking {
         val session = RecordingSession()
+        val terminal = RecordingTerminal()
         val manager = SessionManager(
             adapter = ImmediateAdapter(session),
             knownHostStore = EmptyKnownHostStore,
-            terminal = FakeTerminal,
+            terminal = terminal,
             sessionNonceFactory = {
                 SessionNonce("0123456789abcdef0123456789abcdef")
             },
             commandIdFactory = { CommandId("bootstrap-probe") },
-            bootstrapTimeoutMillis = 50,
+            bootstrapTimeoutMillis = 250,
         )
 
         manager.prepareConnection(fixtureRequest())
         manager.connectPrepared()
+        withTimeout(2_000) {
+            while (session.sent.isEmpty()) delay(10)
+        }
+        val partialEcho = ptyEcho(session.sent.first()).copyOfRange(0, 12)
+        session.output.send(partialEcho)
         val unavailable = withTimeout(2_000) {
             manager.structuredState.filterIsInstance<StructuredShellState.Unavailable>().first()
         }
@@ -486,6 +525,10 @@ class SessionManagerIoTest {
             unavailable.reason,
         )
         assertTrue(manager.state.value is SessionState.Connected)
+        withTimeout(2_000) {
+            while (terminal.received.flattenBytes().size < partialEcho.size) delay(10)
+        }
+        assertArrayEquals(partialEcho, terminal.received.flattenBytes())
 
         manager.send("raw-still-works".encodeToByteArray())
         withTimeout(2_000) {
@@ -496,6 +539,14 @@ class SessionManagerIoTest {
                 delay(10)
             }
         }
+        val rawOutput = "raw output\r\n".encodeToByteArray()
+        session.output.send(rawOutput)
+        withTimeout(2_000) {
+            while (terminal.received.flattenBytes().size < partialEcho.size + rawOutput.size) {
+                delay(10)
+            }
+        }
+        assertArrayEquals(partialEcho + rawOutput, terminal.received.flattenBytes())
 
         manager.disconnect()
         withTimeout(2_000) {
@@ -687,6 +738,11 @@ private fun lifecycleBytes(
         marker("output") +
         output.encodeToByteArray() +
         marker("end", exitStatus.toString(), currentDirectory)
+}
+
+private fun ptyEcho(input: ByteArray): ByteArray = input.copyOf(input.size + 1).also {
+    it[input.lastIndex] = '\r'.code.toByte()
+    it[input.size] = '\n'.code.toByte()
 }
 
 private fun Iterable<ByteArray>.flattenBytes(): ByteArray =

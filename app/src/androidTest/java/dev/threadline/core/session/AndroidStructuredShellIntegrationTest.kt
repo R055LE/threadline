@@ -29,6 +29,7 @@ import dev.threadline.data.host.RoomKnownHostStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
 import dev.threadline.data.transcript.RoomTranscriptHistoryStore
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
 import kotlinx.coroutines.flow.filterIsInstance
@@ -187,10 +188,11 @@ class AndroidStructuredShellIntegrationTest {
         val hostKeyAlgorithms = HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
             AndroidSshCryptoProvider.install(),
         )
+        val terminal = RecordingTerminal()
         val manager = SessionManager(
             adapter = ConnectBotSshClientAdapter(hostKeyAlgorithms),
             knownHostStore = knownHostStore,
-            terminal = NoOpTerminal,
+            terminal = terminal,
             transcriptArchiveSink = transcriptHistoryStore,
             transcriptSessionIdFactory = { "production-fixture-session" },
         )
@@ -222,6 +224,8 @@ class AndroidStructuredShellIntegrationTest {
                 manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
             }
             assertTrue(initialReady.currentDirectory.isNotEmpty())
+            assertTrue(!terminal.text().contains("builtin eval -- $'"))
+            assertTrue(!terminal.text().contains("__threadline_run_"))
 
             val cdSubmission = accepted(manager.submitCommand("cd /tmp"))
             assertEquals(
@@ -292,6 +296,7 @@ class AndroidStructuredShellIntegrationTest {
             )
             assertTrue(!renderedTurn.output.approximate)
             assertTrue(!renderedTurn.output.truncated)
+            assertTrue(!terminal.text().contains("__threadline_run_"))
 
             executeInteractive(
                 manager = manager,
@@ -529,4 +534,21 @@ private object NoOpTerminal : TerminalSink {
     override fun clear() = Unit
 
     override suspend fun receive(bytes: ByteArray) = Unit
+}
+
+private class RecordingTerminal : TerminalSink {
+    override val size = TerminalSize(rows = 24, columns = 80)
+    private val received = ByteArrayOutputStream()
+
+    override fun clear() {
+        synchronized(received) { received.reset() }
+    }
+
+    override suspend fun receive(bytes: ByteArray) {
+        synchronized(received) { received.write(bytes) }
+    }
+
+    fun text(): String = synchronized(received) {
+        received.toByteArray().decodeToString()
+    }
 }

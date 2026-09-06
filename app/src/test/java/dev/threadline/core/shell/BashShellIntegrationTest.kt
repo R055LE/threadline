@@ -112,11 +112,25 @@ class BashShellIntegrationTest {
             command = "printf '%s\n' \"$(uname)\"",
         ).decodeToString()
 
-        assertEquals(
-            "__threadline_run_${nonce.value} 'command-42' " +
-                "'printf '\\''%s\n'\\'' \"\$(uname)\"' 'persistent'\n",
-            invocation,
-        )
+        assertTrue(invocation.startsWith("__threadline_run_${nonce.value} 'command-42' $'"))
+        assertTrue(invocation.endsWith(" 'persistent'\n"))
+        assertEquals(1, invocation.count { it == '\n' })
+    }
+
+    @Test
+    fun `single-line quoting reconstructs multiline Unicode and shell syntax`() {
+        val value = "  printf 'λ-🧵'\ncat <<'EOF'\n$(uname) | \\path\nEOF\t  "
+        val process = ProcessBuilder(
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-c",
+            "value=${BashAnsiCWordQuoter.quote(value)}; printf '%s' \"\$value\"",
+        ).start()
+
+        assertTrue("Bash did not exit", process.waitFor(5, TimeUnit.SECONDS))
+        assertEquals(process.errorStream.readBytes().decodeToString(), 0, process.exitValue())
+        assertEquals(value, process.inputStream.readBytes().decodeToString())
     }
 
     @Test
@@ -165,44 +179,13 @@ class BashShellIntegrationTest {
     }
 
     @Test
-    fun `bootstrap installs nonce-scoped function and runs no-op probe`() {
+    fun `bootstrap is one physical input line`() {
         val probeId = CommandId("bootstrap-probe")
         val bootstrap = integration.bootstrap(probeId).decodeToString()
 
-        assertTrue(bootstrap.startsWith("__threadline_run_${nonce.value}() {\n"))
-        assertTrue(
-            bootstrap.contains(
-                "printf '\\033]777;threadline;${nonce.value};start;%s\\007'",
-            ),
-        )
-        assertTrue(bootstrap.contains("[[ \"\$__tl_mode\" == isolated ]]"))
-        assertTrue(
-            bootstrap.contains(
-                "command bash --noprofile --norc -c \"\$__tl_command\"",
-            ),
-        )
-        assertTrue(bootstrap.contains("builtin eval -- \"\$__tl_command\""))
-        assertTrue(bootstrap.contains("trap '\n    __tl_exit=130\n"))
-        assertTrue(
-            bootstrap.contains(
-                "builtin eval -- \"\$__tl_previous_int_trap\"",
-            ),
-        )
-        assertTrue(
-            bootstrap.contains(
-                "return \"\$__tl_exit\"\n  ' INT",
-            ),
-        )
-        assertTrue(
-            bootstrap.indexOf("  ' INT\n") <
-                bootstrap.indexOf(";start;%s\\007'"),
-        )
-        assertFalse(bootstrap.contains("__tl_interrupted"))
-        assertTrue(
-            bootstrap.endsWith(
-                "__threadline_run_${nonce.value} 'bootstrap-probe' ':' 'persistent'\n",
-            ),
-        )
+        assertTrue(bootstrap.startsWith("builtin eval -- $'"))
+        assertEquals(1, bootstrap.count { it == '\n' })
+        assertTrue("Bootstrap must fit one canonical PTY line", bootstrap.encodeToByteArray().size < 4096)
         assertFalse(bootstrap.contains("\u001b]"))
     }
 
