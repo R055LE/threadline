@@ -4,6 +4,7 @@ import dev.threadline.core.model.ConnectionRequest
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
+import dev.threadline.core.model.SessionCredential
 import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
@@ -343,33 +344,118 @@ class SessionManager(
     }
 
     private suspend fun establish(request: ConnectionRequest) {
-        val gate = StrictHostKeyGate(
-            endpoint = request.profile.endpoint,
-            store = knownHostStore,
-            requestDecision = ::awaitHostKeyDecision,
-        )
-
         try {
-            val session = adapter.connect(
-                request = request,
-                verifier = ServerHostKeyVerifier(gate::verify),
-                initialSize = terminal.size,
-                onStage = { stage -> stateMachine.apply(SessionEvent.StageChanged(stage)) },
-            )
+            val firstAttempt = connectOnce(request, captureUnknownKey = true)
+            val session = when (firstAttempt) {
+                is ConnectionAttempt.Connected -> firstAttempt.session
+                is ConnectionAttempt.Failed -> {
+                    val unknownKey = firstAttempt.unknownKey.takeIf {
+                        firstAttempt.failure.error is SessionError.HostKeyRejected &&
+                            firstAttempt.gateError is SessionError.HostKeyRejected
+                    }
+                        ?: throw firstAttempt.asException()
+                    try {
+                        when (awaitHostKeyDecision(unknownKey.prompt)) {
+                            HostKeyDecision.REJECT -> throw firstAttempt.asException()
+                            HostKeyDecision.ACCEPT_AND_SAVE -> {
+                                persistAcceptedHostKey(request, unknownKey)
+                                when (val retry = connectOnce(request, captureUnknownKey = false)) {
+                                    is ConnectionAttempt.Connected -> retry.session
+                                    is ConnectionAttempt.Failed -> throw retry.asException()
+                                }
+                            }
+                        }
+                    } finally {
+                        unknownKey.encoded.fill(0)
+                    }
+                }
+            }
             liveSession = session
             markTranscriptSessionConnected()
             startStructuredShell(session)
             stateMachine.apply(SessionEvent.ShellReady(terminal.size))
             startSessionJobs(session)
         } catch (failure: SshAdapterException) {
-            val mapped = if (failure.error is SessionError.HostKeyRejected) {
-                gate.rejection ?: failure.error
-            } else {
-                failure.error
-            }
-            failSession(mapped)
+            failSession(failure.error)
         } finally {
             request.credential.clear()
+        }
+    }
+
+    private suspend fun connectOnce(
+        request: ConnectionRequest,
+        captureUnknownKey: Boolean,
+    ): ConnectionAttempt {
+        var presentedAlgorithm: String? = null
+        var presentedKey: ByteArray? = null
+        var unknownKey: DeferredHostKey? = null
+        val gate = StrictHostKeyGate(
+            endpoint = request.profile.endpoint,
+            store = knownHostStore,
+            requestDecision = { prompt ->
+                if (captureUnknownKey) {
+                    unknownKey = DeferredHostKey(
+                        prompt = prompt,
+                        algorithm = requireNotNull(presentedAlgorithm),
+                        encoded = requireNotNull(presentedKey).copyOf(),
+                    )
+                }
+                HostKeyDecision.REJECT
+            },
+        )
+        val attemptCredential = request.credential.copyForConnectionAttempt()
+        val attemptRequest = ConnectionRequest(
+            profile = request.profile,
+            credential = attemptCredential,
+            ephemeral = request.ephemeral,
+        )
+
+        return try {
+            val session = adapter.connect(
+                request = attemptRequest,
+                verifier = ServerHostKeyVerifier { algorithm, encoded ->
+                    presentedAlgorithm = algorithm
+                    presentedKey = encoded
+                    try {
+                        gate.verify(algorithm, encoded)
+                    } finally {
+                        presentedAlgorithm = null
+                        presentedKey = null
+                    }
+                },
+                initialSize = terminal.size,
+                onStage = { stage -> stateMachine.apply(SessionEvent.StageChanged(stage)) },
+            )
+            ConnectionAttempt.Connected(session)
+        } catch (failure: SshAdapterException) {
+            ConnectionAttempt.Failed(
+                failure = failure,
+                gateError = gate.rejection,
+                unknownKey = unknownKey,
+            )
+        } finally {
+            attemptCredential.clear()
+        }
+    }
+
+    private suspend fun persistAcceptedHostKey(
+        request: ConnectionRequest,
+        unknownKey: DeferredHostKey,
+    ) {
+        val gate = StrictHostKeyGate(
+            endpoint = request.profile.endpoint,
+            store = knownHostStore,
+            requestDecision = { prompt ->
+                check(prompt == unknownKey.prompt) {
+                    "Accepted host key must match the displayed fingerprint"
+                }
+                HostKeyDecision.ACCEPT_AND_SAVE
+            },
+        )
+        if (!gate.verify(unknownKey.algorithm, unknownKey.encoded)) {
+            throw SshAdapterException(
+                gate.rejection ?: SessionError.HostKeyRejected(unknownKey.prompt.fingerprint),
+            )
         }
     }
 
@@ -636,11 +722,36 @@ class SessionManager(
         val startedAtMillis: Long? = null,
     )
 
+    private data class DeferredHostKey(
+        val prompt: HostKeyPrompt,
+        val algorithm: String,
+        val encoded: ByteArray,
+    )
+
+    private sealed interface ConnectionAttempt {
+        data class Connected(val session: LiveSshSession) : ConnectionAttempt
+
+        data class Failed(
+            val failure: SshAdapterException,
+            val gateError: SessionError?,
+            val unknownKey: DeferredHostKey?,
+        ) : ConnectionAttempt {
+            fun asException(): SshAdapterException = gateError?.let { error ->
+                SshAdapterException(error, failure)
+            } ?: failure
+        }
+    }
+
     private companion object {
         const val INPUT_QUEUE_CAPACITY = 256
         const val DEFAULT_BOOTSTRAP_TIMEOUT_MILLIS = 10_000L
         const val TRANSCRIPT_UPDATE_INTERVAL_MILLIS = 50L
     }
+}
+
+private fun SessionCredential.copyForConnectionAttempt(): SessionCredential = when (this) {
+    is SessionCredential.Password -> SessionCredential.Password.from(characters)
+    is SessionCredential.PrivateKey -> SessionCredential.PrivateKey.from(keyBytes, passphrase)
 }
 
 internal class InternalInputEchoFilter {

@@ -85,10 +85,13 @@ the two libraries have additional transitive dependencies.
 - Conscrypt adds native code and APK size. Its provider is process-global, so a
   full SSH handshake test remains required in addition to the isolated crypto
   probe.
-- sshlib `0.4.1` applies a hard-coded 30-second timeout to key exchange,
-  including time spent waiting for the app's host-key decision. A user who
-  takes longer to verify an unknown fingerprint receives a generic connection
-  failure. This needs an upstream change or a two-pass verification design.
+- sshlib applies a hard-coded 30-second timeout to key exchange, including a
+  suspending host-key verifier. Threadline therefore rejects an unknown-key
+  probe immediately, waits for the user's decision after that connection has
+  closed, persists only the displayed candidate on acceptance, and reconnects
+  through strict verification before authentication. Inspection of the cached
+  sshlib `0.4.2` bytecode on 2026-09-06 confirmed the timeout still wraps key
+  exchange.
 - sshlib exposes stdout and SSH extended-data streams separately. OpenSSH
   merges stdout and stderr for a PTY, which preserves the expected ordered raw
   terminal stream in the fixture. A server that emits extended data despite a

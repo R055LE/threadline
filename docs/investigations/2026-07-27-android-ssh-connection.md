@@ -210,6 +210,14 @@ The third avoids a fork but requires careful state-machine and changed-key
 handling. Until resolved, the UI should eventually expose the timeout
 specifically rather than a generic connection failure.
 
+Resolved on 2026-09-06 with the third option. An unknown-key probe now rejects
+and closes immediately, so the confirmation dialog has no live key-exchange
+deadline. Acceptance persists exactly the displayed candidate, then a fresh
+connection rechecks it before authentication. A changed key on that second
+connection remains blocked. Local inspection confirmed sshlib `0.4.2` still
+contains the 30-second key-exchange timeout, so this is an application-level
+boundary rather than an upstream timeout change.
+
 ### Host-form persistence
 
 Resolved in the follow-up to this investigation. The form originally owned all
