@@ -87,11 +87,12 @@ On the first app launch, the user sees one compact, scrollable introduction that
 The introduction is acknowledged explicitly, its version is stored in app-private preferences,
 and it can be reopened from Help. It is not an account setup flow or a multi-page tutorial.
 
-After the introduction, the user sees Home. With no active session, Home shows saved connections
-and a primary action for starting a new connection. Selecting either opens the focused connection
-editor; users do not cross transcript history or trust-management content to reach credentials and
-the connect action. Only the standard SSH port `22` is prefilled for a new connection;
-development-fixture values are never production defaults.
+After the first-run introduction, the user enters the focused connection editor directly. On later
+launches with no active session, Home shows saved connections and a primary action for starting a
+new connection. Selecting either opens the focused connection editor; users do not cross transcript
+history or trust-management content to reach credentials and the connect action. Only the standard
+SSH port `22` is prefilled for a new connection; development-fixture values are never production
+defaults.
 
 Home has explicit task states:
 

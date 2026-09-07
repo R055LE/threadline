@@ -1,8 +1,11 @@
 package dev.threadline
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -39,33 +43,42 @@ class OnboardingTest {
         compose.onNodeWithText("Transcript first").assert(
             SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
         )
-        compose.onNodeWithText("Same-session terminal").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Direct and verified").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Local by default").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("never passwords or passphrases", substring = true)
+        compose.onNodeWithText("Same-session terminal").assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        compose.onNodeWithText("Verify the server").assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        compose.onNodeWithText("Local retention").performScrollTo().assert(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+        )
+        compose.onNodeWithText("Profiles never save passwords or passphrases", substring = true)
             .assertExists()
         compose.onNodeWithText("changed host keys are blocked", substring = true)
             .assertExists()
+        compose.onNodeWithText("ephemeral session", substring = true).assertExists()
 
         compose.onNodeWithTag(OnboardingTags.CONTINUE).performClick()
         compose.runOnIdle { assertTrue(continued) }
     }
 
     @Test
-    fun introductionRemainsNavigableAtTwoHundredPercentFontScale() {
+    fun continueRemainsReachableInCompactLandscapeAtTwoHundredPercentFontScale() {
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
                 LocalDensity provides Density(density.density, fontScale = 2f),
             ) {
                 MaterialTheme {
-                    OnboardingScreen(onContinue = {})
+                    Box(modifier = Modifier.size(width = 360.dp, height = 320.dp)) {
+                        OnboardingScreen(onContinue = {})
+                    }
                 }
             }
         }
 
         compose.onNodeWithTag(OnboardingTags.CONTINUE).assertIsDisplayed()
-        compose.onNodeWithText("Local by default").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Local retention").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Transcript first").performScrollTo().assertIsDisplayed()
     }
 
