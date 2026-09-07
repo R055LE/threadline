@@ -279,8 +279,16 @@ private fun ThreadlineApp() {
         mutableStateOf(ConnectionFormDraft.emptyDefaults())
     }
     val onboardingPreferences = remember(context) { OnboardingPreferences.create(context) }
+    val introductionRequired = remember(onboardingPreferences) {
+        onboardingPreferences.shouldShowIntroduction()
+    }
     var showIntroduction by rememberSaveable {
-        mutableStateOf(onboardingPreferences.shouldShowIntroduction())
+        mutableStateOf(introductionRequired)
+    }
+    var homeTaskAfterIntroduction by rememberSaveable {
+        mutableStateOf(
+            if (introductionRequired) HomeTask.CONNECTION else HomeTask.OVERVIEW,
+        )
     }
     var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var showConnectedSession by rememberSaveable { mutableStateOf(true) }
@@ -348,6 +356,13 @@ private fun ThreadlineApp() {
     val canShowIntroduction = state is SessionState.Disconnected ||
         state is SessionState.Failed ||
         state is SessionState.Connected && !showConnectedSession
+    val initialHomeTask = when {
+        state is SessionState.Failed -> HomeTask.CONNECTION
+        else -> homeTaskAfterIntroduction
+    }
+    LaunchedEffect(showIntroduction) {
+        if (!showIntroduction) homeTaskAfterIntroduction = HomeTask.OVERVIEW
+    }
     if (showIntroduction && canShowIntroduction) {
         OnboardingScreen(
             onContinue = {
@@ -381,11 +396,7 @@ private fun ThreadlineApp() {
                 ?.takeUnless { it == SessionError.NotificationPermissionRequired },
             activeSessionDisplayName = (current as? SessionState.Connected)?.displayName,
             connectionEnabled = current !is SessionState.Connected,
-            initialTask = if (current is SessionState.Failed) {
-                HomeTask.CONNECTION
-            } else {
-                HomeTask.OVERVIEW
-            },
+            initialTask = initialHomeTask,
             onReturnToActiveSession = { showConnectedSession = true },
             onDisconnectActiveSession = manager::disconnect,
             hostProfiles = hostProfiles,
@@ -406,7 +417,10 @@ private fun ThreadlineApp() {
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
             onDeletePrivateKey = SessionRuntime.importedPrivateKeys::delete,
-            onOpenIntroduction = { showIntroduction = true },
+            onOpenIntroduction = {
+                homeTaskAfterIntroduction = HomeTask.OVERVIEW
+                showIntroduction = true
+            },
             onOpenDiagnostics = openDiagnostics,
             onOpenNotificationSettings = { openNotificationSettings(context) },
             notificationPermissionState = sessionNotificationPermissionState(

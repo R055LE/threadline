@@ -1,9 +1,10 @@
 # Threadline prototype screenshots
 
-These screenshots were captured on 2026-08-01 from the current Android prototype
-on an API 35 emulator at the default font scale. They use the repository's local
-OpenSSH fixture, its documented emulator address, and synthetic test output. No
-production host, credential, command, or server fingerprint is shown.
+These screenshots were captured from the Android prototype on an API 35 emulator
+at the default font scale. The onboarding capture was refreshed on 2026-09-06;
+the remaining captures are from 2026-08-01. They use the repository's local OpenSSH
+fixture, its documented emulator address, and synthetic test output. No production
+host, credential, command, or server fingerprint is shown.
 
 The screenshots document working behavior. Typography, spacing, color, and
 responsive layout remain prototype UI rather than a final visual design.

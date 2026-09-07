@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -54,6 +54,7 @@ internal object OnboardingTags {
 @Composable
 internal fun OnboardingScreen(
     onContinue: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Scaffold(
         topBar = {
@@ -69,7 +70,10 @@ internal fun OnboardingScreen(
             }
         },
         bottomBar = {
-            Surface(shadowElevation = 4.dp) {
+            Surface(
+                shadowElevation = 4.dp,
+                modifier = Modifier.navigationBarsPadding(),
+            ) {
                 Button(
                     onClick = onContinue,
                     modifier = Modifier
@@ -78,11 +82,11 @@ internal fun OnboardingScreen(
                         .testTag(OnboardingTags.CONTINUE),
                     contentPadding = PaddingValues(vertical = 14.dp),
                 ) {
-                    Text("Continue to connections")
+                    Text("Continue")
                 }
             }
         },
-        modifier = Modifier.testTag(OnboardingTags.SCREEN),
+        modifier = modifier.testTag(OnboardingTags.SCREEN),
     ) { contentPadding ->
         Column(
             modifier = Modifier
@@ -90,32 +94,29 @@ internal fun OnboardingScreen(
                 .padding(contentPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "Run ordinary SSH commands as a readable transcript, with a real terminal " +
-                    "ready when a program needs one.",
+                "Threadline keeps one SSH session readable and under your control.",
                 style = MaterialTheme.typography.titleMedium,
             )
             IntroductionPoint(
                 title = "Transcript first",
-                body = "Send ordinary commands from the composer. Each result becomes a card " +
-                    "with its status, exit code and working directory.",
+                body = "Ordinary commands run in the transcript.",
             )
             IntroductionPoint(
                 title = "Same-session terminal",
-                body = "Open Terminal at any time—or when Threadline suggests it for an " +
-                    "interactive program. It uses the same live shell and connection.",
+                body = "Interactive programs open in Terminal without leaving the live SSH session.",
             )
             IntroductionPoint(
-                title = "Direct and verified",
-                body = "Threadline connects from this device to the SSH endpoint you provide. " +
-                    "Verify unknown host fingerprints; changed host keys are blocked.",
+                title = "Verify the server",
+                body = "Threadline connects directly to the SSH endpoint you enter. Verify unknown " +
+                    "fingerprints; changed host keys are blocked.",
             )
             IntroductionPoint(
-                title = "Local by default",
-                body = "Profiles save connection details, never passwords or passphrases. " +
-                    "Transcripts stay on this device unless you choose an ephemeral session.",
+                title = "Local retention",
+                body = "Profiles never save passwords or passphrases. Transcripts stay on this " +
+                    "device unless you use an ephemeral session.",
             )
         }
     }
@@ -126,17 +127,15 @@ private fun IntroductionPoint(
     title: String,
     body: String,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(text = body, style = MaterialTheme.typography.bodyMedium)
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(text = body, style = MaterialTheme.typography.bodyMedium)
     }
 }
