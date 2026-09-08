@@ -158,6 +158,21 @@ sequence passed without recovery scrolling. Alpha.11 is the current accepted
 tester build. See the
 [alpha.11 IME physical acceptance](../investigations/2026-08-27-alpha11-ime-physical-acceptance.md).
 
+Permanent-key alpha.12 uses the same certificate. Its verified APK SHA-256 is:
+
+```text
+fb72a15f26ddb5b267e52d5c151125c0ddc8f73d2837f0f6eeae27462dae3386
+```
+
+The artifact identifies as `io.github.r055le.threadline`, version
+`0.1.0-alpha.12` (`10012`), verifies with APK signature schemes v2 and v3, and
+is 16 KiB page aligned. Its embedded version-control record identifies exact
+merged-main commit `ad120ce4a9527960dbf85cac01139266b358e76e`, whose public
+Android push workflow passed. The owner reports that it installed successfully.
+The functional alpha checklist and final launcher-icon size review remain
+pending, so alpha.11 remains the current accepted tester build. See the
+[alpha.12 signed-install checkpoint](../investigations/2026-09-08-alpha12-signed-install-checkpoint.md).
+
 ## Signing-key boundary
 
 The long-lived release keystore and its passwords must never enter this
