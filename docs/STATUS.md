@@ -216,6 +216,13 @@ pass with gesture and three-button navigation. The three-button inset keeps More
 clear of the side navigation bar. This work does not require a dedicated signed
 alpha; Galaxy owner-device acceptance remains for the next shared candidate.
 
+The issue #38 source replaces the blank-looking white launcher glyph with the
+owner-supplied dark-and-green temporary artwork. Density-specific legacy icons
+and an adaptive icon keep the launcher and app-switcher identity recognizable;
+final brand design remains out of scope. This also does not require a dedicated
+signed alpha. In-place update and owner-device launcher-mask acceptance remain
+for the next shared candidate.
+
 ## Remaining Phase 5 boundaries
 
 - Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
