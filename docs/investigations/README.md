@@ -35,3 +35,4 @@ technical claim.
 | 2026-08-10 | 5 | [Alpha.5 signing and release-shrinker rejection](2026-08-10-alpha5-signing-update-progress.md) | resumable signing proof, physical connection failure, minified reproduction, and cbssh Ed25519 provider root cause |
 | 2026-08-10 | 5 | [Alpha.6 Ed25519 shrinker correction](2026-08-10-alpha6-ed25519-shrinker-correction.md) | narrow provider keep rule, mapping/DEX regression gate, permanent artifact, and physical acceptance |
 | 2026-08-17 | 5 | [Alpha.8 isolated execution acceptance](2026-08-17-alpha8-isolated-execution-acceptance.md) | permanent artifact, strict failure containment, persistent state recovery, and physical UX findings |
+| 2026-09-08 | 5 | [Alpha.12 signed-install checkpoint](2026-09-08-alpha12-signed-install-checkpoint.md) | verified permanent artifact and installation with functional and icon-size acceptance still pending |

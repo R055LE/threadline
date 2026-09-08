@@ -196,15 +196,24 @@ closes the transcript IME viewport boundary. See the
 and
 [alpha.11 IME physical acceptance](investigations/2026-08-27-alpha11-ime-physical-acceptance.md).
 
-The current source candidate is `0.1.0-alpha.12` (`10012`). Raw terminal mode
-now keeps a Keyboard action fixed at the right end of its mobile-key row. The
-action reasserts terminal input focus and software-keyboard visibility after a
-dismissal. The Transcript/Terminal switch has also moved out of the scrolling
-secondary-action row to the right side of the connected header in both views.
-API 35 instrumentation dismisses and restores the real terminal IME, and the
-200% font-scale regression requires the mode switch to remain displayed in the
-trailing half of the screen. Exact merged-main CI, permanent signing, update
-installation, and owner-device acceptance remain pending.
+The current signed candidate is `0.1.0-alpha.12` (`10012`). Its APK embeds exact
+merged-main commit `ad120ce4a9527960dbf85cac01139266b358e76e`, has SHA-256
+`fb72a15f26ddb5b267e52d5c151125c0ddc8f73d2837f0f6eeae27462dae3386`,
+matches the permanent release certificate, verifies with signature schemes v2
+and v3, and is 16 KiB page aligned. The owner reports that it installed
+successfully. Raw terminal mode now keeps a Keyboard action fixed at the right
+end of its mobile-key row. The action reasserts terminal input focus and
+software-keyboard visibility after a dismissal. The Transcript/Terminal switch
+has also moved out of the scrolling secondary-action row to the right side of
+the connected header in both views. API 35 instrumentation dismisses and
+restores the real terminal IME, and the 200% font-scale regression requires the
+mode switch to remain displayed in the trailing half of the screen.
+
+The installed alpha.12 build has not completed the owner-device functional
+checklist. The temporary launcher icon looks good enough for this checkpoint,
+but its actual launcher and app-switcher dimensions still need review. Alpha.11
+therefore remains the current accepted tester build. See the
+[alpha.12 signed-install checkpoint](investigations/2026-09-08-alpha12-signed-install-checkpoint.md).
 
 The issue #36 source keeps multiple raw-terminal rows visible with Gboard open
 in landscape by collapsing the connected header and hiding the mobile-key row
