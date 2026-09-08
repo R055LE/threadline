@@ -8,13 +8,17 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyListState
@@ -57,6 +61,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -73,7 +78,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
@@ -106,6 +113,9 @@ internal object TranscriptTags {
     const val TERMINAL_KEYBOARD = "terminal-keyboard"
     const val SUBMISSION_ERROR = "command-submission-error"
     const val SESSION_ACTIONS = "session-actions"
+    const val SESSION_OVERFLOW = "session-overflow"
+    const val COMPACT_HEADER = "session-compact-header"
+    const val RAW_TERMINAL_VIEWPORT = "raw-terminal-viewport"
     const val HOME = "session-home"
     private const val TERMINAL_KEY_PREFIX = "terminal-key-"
     private const val OUTPUT_PREFIX = "command-output-"
@@ -138,6 +148,8 @@ private val terminalExtraKeys = listOf(
     TerminalExtraKey(TerminalKey.DELETE, "Del", "Delete"),
 )
 
+private val CompactRawSessionHeight = 360.dp
+
 @Composable
 internal fun ConnectedSessionScreen(
     displayName: String,
@@ -149,9 +161,12 @@ internal fun ConnectedSessionScreen(
     onDisconnect: () -> Unit,
     onOpenHome: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
-    rawTerminal: @Composable (Modifier) -> Unit = { RawTerminal(it) },
+    rawTerminal: @Composable (Modifier, Boolean) -> Unit = { modifier, showExtraKeys ->
+        RawTerminal(modifier, showExtraKeys)
+    },
 ) {
     var rawModeRequested by rememberSaveable { mutableStateOf(false) }
+    var compactTerminalKeysVisible by rememberSaveable { mutableStateOf(false) }
     val transcriptStateHolder = rememberSaveableStateHolder()
     val rawModeRequired = structuredShell is StructuredShellState.Unavailable
     val showingRawTerminal = rawModeRequested
@@ -160,88 +175,213 @@ internal fun ConnectedSessionScreen(
         if (rawModeRequired) rawModeRequested = true
     }
 
-    Scaffold(
-        topBar = {
-            Column(modifier = Modifier.statusBarsPadding()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
-                    ) {
-                        Text(
-                            displayName,
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        Text(
-                            structuredShell.statusLabel(),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                    if (!rawModeRequired || transcript.turns.isNotEmpty()) {
-                        TextButton(
-                            onClick = { rawModeRequested = !rawModeRequested },
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .testTag(TranscriptTags.MODE_SWITCH),
-                        ) {
-                            Text(if (showingRawTerminal) "Transcript" else "Terminal")
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp)
-                        .testTag(TranscriptTags.SESSION_ACTIONS),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (showingRawTerminal) {
-                        TextButton(onClick = onControlC) { Text("Ctrl-C") }
-                    }
-                    TextButton(
-                        onClick = onOpenHome,
-                        modifier = Modifier.testTag(TranscriptTags.HOME),
-                    ) {
-                        Text("Home")
-                    }
-                    TextButton(
-                        onClick = onOpenDiagnostics,
-                        modifier = Modifier.testTag(DiagnosticTags.OPEN),
-                    ) {
-                        Text("Diagnostics")
-                    }
-                    TextButton(onClick = onDisconnect) { Text("Disconnect") }
-                }
-                HorizontalDivider()
-            }
-        },
-    ) { contentPadding ->
-        if (showingRawTerminal) {
-            rawTerminal(
-                Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize(),
-            )
-        } else {
-            transcriptStateHolder.SaveableStateProvider("transcript") {
-                TranscriptSurface(
-                    structuredShell = structuredShell,
-                    transcript = transcript,
-                    onSubmit = onSubmit,
-                    onSubmitIsolated = onSubmitIsolated,
-                    onStop = onControlC,
+    BoxWithConstraints {
+        val density = LocalDensity.current
+        val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
+        val compactHeader = showingRawTerminal &&
+            (maxHeight - imeHeight).coerceAtLeast(0.dp) <= CompactRawSessionHeight
+
+        LaunchedEffect(compactHeader) {
+            if (!compactHeader) compactTerminalKeysVisible = false
+        }
+
+        Scaffold(
+            topBar = {
+                ConnectedSessionHeader(
+                    displayName = displayName,
+                    status = structuredShell.statusLabel(),
+                    showingRawTerminal = showingRawTerminal,
+                    canSwitchMode = !rawModeRequired || transcript.turns.isNotEmpty(),
+                    compact = compactHeader,
+                    compactTerminalKeysVisible = compactTerminalKeysVisible,
+                    onSwitchMode = { rawModeRequested = !rawModeRequested },
+                    onToggleTerminalKeys = {
+                        compactTerminalKeysVisible = !compactTerminalKeysVisible
+                    },
+                    onControlC = onControlC,
+                    onOpenHome = onOpenHome,
+                    onOpenDiagnostics = onOpenDiagnostics,
                     onDisconnect = onDisconnect,
-                    onOpenTerminal = { rawModeRequested = true },
-                    modifier = Modifier
+                )
+            },
+        ) { contentPadding ->
+            if (showingRawTerminal) {
+                rawTerminal(
+                    Modifier
                         .padding(contentPadding)
                         .fillMaxSize(),
+                    !compactHeader || compactTerminalKeysVisible,
+                )
+            } else {
+                transcriptStateHolder.SaveableStateProvider("transcript") {
+                    TranscriptSurface(
+                        structuredShell = structuredShell,
+                        transcript = transcript,
+                        onSubmit = onSubmit,
+                        onSubmitIsolated = onSubmitIsolated,
+                        onStop = onControlC,
+                        onDisconnect = onDisconnect,
+                        onOpenTerminal = { rawModeRequested = true },
+                        modifier = Modifier
+                            .padding(contentPadding)
+                            .fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectedSessionHeader(
+    displayName: String,
+    status: String,
+    showingRawTerminal: Boolean,
+    canSwitchMode: Boolean,
+    compact: Boolean,
+    compactTerminalKeysVisible: Boolean,
+    onSwitchMode: () -> Unit,
+    onToggleTerminalKeys: () -> Unit,
+    onControlC: () -> Unit,
+    onOpenHome: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Column(modifier = Modifier.statusBarsPadding()) {
+        if (compact) {
+            CompactConnectedSessionHeader(
+                displayName = displayName,
+                status = status,
+                showingRawTerminal = showingRawTerminal,
+                canSwitchMode = canSwitchMode,
+                terminalKeysVisible = compactTerminalKeysVisible,
+                onSwitchMode = onSwitchMode,
+                onToggleTerminalKeys = onToggleTerminalKeys,
+                onControlC = onControlC,
+                onOpenHome = onOpenHome,
+                onOpenDiagnostics = onOpenDiagnostics,
+                onDisconnect = onDisconnect,
+            )
+        } else {
+            ExpandedConnectedSessionHeader(
+                displayName = displayName,
+                status = status,
+                showingRawTerminal = showingRawTerminal,
+                canSwitchMode = canSwitchMode,
+                onSwitchMode = onSwitchMode,
+                onControlC = onControlC,
+                onOpenHome = onOpenHome,
+                onOpenDiagnostics = onOpenDiagnostics,
+                onDisconnect = onDisconnect,
+            )
+        }
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun CompactConnectedSessionHeader(
+    displayName: String,
+    status: String,
+    showingRawTerminal: Boolean,
+    canSwitchMode: Boolean,
+    terminalKeysVisible: Boolean,
+    onSwitchMode: () -> Unit,
+    onToggleTerminalKeys: () -> Unit,
+    onControlC: () -> Unit,
+    onOpenHome: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    var overflowExpanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .testTag(TranscriptTags.COMPACT_HEADER),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Text(
+                displayName,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                status,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (canSwitchMode) {
+            TextButton(
+                onClick = onSwitchMode,
+                modifier = Modifier.testTag(TranscriptTags.MODE_SWITCH),
+            ) {
+                Text(if (showingRawTerminal) "Transcript" else "Terminal")
+            }
+        }
+        Box {
+            TextButton(
+                onClick = { overflowExpanded = true },
+                modifier = Modifier.testTag(TranscriptTags.SESSION_OVERFLOW),
+            ) {
+                Text("More")
+            }
+            DropdownMenu(
+                expanded = overflowExpanded,
+                onDismissRequest = { overflowExpanded = false },
+                properties = PopupProperties(focusable = false),
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(if (terminalKeysVisible) "Hide terminal keys" else "Show terminal keys")
+                    },
+                    onClick = {
+                        overflowExpanded = false
+                        onToggleTerminalKeys()
+                    },
+                )
+                if (showingRawTerminal) {
+                    DropdownMenuItem(
+                        text = { Text("Ctrl-C") },
+                        onClick = {
+                            overflowExpanded = false
+                            onControlC()
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Home") },
+                    onClick = {
+                        overflowExpanded = false
+                        onOpenHome()
+                    },
+                    modifier = Modifier.testTag(TranscriptTags.HOME),
+                )
+                DropdownMenuItem(
+                    text = { Text("Diagnostics") },
+                    onClick = {
+                        overflowExpanded = false
+                        onOpenDiagnostics()
+                    },
+                    modifier = Modifier.testTag(DiagnosticTags.OPEN),
+                )
+                DropdownMenuItem(
+                    text = { Text("Disconnect") },
+                    onClick = {
+                        overflowExpanded = false
+                        onDisconnect()
+                    },
                 )
             }
         }
@@ -249,7 +389,77 @@ internal fun ConnectedSessionScreen(
 }
 
 @Composable
-private fun RawTerminal(modifier: Modifier = Modifier) {
+private fun ExpandedConnectedSessionHeader(
+    displayName: String,
+    status: String,
+    showingRawTerminal: Boolean,
+    canSwitchMode: Boolean,
+    onSwitchMode: () -> Unit,
+    onControlC: () -> Unit,
+    onOpenHome: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            Text(
+                displayName,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(status, style = MaterialTheme.typography.labelSmall)
+        }
+        if (canSwitchMode) {
+            TextButton(
+                onClick = onSwitchMode,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .testTag(TranscriptTags.MODE_SWITCH),
+            ) {
+                Text(if (showingRawTerminal) "Transcript" else "Terminal")
+            }
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp)
+            .testTag(TranscriptTags.SESSION_ACTIONS),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (showingRawTerminal) {
+            TextButton(onClick = onControlC) { Text("Ctrl-C") }
+        }
+        TextButton(
+            onClick = onOpenHome,
+            modifier = Modifier.testTag(TranscriptTags.HOME),
+        ) {
+            Text("Home")
+        }
+        TextButton(
+            onClick = onOpenDiagnostics,
+            modifier = Modifier.testTag(DiagnosticTags.OPEN),
+        ) {
+            Text("Diagnostics")
+        }
+        TextButton(onClick = onDisconnect) { Text("Disconnect") }
+    }
+}
+
+@Composable
+private fun RawTerminal(
+    modifier: Modifier = Modifier,
+    showExtraKeys: Boolean = true,
+) {
     val bridge = SessionRuntime.terminal
     val modifiers by bridge.modifiers.collectAsState()
     var showSoftKeyboard by remember { mutableStateOf(true) }
@@ -272,7 +482,8 @@ private fun RawTerminal(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .testTag(TranscriptTags.RAW_TERMINAL_VIEWPORT),
         ) {
             Terminal(
                 terminalEmulator = bridge.emulator,
@@ -282,15 +493,17 @@ private fun RawTerminal(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        HorizontalDivider()
-        TerminalExtraKeyRow(
-            modifiers = modifiers,
-            onToggleControl = bridge::toggleControl,
-            onToggleAlt = bridge::toggleAlt,
-            onKey = bridge::sendKey,
-            onShowKeyboard = { showSoftKeyboard = false },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (showExtraKeys) {
+            HorizontalDivider()
+            TerminalExtraKeyRow(
+                modifiers = modifiers,
+                onToggleControl = bridge::toggleControl,
+                onToggleAlt = bridge::toggleAlt,
+                onKey = bridge::sendKey,
+                onShowKeyboard = { showSoftKeyboard = false },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

@@ -8,18 +8,23 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.test.SemanticsMatcher
@@ -266,7 +271,7 @@ class TranscriptScreenTest {
                     },
                     onControlC = {},
                     onDisconnect = {},
-                    rawTerminal = { modifier ->
+                    rawTerminal = { modifier, _ ->
                         Text("Raw draft test surface", modifier = modifier)
                     },
                 )
@@ -681,7 +686,7 @@ class TranscriptScreenTest {
                     },
                     onControlC = {},
                     onDisconnect = {},
-                    rawTerminal = { modifier ->
+                    rawTerminal = { modifier, _ ->
                         Text("Raw terminal test surface", modifier = modifier)
                     },
                 )
@@ -717,7 +722,7 @@ class TranscriptScreenTest {
                     onControlC = {},
                     onDisconnect = { disconnectCount += 1 },
                     onOpenHome = { homeCount += 1 },
-                    rawTerminal = { modifier -> Text("Terminal", modifier = modifier) },
+                    rawTerminal = { modifier, _ -> Text("Terminal", modifier = modifier) },
                 )
             }
         }
@@ -763,7 +768,7 @@ class TranscriptScreenTest {
                     },
                     onControlC = {},
                     onDisconnect = {},
-                    rawTerminal = { modifier ->
+                    rawTerminal = { modifier, _ ->
                         Text("Raw performance surface", modifier = modifier)
                     },
                 )
@@ -973,7 +978,7 @@ class TranscriptScreenTest {
                         onControlC = {},
                         onDisconnect = {},
                         onOpenDiagnostics = {},
-                        rawTerminal = { modifier -> Text("Terminal", modifier = modifier) },
+                        rawTerminal = { modifier, _ -> Text("Terminal", modifier = modifier) },
                     )
                 }
             }
@@ -1005,6 +1010,130 @@ class TranscriptScreenTest {
         composeRule.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Diagnostics").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Disconnect").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun compactRawTerminalPreservesViewportAndGroupsSecondaryActionsAtLargeFontScale() {
+        var controlCCount = 0
+        var homeCount = 0
+        var diagnosticsCount = 0
+        var disconnectCount = 0
+        var minimumTerminalRowHeightPx = 0f
+
+        composeRule.setContent {
+            val density = LocalDensity.current
+            minimumTerminalRowHeightPx = density.density * 24f
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                MaterialTheme {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp),
+                    ) {
+                        ConnectedSessionScreen(
+                            displayName = "Compact terminal session",
+                            structuredShell = StructuredShellState.Ready("/tmp"),
+                            transcript = CommandTranscriptState(),
+                            onSubmit = {
+                                CommandSubmissionResult.Accepted(CommandId("unused"))
+                            },
+                            onControlC = { controlCCount += 1 },
+                            onDisconnect = { disconnectCount += 1 },
+                            onOpenHome = { homeCount += 1 },
+                            onOpenDiagnostics = { diagnosticsCount += 1 },
+                            rawTerminal = { modifier, showExtraKeys ->
+                                CompactTerminalTestSurface(modifier, showExtraKeys)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.COMPACT_HEADER).assertIsDisplayed()
+        composeRule.onNodeWithText("Compact terminal session", useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).assertIsDisplayed()
+        val terminalHeight = composeRule.onNodeWithTag(TranscriptTags.RAW_TERMINAL_VIEWPORT)
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .height
+        assertTrue(
+            "Raw terminal viewport was only $terminalHeight px",
+            terminalHeight >= minimumTerminalRowHeightPx,
+        )
+
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertDoesNotExist()
+        composeRule.onNodeWithTag(TranscriptTags.HOME).assertDoesNotExist()
+        composeRule.onNodeWithText("Diagnostics").assertDoesNotExist()
+        composeRule.onNodeWithText("Disconnect").assertDoesNotExist()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithText("Show terminal keys").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithText("Hide terminal keys").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.TERMINAL_CONTROL).assertDoesNotExist()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithText("Ctrl-C").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.HOME).assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithText("Diagnostics").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.SESSION_OVERFLOW).performClick()
+        composeRule.onNodeWithText("Disconnect").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, controlCCount)
+            assertEquals(1, homeCount)
+            assertEquals(1, diagnosticsCount)
+            assertEquals(1, disconnectCount)
+        }
+    }
+
+    @Test
+    fun compactHeaderTransitionKeepsRawTerminalCompositionAlive() {
+        val containerHeight = mutableStateOf(600.dp)
+        var rawTerminalDisposeCount = 0
+
+        composeRule.setContent {
+            MaterialTheme {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(containerHeight.value),
+                ) {
+                    ConnectedSessionScreen(
+                        displayName = "Resize test session",
+                        structuredShell = StructuredShellState.Ready("/tmp"),
+                        transcript = CommandTranscriptState(),
+                        onSubmit = {
+                            CommandSubmissionResult.Accepted(CommandId("unused"))
+                        },
+                        onControlC = {},
+                        onDisconnect = {},
+                        rawTerminal = { modifier, showExtraKeys ->
+                            DisposableEffect(Unit) {
+                                onDispose { rawTerminalDisposeCount += 1 }
+                            }
+                            CompactTerminalTestSurface(modifier, showExtraKeys)
+                        },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.MODE_SWITCH).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.COMPACT_HEADER).assertDoesNotExist()
+        composeRule.runOnIdle { containerHeight.value = 320.dp }
+        composeRule.onNodeWithTag(TranscriptTags.COMPACT_HEADER).assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(0, rawTerminalDisposeCount) }
+        composeRule.runOnIdle { containerHeight.value = 600.dp }
+        composeRule.onNodeWithTag(TranscriptTags.COMPACT_HEADER).assertDoesNotExist()
+        composeRule.onNodeWithTag(TranscriptTags.RAW_TERMINAL_VIEWPORT).assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(0, rawTerminalDisposeCount) }
     }
 
     @Test
@@ -1427,6 +1556,34 @@ class TranscriptScreenTest {
 
         composeRule.onNodeWithTag(TranscriptTags.output(latestTurnId))
             .assertIsDisplayed()
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun CompactTerminalTestSurface(
+        modifier: Modifier,
+        showExtraKeys: Boolean,
+    ) {
+        Column(modifier = modifier) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag(TranscriptTags.RAW_TERMINAL_VIEWPORT),
+            ) {
+                Text("Raw terminal test surface")
+            }
+            if (showExtraKeys) {
+                HorizontalDivider()
+                TerminalExtraKeyRow(
+                    modifiers = TerminalModifiers(),
+                    onToggleControl = {},
+                    onToggleAlt = {},
+                    onKey = {},
+                    onShowKeyboard = {},
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 
     private fun runningShell() = StructuredShellState.Running(

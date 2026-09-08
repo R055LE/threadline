@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-08-27
+Updated: 2026-09-08
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -10,7 +10,7 @@ record; their old "next" or "remaining" sections do not override this page.
 
 **Phase 5 — Alpha polish is in progress.** Phases 0 through 4 are complete.
 
-Four Phase 5 slices are implemented:
+Five Phase 5 slices are implemented:
 
 - **Accessibility and error UX:** typed, non-secret errors; direct recovery and focus movement;
   assertive announcements; navigable headings; spoken terminal-key labels; and connected-session
@@ -24,6 +24,8 @@ Four Phase 5 slices are implemented:
 - **Basic onboarding:** a versioned one-screen introduction, contextual connection/security
   guidance, a Help reopen path, blank production connection defaults, and status-bar-safe custom
   headers.
+- **Compact raw-terminal UX:** a one-row connected header, immediately reachable Transcript and
+  More actions, and a keyboard-open terminal viewport across gesture and three-button navigation.
 
 Their evidence is recorded in the
 [accessibility and error investigation](investigations/2026-07-31-phase5-accessibility-error-ux.md),
@@ -48,8 +50,9 @@ alignment, identity, and version inspection. On the Galaxy S25 Ultra, the
 critical physical path passed: password SSH, structured and raw views, repeated
 switching while `ping` remained active, and rotation in each view all preserved
 the live session without the alpha.2 crash. The release/JNI blocker is closed;
-the landscape software-keyboard screenshot adds a deferred compact-height
-layout issue because little or no terminal output remains visible. Two
+the landscape software-keyboard screenshot captured a compact-height layout
+issue because little or no terminal output remained visible. The current source
+candidate addresses that boundary as described below. Two
 portable AES-256-encrypted signing-key backups are held separately from their
 decryption secret; independent download, extraction, key-entry, alias, and
 certificate checks passed for both provider copies, closing restore
@@ -202,6 +205,16 @@ API 35 instrumentation dismisses and restores the real terminal IME, and the
 200% font-scale regression requires the mode switch to remain displayed in the
 trailing half of the screen. Exact merged-main CI, permanent signing, update
 installation, and owner-device acceptance remain pending.
+
+The issue #36 source keeps multiple raw-terminal rows visible with Gboard open
+in landscape by collapsing the connected header and hiding the mobile-key row
+until requested. Transcript stays immediate; More exposes the terminal-key
+toggle, Ctrl-C, Home, Diagnostics, and Disconnect without dismissing the IME.
+Focused constrained-height tests cover 200% font scale and preserve the live
+terminal composition through compact-mode transitions. API 35 emulator checks
+pass with gesture and three-button navigation. The three-button inset keeps More
+clear of the side navigation bar. This work does not require a dedicated signed
+alpha; Galaxy owner-device acceptance remains for the next shared candidate.
 
 ## Remaining Phase 5 boundaries
 

@@ -111,9 +111,9 @@ layout bug instead of leaving it in polish.
 
 ## Compact-height connected-session layout
 
-**Status:** Deferred responsive-layout work; the alpha.3 session/resize behavior
-is accepted, but raw-terminal visibility with a landscape software keyboard is
-not a finished experience.
+**Status:** Implemented in the issue #36 source with focused 200% font-scale
+regressions and API 35 emulator acceptance; Galaxy owner-device recheck remains
+for the next shared candidate.
 
 Permanent alpha.3 testing on the Galaxy S25 Ultra confirmed that a running
 command survives transcript/raw-terminal switching and rotation in both views.
@@ -125,11 +125,14 @@ evidence about the constraint, not a request to reproduce its layout or style.
 
 Keep rotation support: it is normal Android behavior, useful for wide terminal
 lines, and more important on tablets, foldables, and hardware keyboards. During
-the visual/responsive pass, evaluate a compact connected header, moving
-secondary actions into overflow, and an optional focused or immersive terminal
-presentation. Define a minimum visible terminal viewport when the IME is open,
-while keeping connection state and a route back to the transcript reachable.
-Portrait remains the primary phone layout.
+compact-height raw-terminal use, the connected header now collapses to the host
+identity and state plus immediate Transcript and More actions. More keeps Gboard
+open and contains the terminal-key toggle, Ctrl-C, Home, Diagnostics, and an
+intentionally last Disconnect action. The terminal-key row is hidden by default
+so the live terminal retains readable rows; showing it is an explicit temporary
+tradeoff. Gesture and three-button API 35 checks both preserve the terminal
+viewport and keep More clear of the navigation bar. Portrait remains the primary
+phone layout and is unchanged.
 
 ## Drafting and queued commands while a turn runs
 
