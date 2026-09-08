@@ -182,6 +182,13 @@ structured composer is deferred interaction polish; a possible set is:
 
 Do not reproduce a full desktop keyboard.
 
+When the software keyboard leaves a compact-height raw-terminal viewport, the connected header
+collapses to one row while keeping the host identity, connection state, and Transcript action
+visible. Home, Diagnostics, Disconnect, Ctrl-C, and the terminal-key-row toggle remain available
+through More. The terminal-key row is hidden by default in this state so at least one terminal row
+remains readable; opening More must not dismiss the keyboard. The normal portrait layout is
+unchanged.
+
 ### 4.4 Command card
 
 Each submitted command creates one card.
