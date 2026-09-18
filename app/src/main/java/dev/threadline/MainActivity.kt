@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
         SessionRuntime.initialize(applicationContext)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            ThreadlineTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ThreadlineApp()
                 }
