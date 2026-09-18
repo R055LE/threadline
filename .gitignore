@@ -21,3 +21,4 @@ signing.properties
 .claude/settings.local.json
 CLAUDE.local.md
 .claude/worktrees/
+.superpowers/
