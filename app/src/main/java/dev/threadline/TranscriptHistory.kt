@@ -410,7 +410,7 @@ private fun savedTurnStatus(
     exitStatus: Int?,
 ): String = buildString {
     if (executionMode == CommandExecutionMode.ISOLATED) append("Isolated · ")
-    append(status.name.lowercase().replaceFirstChar(Char::uppercase))
+    append(status.label)
     exitStatus?.let {
         append(" · exit ")
         append(it)

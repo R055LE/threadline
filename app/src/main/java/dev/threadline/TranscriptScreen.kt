@@ -1146,7 +1146,7 @@ private fun formatDuration(milliseconds: Long): String =
         String.format(java.util.Locale.ROOT, "%.1f s", milliseconds / 1_000.0)
     }
 
-private val CommandStatus.label: String
+internal val CommandStatus.label: String
     get() = when (this) {
         CommandStatus.SUBMITTED -> "Submitted"
         CommandStatus.RUNNING -> "Running"
