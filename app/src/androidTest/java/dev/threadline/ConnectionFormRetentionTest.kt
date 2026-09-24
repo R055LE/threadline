@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Density
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandId
 import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
@@ -583,6 +584,9 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithText("printf saved").assertExists()
         compose.onNodeWithTag(TranscriptHistoryTags.OUTPUT_PREFIX + "command-session-1")
             .assertExists()
+        compose.onNodeWithText("Succeeded · exit 0").assertExists()
+        compose.onNodeWithText("Isolated · Failed · exit 1").assertExists()
+        compose.onNodeWithText("Status unknown").assertExists()
         compose.onNodeWithText("Back").performClick()
 
         compose.onNodeWithTag(TranscriptHistoryTags.DELETE_PREFIX + "session-1")
@@ -1200,6 +1204,37 @@ private fun transcriptSession(id: String) = SavedTranscriptSession(
                 exitStatus = 0,
                 currentDirectory = "/tmp",
                 output = CommandOutput("saved output"),
+            ),
+            commandTruncated = false,
+        ),
+        SavedTranscriptTurn(
+            turn = CommandTurn(
+                id = CommandId("isolated-$id"),
+                command = "set -e; false",
+                executionMode = CommandExecutionMode.ISOLATED,
+                directoryAtStart = "/tmp",
+                submittedAtMillis = 3,
+                startedAtMillis = 3,
+                completedAtMillis = 4,
+                status = CommandStatus.FAILED,
+                exitStatus = 1,
+                currentDirectory = "/tmp",
+                output = CommandOutput(),
+            ),
+            commandTruncated = false,
+        ),
+        SavedTranscriptTurn(
+            turn = CommandTurn(
+                id = CommandId("unknown-$id"),
+                command = "sleep 60",
+                directoryAtStart = "/tmp",
+                submittedAtMillis = 5,
+                startedAtMillis = 5,
+                completedAtMillis = null,
+                status = CommandStatus.UNKNOWN,
+                exitStatus = null,
+                currentDirectory = "/tmp",
+                output = CommandOutput(),
             ),
             commandTruncated = false,
         ),
