@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.data.transcript.SavedTranscriptSession
 import dev.threadline.data.transcript.SavedTranscriptSessionSummary
@@ -257,7 +258,7 @@ internal fun TranscriptHistorySection(
                                     )
                                 }
                                 Text(
-                                    savedTurnStatus(turn.status, turn.exitStatus),
+                                    savedTurnStatus(turn.executionMode, turn.status, turn.exitStatus),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 if (turn.output.plainText.isNotEmpty()) {
@@ -403,7 +404,12 @@ internal fun TranscriptHistorySection(
     }
 }
 
-private fun savedTurnStatus(status: CommandStatus, exitStatus: Int?): String = buildString {
+private fun savedTurnStatus(
+    executionMode: CommandExecutionMode,
+    status: CommandStatus,
+    exitStatus: Int?,
+): String = buildString {
+    if (executionMode == CommandExecutionMode.ISOLATED) append("Isolated · ")
     append(status.name.lowercase().replaceFirstChar(Char::uppercase))
     exitStatus?.let {
         append(" · exit ")

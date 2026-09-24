@@ -232,10 +232,10 @@ may improve session summaries, command-card hierarchy, navigation, search, and
 the distinction between live styled output and persisted plain text.
 
 Alpha.8 exposed one concrete omission: Room retains whether a command ran
-isolated, but the saved-transcript dialog formats only status and exit code. An
-isolated failed turn therefore appears as `Failed · exit 1` without its
-execution contract. Add the execution-mode label to saved cards when history
-presentation is revised, and cover it with a UI test.
+isolated, but the saved-transcript dialog formatted only status and exit code,
+so an isolated failed turn appeared as `Failed · exit 1` without its execution
+contract. Saved cards now lead with `Isolated ·` like live cards do, covered by
+the saved-transcript Compose test.
 
 Preserve bounded retention, explicit deletion, no-write ephemeral sessions,
 and the rule that history must not accidentally become credential storage.
