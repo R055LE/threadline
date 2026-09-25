@@ -4,11 +4,15 @@
 >
 > **Product:** A transcript-first, touch-native SSH client for Android with a real terminal as a seamless fallback.
 >
-> **Status:** Exploratory MVP specification
+> **Status:** Exploratory MVP baseline with an everyday-use refinement roadmap
 >
 > **Primary implementation target:** Native Android, Kotlin, Jetpack Compose
 
 ---
+
+Sections describing the exploratory MVP record the implemented baseline. The
+everyday-use refinement section below supersedes them where its planned behavior
+differs; [current status](docs/STATUS.md) distinguishes shipped work from issues.
 
 ## 1. Product thesis
 
@@ -1097,8 +1101,8 @@ Exit criterion:
 > The app can be handed to a technical alpha tester without knowingly unsafe defaults.
 
 Implementation status (2026-07-31): the required deliverables are implemented.
-Device-credential and biometric gating remain optional backlog decisions rather
-than phase exit criteria.
+Device-credential and biometric gating were optional for the MVP. Per-use
+approval for future saved SSH passwords is now planned in #46.
 
 ### Phase 5 — Alpha polish
 
@@ -1114,7 +1118,7 @@ Deliverables:
 - Exportable sanitized bug report
 - Signed internal APK
 
-Exit criterion:
+Original exit criterion, superseded on 2026-09-25 without being met:
 
 > Ten real users can perform small remote tasks for two weeks and provide useful product feedback.
 
@@ -1164,10 +1168,41 @@ gate. Independent CI passed, and the resulting permanent-key alpha.6 installed
 over alpha.5 with retained state intact. Password and retained imported-key
 authentication, Diagnostics, structured commands, and same-session raw-terminal
 behavior passed on the Galaxy S25 Ultra. Alpha.6 is the accepted tester build.
-Alpha distribution is direct invited sharing while Phase 5 is open. Because the
+Alpha distribution was direct invited sharing during Phase 5. Because the
 repository is public, any published
 GitHub prerelease would be public. Sufficient invited technical-alpha use is the
-remaining Phase 5 boundary.
+original Phase 5 boundary, now superseded by the everyday-use roadmap.
+
+### Everyday-use refinement (current roadmap)
+
+[Roadmap issue #44](https://github.com/R055LE/threadline/issues/44) replaces the
+unfinished Phase 5 exit criterion. Its implementation issues are ordered around
+connection, the command loop, multiple sessions, then transcript polish and
+release validation. Signed builds continue through invited sharing; public
+release requires a separate decision.
+
+- A reusable SSH identity contains a remote username and a password or imported-key
+  choice. A host profile may remember a preferred identity. Existing usernames
+  migrate without guessing or copying credentials.
+- Saved SSH passwords are opt-in and require device approval for each use on
+  Android 11 or newer. Older supported devices keep session-only passwords.
+  Imported-key passphrases and replies to privilege prompts remain session-only.
+- A running transcript command can accept user-initiated ordinary or masked PTY
+  replies. Replies are separate from the next command draft and are not stored as
+  commands or diagnostic input. Remote output is untrusted and can still echo or
+  print a secret; prompt recognition never authenticates a request.
+- Automatic execution routing keeps straightforward shell-state changes in the
+  persistent Bash shell, isolates recognizable strict or shell-terminating
+  commands, and asks before ambiguous mixed commands. An accessible override
+  remains. A failed or exited shell offers an explicit fresh connection and
+  never claims to preserve lost shell state.
+- Up to three SSH sessions may be live at once. Each has its own PTY, terminal,
+  transcript, draft, and lifecycle. The foreground service remains active while
+  any session is live. Process death ends live sessions; archived output is not a
+  resumed connection.
+- Completed turns are checkpointed during a live non-ephemeral session. Saved
+  history search and large-output navigation operate within bounded retention.
+  Ephemeral sessions write no command or output history.
 
 ---
 
