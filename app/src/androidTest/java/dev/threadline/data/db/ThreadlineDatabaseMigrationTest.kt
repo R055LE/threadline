@@ -188,6 +188,119 @@ class ThreadlineDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromFiveCreatesSeparateUnconfiguredIdentityForEachProfile() {
+        helper.createDatabase(DATABASE_NAME, 5).apply {
+            execSQL(
+                """
+                INSERT INTO known_hosts (
+                    endpoint_key, hostname, port, algorithm, encoded_key,
+                    first_seen_at_millis, last_seen_at_millis
+                ) VALUES ('fixture.test:22', 'fixture.test', 22, 'ssh-ed25519', X'010203', 10, 20)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO imported_private_keys (
+                    id, display_name, format, key_type, public_key_fingerprint,
+                    ciphertext, initialization_vector, created_at_millis, crypto_version
+                ) VALUES (
+                    'key-id', 'Fixture key', 'OpenSSH', 'ssh-ed25519', 'fixture-fingerprint',
+                    X'010203', X'040506', 30, 1
+                )
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO host_profiles (
+                    id, display_name, hostname, port, username,
+                    created_at_millis, updated_at_millis
+                ) VALUES
+                    ('profile-id', 'Fixture', 'fixture.test', 2222, 'threadline', 40, 50),
+                    ('profile-id-2', 'Fixture 2', 'fixture2.test', 22, 'threadline', 60, 70)
+                """.trimIndent(),
+            )
+            execSQL(
+                """
+                INSERT INTO transcript_sessions (
+                    session_id, display_name, hostname, port, username,
+                    started_at_millis, ended_at_millis, turns_truncated
+                ) VALUES ('session-id', 'Fixture', 'fixture.test', 22, 'threadline', 10, 20, 0)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            DATABASE_NAME,
+            6,
+            true,
+            ThreadlineDatabase.MIGRATION_5_6,
+        )
+
+        migrated.query(
+            """
+            SELECT id, label, username, authentication_method, imported_private_key_id,
+                   created_at_millis, updated_at_millis
+            FROM ssh_identities
+            WHERE id = 'legacy-profile-id'
+            """.trimIndent(),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("legacy-profile-id", cursor.getString(0))
+            assertEquals("Fixture", cursor.getString(1))
+            assertEquals("threadline", cursor.getString(2))
+            assertEquals("UNCONFIGURED", cursor.getString(3))
+            assertTrue(cursor.isNull(4))
+            assertEquals(40L, cursor.getLong(5))
+            assertEquals(50L, cursor.getLong(6))
+        }
+        migrated.query(
+            "SELECT preferred_identity_id FROM host_profiles WHERE id = 'profile-id'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("legacy-profile-id", cursor.getString(0))
+        }
+        migrated.query(
+            """
+            SELECT id, username, authentication_method, imported_private_key_id
+            FROM ssh_identities WHERE id = 'legacy-profile-id-2'
+            """.trimIndent(),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("legacy-profile-id-2", cursor.getString(0))
+            assertEquals("threadline", cursor.getString(1))
+            assertEquals("UNCONFIGURED", cursor.getString(2))
+            assertTrue(cursor.isNull(3))
+        }
+        migrated.query(
+            "SELECT preferred_identity_id FROM host_profiles WHERE id = 'profile-id-2'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("legacy-profile-id-2", cursor.getString(0))
+        }
+        listOf(
+            "known_hosts",
+            "imported_private_keys",
+            "transcript_sessions",
+        ).forEach { table ->
+            migrated.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+        }
+        migrated.query("SELECT COUNT(*) FROM host_profiles").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(2, cursor.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM ssh_identities").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val DATABASE_NAME = "threadline-migration-test"
     }

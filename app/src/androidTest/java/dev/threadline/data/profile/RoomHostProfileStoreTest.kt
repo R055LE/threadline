@@ -8,6 +8,7 @@ import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.data.db.HostProfileDao
 import dev.threadline.data.db.HostProfileEntity
+import dev.threadline.data.db.HostProfileRow
 import dev.threadline.data.db.ThreadlineDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -124,6 +125,8 @@ class RoomHostProfileStoreTest {
         ThreadlineDatabase.MIGRATION_1_2,
         ThreadlineDatabase.MIGRATION_2_3,
         ThreadlineDatabase.MIGRATION_3_4,
+        ThreadlineDatabase.MIGRATION_4_5,
+        ThreadlineDatabase.MIGRATION_5_6,
     ).build()
 
     private fun profile(
@@ -138,7 +141,7 @@ class RoomHostProfileStoreTest {
     )
 
     private class FailingHostProfileDao : HostProfileDao {
-        override fun observeAll(): Flow<List<HostProfileEntity>> = emptyFlow()
+        override fun observeAll(): Flow<List<HostProfileRow>> = emptyFlow()
 
         override suspend fun find(id: String): HostProfileEntity? = null
 
@@ -152,6 +155,7 @@ class RoomHostProfileStoreTest {
             hostname: String,
             port: Int,
             username: String,
+            preferredIdentityId: String?,
             updatedAtMillis: Long,
         ): Int = error("database-path")
 

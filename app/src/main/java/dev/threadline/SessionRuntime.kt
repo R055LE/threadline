@@ -8,6 +8,7 @@ import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
 import dev.threadline.core.terminal.TerminalBridge
 import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
+import dev.threadline.data.identity.RoomSshIdentityStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
 import dev.threadline.data.profile.RoomHostProfileStore
@@ -32,6 +33,9 @@ object SessionRuntime {
     internal lateinit var hostProfiles: RoomHostProfileStore
         private set
 
+    internal lateinit var sshIdentities: RoomSshIdentityStore
+        private set
+
     internal lateinit var transcriptHistory: RoomTranscriptHistoryStore
         private set
 
@@ -49,6 +53,7 @@ object SessionRuntime {
             cipher = AndroidKeystorePrivateKeyCipher(),
         )
         val hostProfileStore = RoomHostProfileStore(threadlineDatabase.hostProfiles())
+        val sshIdentityStore = RoomSshIdentityStore(threadlineDatabase.sshIdentities())
         val transcriptHistoryStore = RoomTranscriptHistoryStore(
             threadlineDatabase.transcriptArchives(),
         )
@@ -74,6 +79,7 @@ object SessionRuntime {
         importedPrivateKeys = importedKeyStore
         knownHosts = knownHostStore
         hostProfiles = hostProfileStore
+        sshIdentities = sshIdentityStore
         transcriptHistory = transcriptHistoryStore
         terminal = bridge
         manager = sessionManager
