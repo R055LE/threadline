@@ -1,16 +1,40 @@
 # Threadline current status
 
-Updated: 2026-09-08
+Updated: 2026-09-25
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
 record; their old "next" or "remaining" sections do not override this page.
 
-## Current milestone
+## Current milestone: everyday use
 
-**Phase 5 — Alpha polish is in progress.** Phases 0 through 4 are complete.
+The owner superseded Phase 5's ten-user, two-week exit criterion on 2026-09-25.
+It was not completed. [Issue #44](https://github.com/R055LE/threadline/issues/44)
+is the current roadmap; [issue #2](https://github.com/R055LE/threadline/issues/2)
+is closed as superseded. Phases 0 through 4 remain complete, and the completed
+Phase 5 feature slices remain part of the app.
 
-Five Phase 5 slices are implemented:
+Deliver the roadmap in four increments:
+
+1. **Faster connection:** reusable identities, opt-in saved SSH passwords, and
+   direct saved-host connection from Home (#45–#47).
+2. **Smoother command loop:** manual replies to running commands, live transcript
+   checkpoints, explicit fresh-shell recovery, and automatic execution routing
+   (#48–#52).
+3. **Multiple sessions:** up to three independent live SSH sessions, one-tap
+   switching, and an aggregate notification (#53–#54).
+4. **Transcript polish and acceptance:** saved-history search, large-output
+   navigation, and grouped release validation (#55–#57).
+
+Start with the connection increment for the first tester-visible gain. Issues
+without a dependency may be worked independently. Signed builds continue through
+direct invited sharing; public release needs a separate decision. No feature in
+this roadmap is implemented merely because its issue is open.
+
+## Phase 5 checkpoint (historical)
+
+Five Phase 5 slices were implemented before its original exit criterion was
+superseded:
 
 - **Accessibility and error UX:** typed, non-secret errors; direct recovery and focus movement;
   assertive announcements; navigable headings; spoken terminal-key labels; and connected-session
@@ -232,15 +256,18 @@ final brand design remains out of scope. This also does not require a dedicated
 signed alpha. In-place update and owner-device launcher-mask acceptance remain
 for the next shared candidate.
 
-## Remaining Phase 5 boundaries
+## Superseded Phase 5 boundary
 
-- Technical-alpha use sufficient to evaluate the Phase 5 exit criterion.
+The technical-alpha use criterion was superseded by the everyday-use roadmap in
+#44 and closed as #2. This is a change of goal, not evidence that ten users
+completed two weeks of use.
 
 ## Alpha distribution: direct invited sharing, decided 2026-08-09
 
-The alpha goes to invited testers directly. **No public GitHub prerelease while
-Phase 5 is open**, even though this repository is public and a release would be
-straightforward to publish.
+The alpha goes to invited testers directly. This remains the distribution
+policy through the everyday-use roadmap. The following records the original
+2026-08-09 decision; no public GitHub prerelease is planned before a separate
+release decision.
 
 What decided it was not caution about the artifact, which is in good shape. It
 was reach against contact. A public prerelease means anyone can install a build
@@ -273,8 +300,7 @@ Additional physical-device and OEM coverage, including Pixel, should be collecte
 during technical alpha. The completed Samsung pass satisfies the dedicated physical-device boundary;
 no specific handset brand is a separate Phase 5 gate.
 
-Choose the smallest remaining boundary with the user before implementation. Do not infer that the
-list order is a priority decision.
+Use #44 and its child issues for the current order and acceptance boundaries.
 
 ## Completed milestone summary
 
@@ -291,6 +317,7 @@ supporting record.
 
 ## Deferred decisions
 
-Device-credential and biometric gating are optional hardening decisions, not Phase 4 or Phase 5
-blockers. Their reconsideration criteria are recorded in the [backlog](BACKLOG.md). Passwords and
-private-key passphrases remain session-only.
+Per-use device approval for opt-in saved SSH passwords is planned in #46;
+passwords and private-key passphrases remain session-only in current builds.
+Gating existing imported keys remains a separate optional decision in the
+[backlog](BACKLOG.md).
