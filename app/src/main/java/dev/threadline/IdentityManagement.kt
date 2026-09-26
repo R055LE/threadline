@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -15,6 +17,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.threadline.data.identity.IdentityAuthenticationMethod
 import dev.threadline.data.identity.SshIdentity
@@ -39,6 +43,7 @@ internal data class SshIdentityDraft(
     val username: String,
     val authenticationMethod: IdentityAuthenticationMethod,
     val importedPrivateKeyId: String?,
+    val hasSavedPassword: Boolean = false,
 )
 
 @Composable
@@ -103,12 +108,16 @@ internal fun PreferredIdentitySelector(
 internal fun SshIdentityManagementContent(
     identities: List<SshIdentity>,
     importedPrivateKeys: List<ImportedPrivateKeyMetadata>,
+    savedPasswordSupported: Boolean,
     enabled: Boolean,
     onSaveIdentity: suspend (SshIdentityDraft) -> Unit,
+    onSaveSavedPassword: suspend (String, CharArray) -> Unit,
+    onDeleteSavedPassword: suspend (String) -> Unit,
     onDeleteIdentity: suspend (String) -> Unit,
 ) {
     var editing by remember { mutableStateOf<SshIdentityDraft?>(null) }
     var deleting by remember { mutableStateOf<SshIdentity?>(null) }
+    var deletingPassword by remember { mutableStateOf<SshIdentity?>(null) }
     var managing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var editorError by remember { mutableStateOf<String?>(null) }
@@ -121,8 +130,8 @@ internal fun SshIdentityManagementContent(
             modifier = Modifier.testTag(IdentityTags.HEADING),
         )
         Text(
-            "An identity holds a username and authentication choice. Passwords and key " +
-                "passphrases are entered for each connection.",
+            "An identity holds a username and authentication choice. Saved passwords are " +
+                "optional and require device approval each time. Key passphrases stay session-only.",
             style = MaterialTheme.typography.bodySmall,
         )
         error?.let {
@@ -149,6 +158,12 @@ internal fun SshIdentityManagementContent(
                             },
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (identity.hasSavedPassword) {
+                        Text(
+                            "Saved password · device approval required for each connection",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = {
@@ -170,6 +185,20 @@ internal fun SshIdentityManagementContent(
                             modifier = Modifier.testTag(IdentityTags.DELETE_PREFIX + identity.id),
                         ) {
                             Text("Delete")
+                        }
+                        if (identity.hasSavedPassword) {
+                            TextButton(
+                                onClick = {
+                                    error = null
+                                    deletingPassword = identity
+                                },
+                                enabled = enabled && !managing,
+                                modifier = Modifier.testTag(
+                                    IdentityTags.DELETE_PASSWORD_PREFIX + identity.id,
+                                ),
+                            ) {
+                                Text("Remove password")
+                            }
                         }
                     }
                 }
@@ -202,6 +231,7 @@ internal fun SshIdentityManagementContent(
             initial = draft,
             importedPrivateKeys = importedPrivateKeys,
             enabled = enabled && !managing,
+            savedPasswordSupported = savedPasswordSupported,
             onDismiss = { if (!managing) editing = null },
             error = editorError,
             onSave = { updated ->
@@ -221,6 +251,74 @@ internal fun SshIdentityManagementContent(
                     }
                 }
             },
+            onSavePassword = { updated, password ->
+                val identityId = requireNotNull(updated.id)
+                managing = true
+                editorError = null
+                coroutineScope.launch {
+                    try {
+                        onSaveIdentity(updated)
+                        onSaveSavedPassword(identityId, password)
+                        editing = null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        editorError = failure.message
+                            ?: "The saved SSH password could not be saved."
+                    } finally {
+                        password.fill('\u0000')
+                        managing = false
+                    }
+                }
+            },
+        )
+    }
+
+    deletingPassword?.let { identity ->
+        AlertDialog(
+            onDismissRequest = { if (!managing) deletingPassword = null },
+            title = { Text("Remove saved password?") },
+            text = {
+                Text(
+                    "The encrypted password and its device key will be removed. " +
+                        "${identity.label}, its host profiles, and trusted servers will stay.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (managing) return@Button
+                        managing = true
+                        error = null
+                        coroutineScope.launch {
+                            try {
+                                onDeleteSavedPassword(identity.id)
+                                deletingPassword = null
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                error = failure.message
+                                    ?: "The saved SSH password could not be removed."
+                                deletingPassword = null
+                            } finally {
+                                managing = false
+                            }
+                        }
+                    },
+                    enabled = enabled && !managing,
+                    modifier = Modifier.testTag(IdentityTags.CONFIRM_DELETE_PASSWORD),
+                ) {
+                    Text("Remove password")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { deletingPassword = null },
+                    enabled = !managing,
+                ) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 
@@ -231,7 +329,12 @@ internal fun SshIdentityManagementContent(
             text = {
                 Text(
                     "Host profiles using ${identity.label} will need another identity. " +
-                        "The saved private key, if any, stays on this device.",
+                        "The saved private key, if any, stays on this device." +
+                        if (identity.hasSavedPassword) {
+                            " Its saved password and device key will also be removed."
+                        } else {
+                            ""
+                        },
                 )
             },
             confirmButton = {
@@ -277,11 +380,14 @@ private fun IdentityEditorDialog(
     initial: SshIdentityDraft,
     importedPrivateKeys: List<ImportedPrivateKeyMetadata>,
     enabled: Boolean,
+    savedPasswordSupported: Boolean,
     onDismiss: () -> Unit,
     error: String?,
     onSave: (SshIdentityDraft) -> Unit,
+    onSavePassword: (SshIdentityDraft, CharArray) -> Unit,
 ) {
     var draft by remember(initial) { mutableStateOf(initial) }
+    var passwordState by remember(initial) { mutableStateOf(TextFieldState()) }
     var keyMenuExpanded by remember { mutableStateOf(false) }
     val selectedKey = importedPrivateKeys.firstOrNull {
         it.id == draft.importedPrivateKeyId
@@ -373,6 +479,55 @@ private fun IdentityEditorDialog(
                         Text("Import a private key before choosing this method.")
                     }
                 }
+                if (draft.authenticationMethod == IdentityAuthenticationMethod.PASSWORD) {
+                    when {
+                        draft.id == null -> Text(
+                            "Save the identity first, then edit it to add an optional saved password.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+
+                        !savedPasswordSupported -> Text(
+                            "Saved passwords need Android 11 or newer and a secure screen lock. " +
+                                "You can still enter a password for each connection.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+
+                        else -> {
+                            OutlinedSecureTextField(
+                                state = passwordState,
+                                label = { Text("${if (draft.hasSavedPassword) "Replace" else "Save"} password") },
+                                placeholder = {
+                                    if (draft.hasSavedPassword) {
+                                        Text("Leave blank to keep the saved password")
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag(IdentityTags.PASSWORD_VALUE),
+                            )
+                            TextButton(
+                                onClick = {
+                                    val password = CharArray(passwordState.text.length) {
+                                        passwordState.text[it]
+                                    }
+                                    passwordState = TextFieldState()
+                                    onSavePassword(draft, password)
+                                },
+                                enabled = enabled && passwordState.text.isNotEmpty(),
+                                modifier = Modifier.testTag(IdentityTags.SAVE_PASSWORD),
+                            ) {
+                                Text(if (draft.hasSavedPassword) "Replace saved password" else "Save password")
+                            }
+                            Text(
+                                "Device approval is required to save and for each connection that uses it.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -401,6 +556,10 @@ internal object IdentityTags {
     const val PRIVATE_KEY = "identity-private-key"
     const val SAVE = "identity-save"
     const val CONFIRM_DELETE = "identity-confirm-delete"
+    const val PASSWORD_VALUE = "identity-password-value"
+    const val SAVE_PASSWORD = "identity-save-password"
+    const val DELETE_PASSWORD_PREFIX = "identity-delete-password-"
+    const val CONFIRM_DELETE_PASSWORD = "identity-confirm-delete-password"
     const val UNCONFIGURED = "identity-auth-unconfigured"
     const val PASSWORD = "identity-auth-password"
     const val IMPORTED_KEY = "identity-auth-imported-key"
@@ -420,6 +579,7 @@ private fun SshIdentity.toDraft() = SshIdentityDraft(
     username = username,
     authenticationMethod = authenticationMethod,
     importedPrivateKeyId = importedPrivateKeyId,
+    hasSavedPassword = hasSavedPassword,
 )
 
 private fun IdentityAuthenticationMethod.label(): String = when (this) {

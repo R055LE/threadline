@@ -2,6 +2,7 @@ package dev.threadline.data.identity
 
 import dev.threadline.data.db.SshIdentityDao
 import dev.threadline.data.db.SshIdentityEntity
+import dev.threadline.data.db.SshIdentityRow
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,6 +25,7 @@ internal data class SshIdentity(
     val importedPrivateKeyId: String?,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
+    val hasSavedPassword: Boolean = false,
 )
 
 internal class RoomSshIdentityStore(
@@ -33,7 +35,7 @@ internal class RoomSshIdentityStore(
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
     val identities: Flow<List<SshIdentity>> = dao.observeAll().map { entities ->
-        entities.map(SshIdentityEntity::toSshIdentity)
+        entities.map(SshIdentityRow::toSshIdentity)
     }
 
     suspend fun save(
@@ -134,6 +136,17 @@ private fun SshIdentityEntity.toSshIdentity() = SshIdentity(
     importedPrivateKeyId = importedPrivateKeyId,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
+)
+
+private fun SshIdentityRow.toSshIdentity() = SshIdentity(
+    id = id,
+    label = label,
+    username = username,
+    authenticationMethod = IdentityAuthenticationMethod.valueOf(authenticationMethod),
+    importedPrivateKeyId = importedPrivateKeyId,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis,
+    hasSavedPassword = hasSavedPassword,
 )
 
 private suspend inline fun <T> protectIdentityStorage(

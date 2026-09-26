@@ -1,9 +1,11 @@
 package dev.threadline
 
 import android.Manifest
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -29,6 +31,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -40,6 +43,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -56,6 +60,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +99,9 @@ import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.identity.IdentityAuthenticationMethod
 import dev.threadline.data.identity.SshIdentity
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
+import dev.threadline.data.key.SavedSshPasswordPromptPurpose
+import dev.threadline.data.key.authenticateSavedSshPasswordUse
+import dev.threadline.data.key.supportsSavedSshPasswords
 import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.data.transcript.SavedTranscriptSession
 import dev.threadline.data.transcript.SavedTranscriptSessionSummary
@@ -272,6 +280,9 @@ internal object HostKeyDialogTags {
 @Composable
 private fun ThreadlineApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var savedPasswordSupported by remember(context) {
+        mutableStateOf(supportsSavedSshPasswords(context))
+    }
     val manager = SessionRuntime.manager
     val snapshot by manager.snapshot.collectAsStateWithLifecycle()
     val importedPrivateKeys by SessionRuntime.importedPrivateKeys.keys
@@ -355,6 +366,7 @@ private fun ThreadlineApp() {
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        savedPasswordSupported = supportsSavedSshPasswords(context)
         notificationPermissionGranted = hasSessionNotificationPermission(context)
         if (notificationPermissionGranted && notificationPermissionDenialCount > 0) {
             notificationPermissionDenialCount = 0
@@ -429,6 +441,7 @@ private fun ThreadlineApp() {
             onClearTranscriptHistory = SessionRuntime.transcriptHistory::clearAll,
             importedPrivateKeys = importedPrivateKeys,
             sshIdentities = sshIdentities,
+            savedPasswordSupported = savedPasswordSupported,
             onSaveSshIdentity = { identity ->
                 if (identity.id == null) {
                     SessionRuntime.sshIdentities.save(
@@ -463,7 +476,33 @@ private fun ThreadlineApp() {
                     },
                 )
             },
-            onDeleteSshIdentity = SessionRuntime.sshIdentities::delete,
+            onSaveSavedPassword = { identityId, password ->
+                val activity = context.findActivity()
+                    ?: throw IllegalStateException("Device approval is unavailable.")
+                SessionRuntime.savedSshPasswords.save(identityId, password) { cipher ->
+                    authenticateSavedSshPasswordUse(
+                        activity,
+                        cipher,
+                        SavedSshPasswordPromptPurpose.SAVE,
+                    )
+                }
+            },
+            onDeleteSavedPassword = SessionRuntime.savedSshPasswords::delete,
+            onLoadSavedSshPassword = { identityId ->
+                val activity = context.findActivity()
+                    ?: throw IllegalStateException("Device approval is unavailable.")
+                SessionRuntime.savedSshPasswords.credential(identityId) { cipher ->
+                    authenticateSavedSshPasswordUse(
+                        activity,
+                        cipher,
+                        SavedSshPasswordPromptPurpose.CONNECT,
+                    )
+                }
+            },
+            onDeleteSshIdentity = { id ->
+                SessionRuntime.savedSshPasswords.delete(id)
+                SessionRuntime.sshIdentities.delete(id)
+            },
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
@@ -575,6 +614,12 @@ private fun openNotificationSettings(context: Context) {
         )
     }
     context.startActivity(intent)
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
@@ -700,8 +745,15 @@ internal fun HostForm(
     },
     importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
     sshIdentities: List<SshIdentity> = emptyList(),
+    savedPasswordSupported: Boolean = false,
     onSaveSshIdentity: suspend (SshIdentityDraft) -> Unit = {
         error("SSH identity storage is unavailable.")
+    },
+    onSaveSavedPassword: suspend (identityId: String, password: CharArray) -> Unit = { _, _ ->
+        error("Saved SSH password storage is unavailable.")
+    },
+    onDeleteSavedPassword: suspend (identityId: String) -> Unit = {
+        error("Saved SSH password storage is unavailable.")
     },
     onCreateDefaultSshIdentity: suspend (
         profile: HostProfile,
@@ -712,6 +764,9 @@ internal fun HostForm(
     },
     onDeleteSshIdentity: suspend (id: String) -> Unit = {
         error("SSH identity storage is unavailable.")
+    },
+    onLoadSavedSshPassword: suspend (identityId: String) -> SessionCredential.Password = {
+        error("Saved SSH password storage is unavailable.")
     },
     onSavePrivateKey: suspend (
         displayName: String,
@@ -746,7 +801,7 @@ internal fun HostForm(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     // Secrets deliberately use remember rather than rememberSaveable.
-    var password by remember { mutableStateOf("") }
+    var passwordState by remember { mutableStateOf(TextFieldState()) }
     var keyPassphrase by remember { mutableStateOf("") }
     var selectedKeyUri by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -773,6 +828,9 @@ internal fun HostForm(
     val privateKeyBringIntoViewRequester = remember { BringIntoViewRequester() }
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
+    val selectedPreferredIdentity = sshIdentities.firstOrNull {
+        it.id == selectedPreferredIdentityId
+    }
     val isBusy = isPreparing || isManagingProfile || isManagingKnownHost || isManagingKey
     val restoredTask = HomeTask.valueOf(savedTask)
     val task = if (
@@ -791,7 +849,7 @@ internal fun HostForm(
     }
 
     fun clearSessionCredentialInputs() {
-        password = ""
+        passwordState = TextFieldState()
         keyPassphrase = ""
         selectedKeyUri = null
         selectedSavedKeyId = null
@@ -809,6 +867,12 @@ internal fun HostForm(
     fun clearValidationError(field: ConnectionValidationField) {
         if (validationError?.field == field) validationError = null
         connectionPreparationError = null
+    }
+
+    LaunchedEffect(passwordState) {
+        snapshotFlow { passwordState.text.isNotEmpty() }.collect { hasPassword ->
+            if (hasPassword) clearValidationError(ConnectionValidationField.PASSWORD)
+        }
     }
 
     fun showValidationError(error: ConnectionValidationError) {
@@ -949,6 +1013,7 @@ internal fun HostForm(
                         knownHosts = knownHosts,
                         importedPrivateKeys = importedPrivateKeys,
                         sshIdentities = sshIdentities,
+                        savedPasswordSupported = savedPasswordSupported,
                         enabled = !isBusy,
                         error = formError,
                         onForgetHost = {
@@ -965,6 +1030,8 @@ internal fun HostForm(
                             formError = null
                         },
                         onSaveIdentity = onSaveSshIdentity,
+                        onSaveSavedPassword = onSaveSavedPassword,
+                        onDeleteSavedPassword = onDeleteSavedPassword,
                         onDeleteIdentity = { id ->
                             onDeleteSshIdentity(id)
                             if (selectedPreferredIdentityId == id) {
@@ -1222,8 +1289,9 @@ internal fun HostForm(
                 }
             }
             Text(
-                "Profiles save the server address and preferred identity. Passwords and " +
-                    "private-key passphrases are entered for each connection.",
+                "Profiles save the server address and preferred identity. Passwords are " +
+                    "entered for each connection unless you opt in to an encrypted saved copy. " +
+                    "Private-key passphrases are entered for each connection.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
@@ -1271,20 +1339,24 @@ internal fun HostForm(
             }
 
             when (draft.authenticationMode) {
-                AuthenticationMode.PASSWORD -> OutlinedTextField(
-                    value = password,
-                    onValueChange = {
-                        clearValidationError(ConnectionValidationField.PASSWORD)
-                        password = it
-                    },
+                AuthenticationMode.PASSWORD -> OutlinedSecureTextField(
+                    state = passwordState,
                     label = { Text("Password") },
                     supportingText = validationMessage(ConnectionValidationField.PASSWORD)?.let {
                         { ConnectionValidationMessage(it) }
+                    } ?: selectedPreferredIdentity?.takeIf { it.hasSavedPassword }?.let {
+                        {
+                            Text(
+                                if (savedPasswordSupported) {
+                                    "Leave blank to unlock the saved password for this connection."
+                                } else {
+                                    "The saved password is unavailable here. Enter it for this connection."
+                                },
+                            )
+                        }
                     },
                     isError = validationMessage(ConnectionValidationField.PASSWORD) != null,
-                    visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(passwordFocusRequester)
@@ -1453,7 +1525,10 @@ internal fun HostForm(
                     }
                     if (
                         draft.authenticationMode == AuthenticationMode.PASSWORD &&
-                        password.isEmpty()
+                        passwordState.text.isEmpty() &&
+                        sshIdentities.none {
+                            it.id == selectedPreferredIdentityId && it.hasSavedPassword
+                        }
                     ) {
                         showValidationError(
                             ConnectionValidationError(
@@ -1481,14 +1556,24 @@ internal fun HostForm(
 
                     isPreparing = true
                     coroutineScope.launch {
+                        var credentialForAttempt: SessionCredential? = null
+                        var credentialTransferred = false
                         try {
                             val credential = when (draft.authenticationMode) {
                                 AuthenticationMode.PASSWORD -> {
-                                    val characters = password.toCharArray()
-                                    try {
-                                        SessionCredential.Password.from(characters)
-                                    } finally {
-                                        characters.fill('\u0000')
+                                    if (passwordState.text.isNotEmpty()) {
+                                        val characters = CharArray(passwordState.text.length) {
+                                            passwordState.text[it]
+                                        }
+                                        try {
+                                            SessionCredential.Password.from(characters)
+                                        } finally {
+                                            characters.fill('\u0000')
+                                        }
+                                    } else {
+                                        val identityId = selectedPreferredIdentityId
+                                            ?: error("Enter the password for this connection.")
+                                        onLoadSavedSshPassword(identityId)
                                     }
                                 }
 
@@ -1529,6 +1614,7 @@ internal fun HostForm(
                                     }
                                 }
                             }
+                            credentialForAttempt = credential
 
                             val request = ConnectionRequest(
                                 profile = profile,
@@ -1536,7 +1622,8 @@ internal fun HostForm(
                                 ephemeral = draft.ephemeral,
                             )
                             if (onPrepared(request)) {
-                                password = ""
+                                credentialTransferred = true
+                                passwordState = TextFieldState()
                                 keyPassphrase = ""
                             } else {
                                 connectionPreparationError =
@@ -1548,6 +1635,7 @@ internal fun HostForm(
                             connectionPreparationError = failure.message
                                 ?: "Could not prepare the selected private key."
                         } finally {
+                            if (!credentialTransferred) credentialForAttempt?.clear()
                             isPreparing = false
                         }
                     }
@@ -1872,7 +1960,7 @@ private fun HomeOverviewContent(
                 if (hostProfiles.isEmpty()) {
                 Text("No saved connections yet. Start with a new connection.")
             } else {
-                Text("Choose a saved connection. Credentials are entered each time.")
+                Text("Choose a saved connection. Credentials are entered or unlocked each time.")
                 hostProfiles.forEach { profile ->
                     OutlinedButton(
                         onClick = { onOpenProfile(profile) },
@@ -1961,12 +2049,15 @@ private fun SecurityManagementContent(
     knownHosts: List<KnownHostMetadata>,
     importedPrivateKeys: List<ImportedPrivateKeyMetadata>,
     sshIdentities: List<SshIdentity>,
+    savedPasswordSupported: Boolean,
     enabled: Boolean,
     error: String?,
     onForgetHost: (KnownHostMetadata) -> Unit,
     onRenameKey: (ImportedPrivateKeyMetadata) -> Unit,
     onDeleteKey: (ImportedPrivateKeyMetadata) -> Unit,
     onSaveIdentity: suspend (SshIdentityDraft) -> Unit,
+    onSaveSavedPassword: suspend (String, CharArray) -> Unit,
+    onDeleteSavedPassword: suspend (String) -> Unit,
     onDeleteIdentity: suspend (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -2079,8 +2170,11 @@ private fun SecurityManagementContent(
         SshIdentityManagementContent(
             identities = sshIdentities,
             importedPrivateKeys = importedPrivateKeys,
+            savedPasswordSupported = savedPasswordSupported,
             enabled = enabled,
             onSaveIdentity = onSaveIdentity,
+            onSaveSavedPassword = onSaveSavedPassword,
+            onDeleteSavedPassword = onDeleteSavedPassword,
             onDeleteIdentity = onDeleteIdentity,
         )
     }
