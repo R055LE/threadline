@@ -4,6 +4,7 @@ import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostProfile
 import dev.threadline.data.db.HostProfileDao
 import dev.threadline.data.db.HostProfileEntity
+import dev.threadline.data.db.HostProfileRow
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -20,6 +21,7 @@ internal data class SavedHostProfile(
     val username: String,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
+    val preferredIdentityId: String? = null,
 ) {
     fun toHostProfile() = HostProfile(
         displayName = displayName,
@@ -35,10 +37,13 @@ internal class RoomHostProfileStore(
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
     val profiles: Flow<List<SavedHostProfile>> = dao.observeAll().map { entities ->
-        entities.map(HostProfileEntity::toSavedHostProfile)
+        entities.map(HostProfileRow::toSavedHostProfile)
     }
 
-    suspend fun save(profile: HostProfile): SavedHostProfile = withContext(ioDispatcher) {
+    suspend fun save(
+        profile: HostProfile,
+        preferredIdentityId: String? = null,
+    ): SavedHostProfile = withContext(ioDispatcher) {
         val normalized = profile.normalized()
         val now = currentTimeMillis()
         val entity = HostProfileEntity(
@@ -47,6 +52,7 @@ internal class RoomHostProfileStore(
             hostname = normalized.endpoint.hostname,
             port = normalized.endpoint.port,
             username = normalized.username,
+            preferredIdentityId = preferredIdentityId,
             createdAtMillis = now,
             updatedAtMillis = now,
         )
@@ -59,6 +65,7 @@ internal class RoomHostProfileStore(
     suspend fun update(
         id: String,
         profile: HostProfile,
+        preferredIdentityId: String? = null,
     ) = withContext(ioDispatcher) {
         val normalized = profile.normalized()
         val updated = protectProfileStorage("The host profile could not be updated.") {
@@ -68,6 +75,7 @@ internal class RoomHostProfileStore(
                 hostname = normalized.endpoint.hostname,
                 port = normalized.endpoint.port,
                 username = normalized.username,
+                preferredIdentityId = preferredIdentityId,
                 updatedAtMillis = currentTimeMillis(),
             )
         }
@@ -105,6 +113,18 @@ private fun HostProfileEntity.toSavedHostProfile() = SavedHostProfile(
     username = username,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
+    preferredIdentityId = preferredIdentityId,
+)
+
+private fun HostProfileRow.toSavedHostProfile() = SavedHostProfile(
+    id = id,
+    displayName = displayName,
+    hostname = hostname,
+    port = port,
+    username = username,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis,
+    preferredIdentityId = preferredIdentityId,
 )
 
 private suspend inline fun <T> protectProfileStorage(

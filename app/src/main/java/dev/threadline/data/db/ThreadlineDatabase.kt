@@ -139,7 +139,10 @@ internal interface ImportedPrivateKeyDao {
     suspend fun delete(id: String): Int
 }
 
-@Entity(tableName = "host_profiles")
+@Entity(
+    tableName = "host_profiles",
+    indices = [Index(value = ["preferred_identity_id"])],
+)
 internal data class HostProfileEntity(
     @PrimaryKey
     val id: String,
@@ -148,6 +151,50 @@ internal data class HostProfileEntity(
     val hostname: String,
     val port: Int,
     val username: String,
+    @ColumnInfo(name = "preferred_identity_id")
+    val preferredIdentityId: String?,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+    @ColumnInfo(name = "updated_at_millis")
+    val updatedAtMillis: Long,
+)
+
+@Entity(
+    tableName = "ssh_identities",
+    foreignKeys = [
+        ForeignKey(
+            entity = ImportedPrivateKeyEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["imported_private_key_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [Index(value = ["imported_private_key_id"])],
+)
+internal data class SshIdentityEntity(
+    @PrimaryKey
+    val id: String,
+    val label: String,
+    val username: String,
+    @ColumnInfo(name = "authentication_method")
+    val authenticationMethod: String,
+    @ColumnInfo(name = "imported_private_key_id")
+    val importedPrivateKeyId: String?,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+    @ColumnInfo(name = "updated_at_millis")
+    val updatedAtMillis: Long,
+)
+
+internal data class HostProfileRow(
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    val hostname: String,
+    val port: Int,
+    val username: String,
+    @ColumnInfo(name = "preferred_identity_id")
+    val preferredIdentityId: String?,
     @ColumnInfo(name = "created_at_millis")
     val createdAtMillis: Long,
     @ColumnInfo(name = "updated_at_millis")
@@ -155,14 +202,77 @@ internal data class HostProfileEntity(
 )
 
 @Dao
+internal interface SshIdentityDao {
+    @Query(
+        """
+        SELECT * FROM ssh_identities
+        ORDER BY label COLLATE NOCASE, username COLLATE NOCASE, id
+        """,
+    )
+    fun observeAll(): Flow<List<SshIdentityEntity>>
+
+    @Query("SELECT * FROM ssh_identities WHERE id = :id")
+    suspend fun find(id: String): SshIdentityEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(entity: SshIdentityEntity)
+
+    @Query(
+        """
+        UPDATE ssh_identities
+        SET label = :label,
+            username = :username,
+            authentication_method = :authenticationMethod,
+            imported_private_key_id = :importedPrivateKeyId,
+            updated_at_millis = :updatedAtMillis
+        WHERE id = :id
+        """,
+    )
+    suspend fun update(
+        id: String,
+        label: String,
+        username: String,
+        authenticationMethod: String,
+        importedPrivateKeyId: String?,
+        updatedAtMillis: Long,
+    ): Int
+
+    @Query("UPDATE host_profiles SET preferred_identity_id = NULL WHERE preferred_identity_id = :id")
+    suspend fun unlinkProfiles(id: String)
+
+    @Query("DELETE FROM ssh_identities WHERE id = :id")
+    suspend fun delete(id: String): Int
+
+    @Transaction
+    suspend fun deleteAndUnlink(id: String): Int {
+        unlinkProfiles(id)
+        return delete(id)
+    }
+}
+
+@Dao
 internal interface HostProfileDao {
     @Query(
         """
-        SELECT * FROM host_profiles
-        ORDER BY display_name COLLATE NOCASE, hostname COLLATE NOCASE, port, username, id
+        SELECT host_profiles.id,
+               host_profiles.display_name,
+               host_profiles.hostname,
+               host_profiles.port,
+               COALESCE(ssh_identities.username, host_profiles.username) AS username,
+               host_profiles.preferred_identity_id,
+               host_profiles.created_at_millis,
+               host_profiles.updated_at_millis
+        FROM host_profiles
+        LEFT JOIN ssh_identities
+            ON ssh_identities.id = host_profiles.preferred_identity_id
+        ORDER BY host_profiles.display_name COLLATE NOCASE,
+                 host_profiles.hostname COLLATE NOCASE,
+                 host_profiles.port,
+                 username,
+                 host_profiles.id
         """,
     )
-    fun observeAll(): Flow<List<HostProfileEntity>>
+    fun observeAll(): Flow<List<HostProfileRow>>
 
     @Query("SELECT * FROM host_profiles WHERE id = :id")
     suspend fun find(id: String): HostProfileEntity?
@@ -177,6 +287,7 @@ internal interface HostProfileDao {
             hostname = :hostname,
             port = :port,
             username = :username,
+            preferred_identity_id = :preferredIdentityId,
             updated_at_millis = :updatedAtMillis
         WHERE id = :id
         """,
@@ -187,6 +298,7 @@ internal interface HostProfileDao {
         hostname: String,
         port: Int,
         username: String,
+        preferredIdentityId: String?,
         updatedAtMillis: Long,
     ): Int
 
@@ -396,17 +508,19 @@ internal interface TranscriptArchiveDao {
         KnownHostEntity::class,
         ImportedPrivateKeyEntity::class,
         HostProfileEntity::class,
+        SshIdentityEntity::class,
         TranscriptSessionEntity::class,
         TranscriptTurnEntity::class,
         TranscriptOutputChunkEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 internal abstract class ThreadlineDatabase : RoomDatabase() {
     abstract fun knownHosts(): KnownHostDao
     abstract fun importedPrivateKeys(): ImportedPrivateKeyDao
     abstract fun hostProfiles(): HostProfileDao
+    abstract fun sshIdentities(): SshIdentityDao
     abstract fun transcriptArchives(): TranscriptArchiveDao
 
     companion object {
@@ -422,6 +536,7 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 MIGRATION_2_3,
                 MIGRATION_3_4,
                 MIGRATION_4_5,
+                MIGRATION_5_6,
             ).build()
 
         internal val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -536,6 +651,55 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE `transcript_turns` ADD COLUMN " +
                         "`execution_mode` TEXT NOT NULL DEFAULT 'PERSISTENT'",
+                )
+            }
+        }
+
+        internal val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `ssh_identities` (
+                        `id` TEXT NOT NULL,
+                        `label` TEXT NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `authentication_method` TEXT NOT NULL,
+                        `imported_private_key_id` TEXT,
+                        `created_at_millis` INTEGER NOT NULL,
+                        `updated_at_millis` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`imported_private_key_id`)
+                            REFERENCES `imported_private_keys`(`id`)
+                            ON UPDATE NO ACTION ON DELETE SET NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS " +
+                        "`index_ssh_identities_imported_private_key_id` " +
+                        "ON `ssh_identities` (`imported_private_key_id`)",
+                )
+                db.execSQL(
+                    "ALTER TABLE `host_profiles` ADD COLUMN `preferred_identity_id` TEXT",
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `ssh_identities` (
+                        `id`, `label`, `username`, `authentication_method`,
+                        `imported_private_key_id`, `created_at_millis`, `updated_at_millis`
+                    )
+                    SELECT 'legacy-' || `id`, `display_name`, `username`, 'UNCONFIGURED',
+                           NULL, `created_at_millis`, `updated_at_millis`
+                    FROM `host_profiles`
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "UPDATE `host_profiles` SET `preferred_identity_id` = 'legacy-' || `id`",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS " +
+                        "`index_host_profiles_preferred_identity_id` " +
+                        "ON `host_profiles` (`preferred_identity_id`)",
                 )
             }
         }

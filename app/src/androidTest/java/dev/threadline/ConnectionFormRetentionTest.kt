@@ -36,6 +36,8 @@ import dev.threadline.core.transcript.CommandOutput
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTurn
 import dev.threadline.data.host.KnownHostMetadata
+import dev.threadline.data.identity.IdentityAuthenticationMethod
+import dev.threadline.data.identity.SshIdentity
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.data.transcript.SavedTranscriptSession
@@ -68,7 +70,7 @@ class ConnectionFormRetentionTest {
         }
 
         compose.onNodeWithText("Connect to a server").assertExists()
-        compose.onNodeWithText("Passwords and private-key passphrases are never saved", substring = true)
+        compose.onNodeWithText("Passwords and private-key passphrases are entered", substring = true)
             .performScrollTo()
             .assertExists()
         compose.onNodeWithTag(ConnectionFormTags.HELP).performClick()
@@ -744,12 +746,31 @@ class ConnectionFormRetentionTest {
                     hostProfiles = profiles.value,
                     selectedHostProfileId = selectedId.value,
                     onSelectedHostProfileChange = { selectedId.value = it },
-                    onSaveHostProfile = { profile ->
+                    onCreateDefaultSshIdentity = { profile, method, keyId ->
+                        SshIdentity(
+                            id = "default-identity",
+                            label = profile.displayName,
+                            username = profile.username,
+                            authenticationMethod = when (method) {
+                                AuthenticationMode.PASSWORD ->
+                                    IdentityAuthenticationMethod.PASSWORD
+                                AuthenticationMode.PRIVATE_KEY -> if (keyId == null) {
+                                    IdentityAuthenticationMethod.UNCONFIGURED
+                                } else {
+                                    IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY
+                                }
+                            },
+                            importedPrivateKeyId = keyId,
+                            createdAtMillis = 1,
+                            updatedAtMillis = 1,
+                        )
+                    },
+                    onSaveHostProfile = { profile, _ ->
                         savedProfile = profile
                         profiles.value = listOf(original)
                         original
                     },
-                    onUpdateHostProfile = { id, profile ->
+                    onUpdateHostProfile = { id, profile, _ ->
                         updatedProfile = id to profile
                     },
                     onDeleteHostProfile = { id ->
@@ -817,6 +838,157 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION).performClick()
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
             .assertEditableTextEquals("")
+    }
+
+    @Test
+    fun preferredIdentitySelectionSetsUsernameAndSavesOnlyTheProfilePreference() {
+        val originalIdentity = SshIdentity(
+            id = "legacy-identity",
+            label = "Legacy login",
+            username = "operator",
+            authenticationMethod = IdentityAuthenticationMethod.UNCONFIGURED,
+            importedPrivateKeyId = null,
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+        )
+        val selectedIdentity = SshIdentity(
+            id = "deploy-identity",
+            label = "Deploy account",
+            username = "deploy",
+            authenticationMethod = IdentityAuthenticationMethod.PASSWORD,
+            importedPrivateKeyId = null,
+            createdAtMillis = 2,
+            updatedAtMillis = 2,
+        )
+        val profile = SavedHostProfile(
+            id = "profile-id",
+            displayName = "Lab",
+            hostname = "lab.example",
+            port = 22,
+            username = originalIdentity.username,
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+            preferredIdentityId = originalIdentity.id,
+        )
+        val selectedId = mutableStateOf<String?>(null)
+        val draft = mutableStateOf(ConnectionFormDraft.emptyDefaults())
+        var updatedPreference: String? = null
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = draft.value,
+                    onDraftChange = { draft.value = it },
+                    sessionError = null,
+                    initialTask = HomeTask.OVERVIEW,
+                    hostProfiles = listOf(profile),
+                    selectedHostProfileId = selectedId.value,
+                    onSelectedHostProfileChange = { selectedId.value = it },
+                    sshIdentities = listOf(originalIdentity, selectedIdentity),
+                    onUpdateHostProfile = { _, _, identityId ->
+                        updatedPreference = identityId
+                    },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id)
+            .performClick()
+        compose.onNodeWithTag(ConnectionFormTags.USERNAME)
+            .assertEditableTextEquals("operator")
+        compose.onNodeWithTag(ConnectionFormTags.PREFERRED_IDENTITY).performClick()
+        compose.onNodeWithText("Deploy account").performClick()
+        compose.onNodeWithTag(ConnectionFormTags.USERNAME)
+            .assertEditableTextEquals("deploy")
+        compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE)
+            .performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+
+        assertEquals(selectedIdentity.id, updatedPreference)
+    }
+
+    @Test
+    fun savedProfileWithoutIdentityMustBeRepairedBeforeConnecting() {
+        val profile = SavedHostProfile(
+            id = "unlinked-profile",
+            displayName = "Lab",
+            hostname = "lab.example",
+            port = 22,
+            username = "operator",
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+        )
+        var preparedCount = 0
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.fixtureDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    initialTask = HomeTask.CONNECTION,
+                    hostProfiles = listOf(profile),
+                    selectedHostProfileId = profile.id,
+                    notificationPermissionState = SessionNotificationPermissionState.GRANTED,
+                    onPrepared = {
+                        preparedCount += 1
+                        it.credential.clear()
+                        true
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.CONNECT)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithText("Choose an SSH identity for this saved profile", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, preparedCount) }
+    }
+
+    @Test
+    fun deletingIdentityRequiresConfirmation() {
+        val identity = SshIdentity(
+            id = "identity-id",
+            label = "Work",
+            username = "operator",
+            authenticationMethod = IdentityAuthenticationMethod.PASSWORD,
+            importedPrivateKeyId = null,
+            createdAtMillis = 1,
+            updatedAtMillis = 1,
+        )
+        var deletedId: String? = null
+
+        compose.setContent {
+            MaterialTheme {
+                HostForm(
+                    draft = ConnectionFormDraft.emptyDefaults(),
+                    onDraftChange = {},
+                    sessionError = null,
+                    initialTask = HomeTask.OVERVIEW,
+                    sshIdentities = listOf(identity),
+                    onDeleteSshIdentity = { deletedId = it },
+                    onPrepared = { true },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ConnectionFormTags.OPEN_SECURITY)
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(IdentityTags.DELETE_PREFIX + identity.id)
+            .performScrollTo()
+            .performClick()
+        assertNull(deletedId)
+        compose.onNodeWithText("Delete SSH identity?").assertExists()
+        compose.onNodeWithTag(IdentityTags.CONFIRM_DELETE).performClick()
+        compose.waitForIdle()
+
+        assertEquals(identity.id, deletedId)
     }
 
     @Test
@@ -985,6 +1157,7 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.CONNECT).assertDoesNotExist()
 
         compose.onNodeWithTag(ConnectionFormTags.REQUEST_NOTIFICATION_PERMISSION)
+            .performScrollTo()
             .performClick()
         compose.runOnIdle {
             assertEquals(1, requestCount)

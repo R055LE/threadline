@@ -91,6 +91,8 @@ import dev.threadline.core.diagnostics.DiagnosticReportInput
 import dev.threadline.core.diagnostics.diagnosticSessionSnapshot
 import dev.threadline.core.diagnostics.generateDiagnosticReport
 import dev.threadline.data.host.KnownHostMetadata
+import dev.threadline.data.identity.IdentityAuthenticationMethod
+import dev.threadline.data.identity.SshIdentity
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
 import dev.threadline.data.profile.SavedHostProfile
 import dev.threadline.data.transcript.SavedTranscriptSession
@@ -123,6 +125,12 @@ class MainActivity : ComponentActivity() {
 internal enum class AuthenticationMode {
     PASSWORD,
     PRIVATE_KEY,
+}
+
+private fun IdentityAuthenticationMethod.toAuthenticationMode(): AuthenticationMode? = when (this) {
+    IdentityAuthenticationMethod.UNCONFIGURED -> null
+    IdentityAuthenticationMethod.PASSWORD -> AuthenticationMode.PASSWORD
+    IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY -> AuthenticationMode.PRIVATE_KEY
 }
 
 internal enum class HomeTask {
@@ -236,6 +244,7 @@ internal object ConnectionFormTags {
     const val SAVE_PROFILE = "connection-save-profile"
     const val UPDATE_PROFILE = "connection-update-profile"
     const val USE_PROFILE_AS_NEW = "connection-use-profile-as-new"
+    const val PREFERRED_IDENTITY = "connection-preferred-identity"
     const val DELETE_PROFILE_PREFIX = "connection-delete-profile-"
     const val CONFIRM_DELETE_PROFILE = "connection-confirm-delete-profile"
     const val TRUSTED_HOST_PREFIX = "connection-trusted-host-"
@@ -266,6 +275,8 @@ private fun ThreadlineApp() {
     val manager = SessionRuntime.manager
     val snapshot by manager.snapshot.collectAsStateWithLifecycle()
     val importedPrivateKeys by SessionRuntime.importedPrivateKeys.keys
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val sshIdentities by SessionRuntime.sshIdentities.identities
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val hostProfiles by SessionRuntime.hostProfiles.profiles
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -402,8 +413,12 @@ private fun ThreadlineApp() {
             hostProfiles = hostProfiles,
             selectedHostProfileId = selectedHostProfileId,
             onSelectedHostProfileChange = { selectedHostProfileId = it },
-            onSaveHostProfile = SessionRuntime.hostProfiles::save,
-            onUpdateHostProfile = SessionRuntime.hostProfiles::update,
+            onSaveHostProfile = { profile, identityId ->
+                SessionRuntime.hostProfiles.save(profile, identityId)
+            },
+            onUpdateHostProfile = { id, profile, identityId ->
+                SessionRuntime.hostProfiles.update(id, profile, identityId)
+            },
             onDeleteHostProfile = SessionRuntime.hostProfiles::delete,
             knownHosts = knownHosts,
             onDeleteKnownHost = SessionRuntime.knownHosts::delete,
@@ -413,6 +428,42 @@ private fun ThreadlineApp() {
             onDeleteTranscript = SessionRuntime.transcriptHistory::delete,
             onClearTranscriptHistory = SessionRuntime.transcriptHistory::clearAll,
             importedPrivateKeys = importedPrivateKeys,
+            sshIdentities = sshIdentities,
+            onSaveSshIdentity = { identity ->
+                if (identity.id == null) {
+                    SessionRuntime.sshIdentities.save(
+                        label = identity.label,
+                        username = identity.username,
+                        authenticationMethod = identity.authenticationMethod,
+                        importedPrivateKeyId = identity.importedPrivateKeyId,
+                    )
+                } else {
+                    SessionRuntime.sshIdentities.update(
+                        id = identity.id,
+                        label = identity.label,
+                        username = identity.username,
+                        authenticationMethod = identity.authenticationMethod,
+                        importedPrivateKeyId = identity.importedPrivateKeyId,
+                    )
+                }
+            },
+            onCreateDefaultSshIdentity = { profile, mode, privateKeyId ->
+                val method = when {
+                    mode == AuthenticationMode.PASSWORD ->
+                        IdentityAuthenticationMethod.PASSWORD
+                    privateKeyId != null -> IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY
+                    else -> IdentityAuthenticationMethod.UNCONFIGURED
+                }
+                SessionRuntime.sshIdentities.save(
+                    label = profile.displayName,
+                    username = profile.username,
+                    authenticationMethod = method,
+                    importedPrivateKeyId = privateKeyId.takeIf {
+                        method == IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY
+                    },
+                )
+            },
+            onDeleteSshIdentity = SessionRuntime.sshIdentities::delete,
             onSavePrivateKey = SessionRuntime.importedPrivateKeys::save,
             onLoadPrivateKey = SessionRuntime.importedPrivateKeys::credential,
             onRenamePrivateKey = SessionRuntime.importedPrivateKeys::rename,
@@ -623,10 +674,10 @@ internal fun HostForm(
     hostProfiles: List<SavedHostProfile> = emptyList(),
     selectedHostProfileId: String? = null,
     onSelectedHostProfileChange: (String?) -> Unit = {},
-    onSaveHostProfile: suspend (HostProfile) -> SavedHostProfile = {
+    onSaveHostProfile: suspend (HostProfile, String?) -> SavedHostProfile = { _, _ ->
         error("Host-profile storage is unavailable.")
     },
-    onUpdateHostProfile: suspend (id: String, profile: HostProfile) -> Unit = { _, _ ->
+    onUpdateHostProfile: suspend (id: String, profile: HostProfile, String?) -> Unit = { _, _, _ ->
         error("Host-profile storage is unavailable.")
     },
     onDeleteHostProfile: suspend (id: String) -> Unit = {
@@ -648,6 +699,20 @@ internal fun HostForm(
         error("Transcript history is unavailable.")
     },
     importedPrivateKeys: List<ImportedPrivateKeyMetadata> = emptyList(),
+    sshIdentities: List<SshIdentity> = emptyList(),
+    onSaveSshIdentity: suspend (SshIdentityDraft) -> Unit = {
+        error("SSH identity storage is unavailable.")
+    },
+    onCreateDefaultSshIdentity: suspend (
+        profile: HostProfile,
+        authenticationMode: AuthenticationMode,
+        importedPrivateKeyId: String?,
+    ) -> SshIdentity = { _, _, _ ->
+        error("SSH identity storage is unavailable.")
+    },
+    onDeleteSshIdentity: suspend (id: String) -> Unit = {
+        error("SSH identity storage is unavailable.")
+    },
     onSavePrivateKey: suspend (
         displayName: String,
         keyBytes: ByteArray,
@@ -685,6 +750,7 @@ internal fun HostForm(
     var keyPassphrase by remember { mutableStateOf("") }
     var selectedKeyUri by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPreferredIdentityId by rememberSaveable { mutableStateOf<String?>(null) }
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<ConnectionValidationError?>(null) }
@@ -826,20 +892,28 @@ internal fun HostForm(
                         onDisconnectActiveSession = onDisconnectActiveSession,
                         onOpenProfile = { profile ->
                             onSelectedHostProfileChange(profile.id)
+                            selectedPreferredIdentityId = profile.preferredIdentityId
+                            val identity = sshIdentities.firstOrNull {
+                                it.id == profile.preferredIdentityId
+                            }
                             onDraftChange(
                                 draft.copy(
                                     displayName = profile.displayName,
                                     hostname = profile.hostname,
                                     port = profile.port.toString(),
-                                    username = profile.username,
+                                    username = identity?.username ?: profile.username,
+                                    authenticationMode = identity?.authenticationMethod
+                                        ?.toAuthenticationMode() ?: draft.authenticationMode,
                                 ),
                             )
                             clearSessionCredentialInputs()
+                            selectedSavedKeyId = identity?.importedPrivateKeyId
                             formError = null
                             savedTask = HomeTask.CONNECTION.name
                         },
                         onNewConnection = {
                             onSelectedHostProfileChange(null)
+                            selectedPreferredIdentityId = null
                             onDraftChange(ConnectionFormDraft.emptyDefaults())
                             clearSessionCredentialInputs()
                             formError = null
@@ -874,6 +948,7 @@ internal fun HostForm(
                     SecurityManagementContent(
                         knownHosts = knownHosts,
                         importedPrivateKeys = importedPrivateKeys,
+                        sshIdentities = sshIdentities,
                         enabled = !isBusy,
                         error = formError,
                         onForgetHost = {
@@ -888,6 +963,13 @@ internal fun HostForm(
                         onDeleteKey = {
                             keyPendingDeletion = it
                             formError = null
+                        },
+                        onSaveIdentity = onSaveSshIdentity,
+                        onDeleteIdentity = { id ->
+                            onDeleteSshIdentity(id)
+                            if (selectedPreferredIdentityId == id) {
+                                selectedPreferredIdentityId = null
+                            }
                         },
                     )
                     return@Column
@@ -1015,6 +1097,7 @@ internal fun HostForm(
                     value = draft.username,
                     onValueChange = {
                         clearValidationError(ConnectionValidationField.USERNAME)
+                        selectedPreferredIdentityId = null
                         onDraftChange(draft.copy(username = it))
                     },
                     label = { Text("Username") },
@@ -1030,6 +1113,26 @@ internal fun HostForm(
                 )
             }
 
+            PreferredIdentitySelector(
+                identities = sshIdentities,
+                selectedIdentityId = selectedPreferredIdentityId,
+                enabled = !isBusy,
+                onSelect = { identity ->
+                    selectedPreferredIdentityId = identity?.id
+                    if (identity != null) {
+                        clearSessionCredentialInputs()
+                        onDraftChange(
+                            draft.copy(
+                                username = identity.username,
+                                authenticationMode = identity.authenticationMethod
+                                    .toAuthenticationMode() ?: draft.authenticationMode,
+                            ),
+                        )
+                        selectedSavedKeyId = identity.importedPrivateKeyId
+                    }
+                },
+            )
+
             Button(
                 onClick = {
                     if (isBusy) return@Button
@@ -1044,12 +1147,29 @@ internal fun HostForm(
                     coroutineScope.launch {
                         try {
                             val selectedId = selectedHostProfile?.id
+                            val preferredIdentityId = selectedPreferredIdentityId
+                                ?.takeIf { id -> sshIdentities.any { it.id == id } }
+                                ?: onCreateDefaultSshIdentity(
+                                    profile,
+                                    draft.authenticationMode,
+                                    selectedSavedKeyId.takeIf {
+                                        draft.authenticationMode == AuthenticationMode.PRIVATE_KEY
+                                    },
+                                ).id
                             if (selectedId == null) {
-                                val saved = onSaveHostProfile(profile)
+                                val saved = onSaveHostProfile(
+                                    profile,
+                                    preferredIdentityId,
+                                )
                                 onSelectedHostProfileChange(saved.id)
                             } else {
-                                onUpdateHostProfile(selectedId, profile)
+                                onUpdateHostProfile(
+                                    selectedId,
+                                    profile,
+                                    preferredIdentityId,
+                                )
                             }
+                            selectedPreferredIdentityId = preferredIdentityId
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
@@ -1077,6 +1197,7 @@ internal fun HostForm(
                 OutlinedButton(
                     onClick = {
                         onSelectedHostProfileChange(null)
+                        selectedPreferredIdentityId = null
                         clearSessionCredentialInputs()
                         formError = null
                     },
@@ -1101,8 +1222,8 @@ internal fun HostForm(
                 }
             }
             Text(
-                "Profiles save the server address and username only. Passwords and private-key " +
-                    "passphrases are never saved.",
+                "Profiles save the server address and preferred identity. Passwords and " +
+                    "private-key passphrases are entered for each connection.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
@@ -1316,6 +1437,15 @@ internal fun HostForm(
                     if (isBusy) return@Button
                     formError = null
                     connectionPreparationError = null
+                    if (
+                        selectedHostProfile != null &&
+                        sshIdentities.none { it.id == selectedPreferredIdentityId }
+                    ) {
+                        connectionPreparationError =
+                            "Choose an SSH identity for this saved profile, or use its details " +
+                                "as a new connection."
+                        return@Button
+                    }
                     val invalidField = draft.validationErrorOrNull()
                     if (invalidField != null) {
                         showValidationError(invalidField)
@@ -1462,6 +1592,7 @@ internal fun HostForm(
                                 onDeleteHostProfile(profile.id)
                                 if (selectedHostProfileId == profile.id) {
                                     onSelectedHostProfileChange(null)
+                                    selectedPreferredIdentityId = null
                                     onDraftChange(ConnectionFormDraft.emptyDefaults())
                                     clearSessionCredentialInputs()
                                     savedTask = HomeTask.OVERVIEW.name
@@ -1738,7 +1869,7 @@ private fun HomeOverviewContent(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
-            if (hostProfiles.isEmpty()) {
+                if (hostProfiles.isEmpty()) {
                 Text("No saved connections yet. Start with a new connection.")
             } else {
                 Text("Choose a saved connection. Credentials are entered each time.")
@@ -1753,7 +1884,11 @@ private fun HomeOverviewContent(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(profile.displayName)
                             Text(
-                                "${profile.username}@${profile.hostname}:${profile.port}",
+                                if (profile.preferredIdentityId == null) {
+                                    "Choose identity · ${profile.hostname}:${profile.port}"
+                                } else {
+                                    "${profile.username}@${profile.hostname}:${profile.port}"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = FontFamily.Monospace,
                             )
@@ -1825,11 +1960,14 @@ private fun HomeTaskHeader(
 private fun SecurityManagementContent(
     knownHosts: List<KnownHostMetadata>,
     importedPrivateKeys: List<ImportedPrivateKeyMetadata>,
+    sshIdentities: List<SshIdentity>,
     enabled: Boolean,
     error: String?,
     onForgetHost: (KnownHostMetadata) -> Unit,
     onRenameKey: (ImportedPrivateKeyMetadata) -> Unit,
     onDeleteKey: (ImportedPrivateKeyMetadata) -> Unit,
+    onSaveIdentity: suspend (SshIdentityDraft) -> Unit,
+    onDeleteIdentity: suspend (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         error?.let {
@@ -1936,6 +2074,15 @@ private fun SecurityManagementContent(
                 }
             }
         }
+
+        HorizontalDivider()
+        SshIdentityManagementContent(
+            identities = sshIdentities,
+            importedPrivateKeys = importedPrivateKeys,
+            enabled = enabled,
+            onSaveIdentity = onSaveIdentity,
+            onDeleteIdentity = onDeleteIdentity,
+        )
     }
 }
 
