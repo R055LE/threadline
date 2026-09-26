@@ -301,6 +301,44 @@ class ThreadlineDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromSixAddsSavedPasswordTableWithoutSavingLegacyCredentials() {
+        helper.createDatabase(DATABASE_NAME, 6).apply {
+            execSQL(
+                """
+                INSERT INTO ssh_identities (
+                    id, label, username, authentication_method, imported_private_key_id,
+                    created_at_millis, updated_at_millis
+                ) VALUES (
+                    'identity-id', 'Fixture', 'operator', 'PASSWORD', NULL, 10, 20
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            DATABASE_NAME,
+            7,
+            true,
+            ThreadlineDatabase.MIGRATION_6_7,
+        )
+
+        migrated.query(
+            "SELECT username, authentication_method FROM ssh_identities WHERE id = 'identity-id'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("operator", cursor.getString(0))
+            assertEquals("PASSWORD", cursor.getString(1))
+        }
+        migrated.query("SELECT COUNT(*) FROM saved_ssh_passwords").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val DATABASE_NAME = "threadline-migration-test"
     }

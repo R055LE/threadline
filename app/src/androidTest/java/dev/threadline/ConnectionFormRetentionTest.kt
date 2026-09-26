@@ -70,7 +70,7 @@ class ConnectionFormRetentionTest {
         }
 
         compose.onNodeWithText("Connect to a server").assertExists()
-        compose.onNodeWithText("Passwords and private-key passphrases are entered", substring = true)
+        compose.onNodeWithText("Passwords are entered for each connection", substring = true)
             .performScrollTo()
             .assertExists()
         compose.onNodeWithTag(ConnectionFormTags.HELP).performClick()
