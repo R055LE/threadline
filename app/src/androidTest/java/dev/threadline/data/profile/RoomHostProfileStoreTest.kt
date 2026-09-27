@@ -127,6 +127,7 @@ class RoomHostProfileStoreTest {
         ThreadlineDatabase.MIGRATION_3_4,
         ThreadlineDatabase.MIGRATION_4_5,
         ThreadlineDatabase.MIGRATION_5_6,
+        ThreadlineDatabase.MIGRATION_6_7,
     ).build()
 
     private fun profile(

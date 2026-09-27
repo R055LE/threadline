@@ -186,6 +186,45 @@ internal data class SshIdentityEntity(
     val updatedAtMillis: Long,
 )
 
+@Entity(
+    tableName = "saved_ssh_passwords",
+    foreignKeys = [
+        ForeignKey(
+            entity = SshIdentityEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["identity_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+internal data class SavedSshPasswordEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "identity_id")
+    val identityId: String,
+    @ColumnInfo(name = "ciphertext", typeAffinity = ColumnInfo.BLOB)
+    val ciphertext: ByteArray,
+    @ColumnInfo(name = "initialization_vector", typeAffinity = ColumnInfo.BLOB)
+    val initializationVector: ByteArray,
+    @ColumnInfo(name = "crypto_version")
+    val cryptoVersion: Int,
+)
+
+internal data class SshIdentityRow(
+    val id: String,
+    val label: String,
+    val username: String,
+    @ColumnInfo(name = "authentication_method")
+    val authenticationMethod: String,
+    @ColumnInfo(name = "imported_private_key_id")
+    val importedPrivateKeyId: String?,
+    @ColumnInfo(name = "created_at_millis")
+    val createdAtMillis: Long,
+    @ColumnInfo(name = "updated_at_millis")
+    val updatedAtMillis: Long,
+    @ColumnInfo(name = "has_saved_password")
+    val hasSavedPassword: Boolean,
+)
+
 internal data class HostProfileRow(
     val id: String,
     @ColumnInfo(name = "display_name")
@@ -205,11 +244,16 @@ internal data class HostProfileRow(
 internal interface SshIdentityDao {
     @Query(
         """
-        SELECT * FROM ssh_identities
+        SELECT ssh_identities.*,
+               EXISTS(
+                   SELECT 1 FROM saved_ssh_passwords
+                   WHERE saved_ssh_passwords.identity_id = ssh_identities.id
+               ) AS has_saved_password
+        FROM ssh_identities
         ORDER BY label COLLATE NOCASE, username COLLATE NOCASE, id
         """,
     )
-    fun observeAll(): Flow<List<SshIdentityEntity>>
+    fun observeAll(): Flow<List<SshIdentityRow>>
 
     @Query("SELECT * FROM ssh_identities WHERE id = :id")
     suspend fun find(id: String): SshIdentityEntity?
@@ -248,6 +292,18 @@ internal interface SshIdentityDao {
         unlinkProfiles(id)
         return delete(id)
     }
+}
+
+@Dao
+internal interface SavedSshPasswordDao {
+    @Query("SELECT * FROM saved_ssh_passwords WHERE identity_id = :identityId")
+    suspend fun find(identityId: String): SavedSshPasswordEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: SavedSshPasswordEntity)
+
+    @Query("DELETE FROM saved_ssh_passwords WHERE identity_id = :identityId")
+    suspend fun delete(identityId: String): Int
 }
 
 @Dao
@@ -509,11 +565,12 @@ internal interface TranscriptArchiveDao {
         ImportedPrivateKeyEntity::class,
         HostProfileEntity::class,
         SshIdentityEntity::class,
+        SavedSshPasswordEntity::class,
         TranscriptSessionEntity::class,
         TranscriptTurnEntity::class,
         TranscriptOutputChunkEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 internal abstract class ThreadlineDatabase : RoomDatabase() {
@@ -521,6 +578,7 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
     abstract fun importedPrivateKeys(): ImportedPrivateKeyDao
     abstract fun hostProfiles(): HostProfileDao
     abstract fun sshIdentities(): SshIdentityDao
+    abstract fun savedSshPasswords(): SavedSshPasswordDao
     abstract fun transcriptArchives(): TranscriptArchiveDao
 
     companion object {
@@ -537,6 +595,7 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                 MIGRATION_3_4,
                 MIGRATION_4_5,
                 MIGRATION_5_6,
+                MIGRATION_6_7,
             ).build()
 
         internal val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -700,6 +759,24 @@ internal abstract class ThreadlineDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS " +
                         "`index_host_profiles_preferred_identity_id` " +
                         "ON `host_profiles` (`preferred_identity_id`)",
+                )
+            }
+        }
+
+        internal val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `saved_ssh_passwords` (
+                        `identity_id` TEXT NOT NULL,
+                        `ciphertext` BLOB NOT NULL,
+                        `initialization_vector` BLOB NOT NULL,
+                        `crypto_version` INTEGER NOT NULL,
+                        PRIMARY KEY(`identity_id`),
+                        FOREIGN KEY(`identity_id`) REFERENCES `ssh_identities`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
                 )
             }
         }

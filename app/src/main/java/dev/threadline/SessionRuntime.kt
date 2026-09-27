@@ -10,7 +10,9 @@ import dev.threadline.data.db.ThreadlineDatabase
 import dev.threadline.data.host.RoomKnownHostStore
 import dev.threadline.data.identity.RoomSshIdentityStore
 import dev.threadline.data.key.AndroidKeystorePrivateKeyCipher
+import dev.threadline.data.key.AndroidKeystoreSshPasswordCipher
 import dev.threadline.data.key.EncryptedImportedPrivateKeyStore
+import dev.threadline.data.key.EncryptedSshPasswordStore
 import dev.threadline.data.profile.RoomHostProfileStore
 import dev.threadline.data.transcript.RoomTranscriptHistoryStore
 
@@ -25,6 +27,9 @@ object SessionRuntime {
         private set
 
     internal lateinit var importedPrivateKeys: EncryptedImportedPrivateKeyStore
+        private set
+
+    internal lateinit var savedSshPasswords: EncryptedSshPasswordStore
         private set
 
     internal lateinit var knownHosts: RoomKnownHostStore
@@ -52,6 +57,10 @@ object SessionRuntime {
             dao = threadlineDatabase.importedPrivateKeys(),
             cipher = AndroidKeystorePrivateKeyCipher(),
         )
+        val savedSshPasswordStore = EncryptedSshPasswordStore(
+            dao = threadlineDatabase.savedSshPasswords(),
+            cipher = AndroidKeystoreSshPasswordCipher(),
+        )
         val hostProfileStore = RoomHostProfileStore(threadlineDatabase.hostProfiles())
         val sshIdentityStore = RoomSshIdentityStore(threadlineDatabase.sshIdentities())
         val transcriptHistoryStore = RoomTranscriptHistoryStore(
@@ -77,6 +86,7 @@ object SessionRuntime {
 
         database = threadlineDatabase
         importedPrivateKeys = importedKeyStore
+        savedSshPasswords = savedSshPasswordStore
         knownHosts = knownHostStore
         hostProfiles = hostProfileStore
         sshIdentities = sshIdentityStore

@@ -777,13 +777,19 @@ If password persistence is added:
 
 - Encrypt it using Android Keystore-backed authenticated encryption.
 - Require an explicit “save password” choice.
-- Support optional biometric/device-credential gating.
+- Require strong-biometric or device-credential approval for every new connection that uses it.
+- Keep unsupported devices session-only and provide manual entry after cancellation, key invalidation,
+  missing device lock, or device transfer.
 - Never expose the password through general app state or logs.
 
-Implementation decision (2026-07-31): passwords and passphrases remain
-session-only. Device-credential and biometric gating are deferred optional
-hardening decisions, not Phase 4 exit blockers. Biometrics require a concrete
-threat-model justification before reconsideration; see `docs/BACKLOG.md`.
+Implementation decision (2026-09-26, issue #46): saving a password is an
+explicit option on a reusable SSH identity. Android 11 or newer and a secure
+device lock are required. Each identity uses a separate authentication-bound
+Keystore key, and each save, replacement, or connection use requires device
+approval. Passwords remain session-only on unsupported devices. Imported-key
+passphrases and replies to privilege prompts remain session-only. Cancellation,
+key invalidation, missing keys, and device transfer return to manual entry or
+replacement; they never bypass device approval.
 
 ### 12.3 Known hosts
 
