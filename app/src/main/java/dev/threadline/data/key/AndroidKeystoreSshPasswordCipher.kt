@@ -57,14 +57,13 @@ internal class AndroidKeystoreSshPasswordCipher(
         val aad = associatedData(identityId)
         try {
             val cipher = withContext(ioDispatcher) {
-                newEncryptionCipher(identityId, recoverInvalidatedKey = true).apply {
-                    updateAAD(aad)
-                }
+                newEncryptionCipher(identityId, recoverInvalidatedKey = true)
             }
             val authorizedCipher = authorize(cipher)
             val plaintext = encode(password)
             return try {
                 withContext(ioDispatcher) {
+                    authorizedCipher.updateAAD(aad)
                     EncryptedSshPassword(
                         ciphertext = authorizedCipher.doFinal(plaintext),
                         initializationVector = authorizedCipher.iv.copyOf(),
@@ -107,11 +106,11 @@ internal class AndroidKeystoreSshPasswordCipher(
                         key,
                         GCMParameterSpec(GCM_TAG_BITS, encrypted.initializationVector),
                     )
-                    updateAAD(aad)
                 }
             }
             val authorizedCipher = authorize(cipher)
             val plaintext = withContext(ioDispatcher) {
+                authorizedCipher.updateAAD(aad)
                 authorizedCipher.doFinal(encrypted.ciphertext)
             }
             return try {

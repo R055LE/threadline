@@ -7,6 +7,7 @@ import java.util.UUID
 import javax.crypto.Cipher
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -38,13 +39,16 @@ class AndroidKeystoreSshPasswordCipherTest {
             ),
         )
 
+        var authorizationRequested = false
         assertThrows(SavedSshPasswordProtectionException::class.java) {
             runBlocking {
                 cipher.encrypt(identityId, "fixture-password".toCharArray()) { operation ->
+                    authorizationRequested = true
                     operation
                 }
             }
         }
+        assertTrue(authorizationRequested)
         Unit
     }
 
@@ -76,9 +80,16 @@ class AndroidKeystoreSshPasswordCipherTest {
             assertThrows(SavedSshPasswordUnavailableException::class.java) {
                 runBlocking { cipher.decrypt(identityId, encrypted) { it } }
             }
+            var authorizationRequested = false
             assertThrows(SavedSshPasswordProtectionException::class.java) {
-                runBlocking { cipher.decrypt(otherIdentity, encrypted) { it } }
+                runBlocking {
+                    cipher.decrypt(otherIdentity, encrypted) {
+                        authorizationRequested = true
+                        it
+                    }
+                }
             }
+            assertTrue(authorizationRequested)
         } finally {
             cipher.deleteKey(otherIdentity)
         }
