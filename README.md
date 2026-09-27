@@ -4,10 +4,15 @@ Threadline is an exploratory, transcript-first SSH client for Android. The
 product idea is that commands should feel like messages and output should feel
 like responses, while a real terminal remains underneath for interactive work.
 
-## Alpha status
+## Current roadmap and alpha status
 
-**[Phase 5: Alpha polish](docs/STATUS.md) is in progress.** Its feature slices
-and owner-device acceptance through alpha.11 are complete. Alpha.5 installed in
+The [everyday-use roadmap](https://github.com/R055LE/threadline/issues/44) is
+the current work track. It starts with faster connection, then improves the
+command loop, multiple sessions, and transcript navigation. Phase 5's original
+ten-user, two-week exit criterion was superseded without being met.
+
+Phase 5's feature slices and owner-device acceptance through alpha.11 are
+complete. Alpha.5 installed in
 place but is rejected because a release-shrinker failure prevents SSH
 connection. Alpha.6 corrects that failure and has passed independent CI,
 permanent signing, in-place update, and physical acceptance. Alpha.7 adds local
@@ -23,15 +28,15 @@ anchors completed turns at the start of the new card while preserving
 bottom-follow for active output. Its signed owner-device check passed the same
 four-step sequence. Alpha.12 is the current source candidate. It adds an
 explicit raw-terminal Keyboard action and keeps the Transcript/Terminal switch
-at the right side of the connected header in both views. The remaining product
-boundary is invited technical-alpha use sufficient to evaluate whether ten real
-users can complete small remote tasks for two weeks and provide useful feedback.
+at the right side of the connected header in both views. The current issue
+sequence and acceptance boundaries are in [the status page](docs/STATUS.md).
 
 The current accepted signed build is `0.1.0-alpha.11`; the current source
 candidate is `0.1.0-alpha.12`. Alpha.5, alpha.9, and alpha.10 are immutable
 rejected artifacts. Alpha.12 owner-device acceptance is pending. Signed builds
 are shared directly with invited testers.
-There is no public signed APK or GitHub prerelease while Phase 5 is open.
+There is no public signed APK or GitHub prerelease during the everyday-use
+roadmap; public release is a separate decision.
 Testers should obtain the APK and its checksum from the owner through the agreed
 private channel, then follow the
 [technical-alpha guide](docs/alpha-testing.md).
@@ -280,14 +285,11 @@ risks are recorded in
 
 ## Project status
 
-Phases 0 through 4 are complete. **Phase 5: Alpha polish is in progress.** Its
-accessibility/error, large-output performance, Samsung physical-validation, and
-basic-onboarding slices are implemented. The installed-update preservation
-check is complete. Direct invited sharing is the selected alpha distribution
-path, with no public prerelease while Phase 5 remains open. Sufficient
-technical-alpha use is the remaining boundary. Additional device and OEM
-coverage, including Pixel, is opportunistic alpha evidence rather than a
-separate release gate.
+Phases 0 through 4 are complete. Phase 5's accessibility/error, large-output
+performance, Samsung physical-validation, basic-onboarding, and installed-update
+preservation slices are implemented. Its original technical-alpha exit criterion
+was superseded, not completed. Direct invited sharing continues for the
+everyday-use roadmap; additional device and OEM coverage remains useful evidence.
 
 Alpha packaging preparation now defines the permanent release/debug identities,
 explicit alpha versioning, interactive off-repository key creation, local

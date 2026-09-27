@@ -1,12 +1,14 @@
 # Threadline backlog
 
-This file records deliberately deferred product and hardening decisions. Items
-here are not part of the current phase exit criteria unless they are explicitly
-promoted into a milestone.
+This file records deferred product and hardening decisions and the reasoning
+behind items now promoted into the everyday-use roadmap. Current priorities and
+issue links are in [STATUS.md](STATUS.md) and
+[roadmap #44](https://github.com/R055LE/threadline/issues/44).
 
 ## Device-credential gating
 
-**Status:** Deferred optional hardening; not a Phase 4 blocker.
+**Status:** Per-use device approval for opt-in saved SSH passwords is planned
+in #46; gating existing imported keys remains deferred.
 
 Threadline does not currently persist passwords or private-key passphrases.
 Imported private keys are encrypted at rest by an app-scoped Android Keystore
@@ -19,7 +21,8 @@ looks like when the platform credential is unavailable.
 
 ## Biometric gating
 
-**Status:** Deferred optional hardening; not a Phase 4 blocker.
+**Status:** A supported strong biometric is one allowed approval method for
+saved SSH passwords in #46. Gating existing imported keys remains deferred.
 
 Biometrics are not desired where they do not address a demonstrated risk. Do
 not add a biometric prompt merely because the platform supports one. Reconsider
@@ -34,8 +37,7 @@ claimed.
 
 ## Expanded large-output navigation
 
-**Status:** Deferred visual and interaction polish; not a Phase 5 performance
-blocker.
+**Status:** Promoted to #56 for the everyday-use roadmap.
 
 Physical Samsung validation confirmed that expanding and collapsing the
 retained 128 KiB transcript tail remains functional without freezing. The
@@ -159,8 +161,8 @@ made that execution contract unambiguous.
 
 ## Persistent-shell exit recovery
 
-**Status:** Isolated execution implemented and physically accepted in alpha.8;
-automatic shell restart remains deferred.
+**Status:** Isolated execution was accepted in alpha.8. Explicit fresh-shell
+recovery is planned in #50; automatic routing is planned in #51–#52.
 
 Transcript Send intentionally evaluates inside the persistent Bash shell so
 directory changes, exports, aliases, and functions survive between cards. That
@@ -186,8 +188,8 @@ process that died with the old shell.
 
 ## Responses to running commands
 
-**Status:** Deferred interaction and security design; same-session raw terminal
-input is the current path.
+**Status:** User-initiated ordinary and masked replies are planned in #48;
+same-session raw terminal input is the current path.
 
 Plain prompts such as `read -p`, package-manager confirmations, and `sudo`
 password requests do not necessarily emit terminal control sequences. The
@@ -208,8 +210,8 @@ Keep a manual terminal handoff reachable for every running command.
 
 ## Opt-in saved password authentication
 
-**Status:** Deferred product and security decision; not an assumed future
-feature.
+**Status:** Opt-in saved SSH passwords with per-use device approval are planned
+in #46; passwords remain session-only in current builds.
 
 Passwords are currently session-only by design. Threadline already has
 app-scoped Android Keystore encryption for imported private keys, but applying
@@ -224,7 +226,8 @@ saved host profile into a saved credential.
 
 ## Transcript-history presentation
 
-**Status:** Deferred UX polish; current bounded plain history is functional.
+**Status:** Saved-history search is planned in #55; other presentation polish
+remains deferred. Current bounded plain history is functional.
 
 Physical testing confirmed that persisted sessions and turns can be recovered,
 but the archive presentation is deliberately utilitarian. A later design pass
@@ -242,8 +245,8 @@ and the rule that history must not accidentally become credential storage.
 
 ## Home navigation and session dashboard
 
-**Status:** One retained active session implemented and physically accepted in
-alpha.7; multiple concurrent sessions deferred.
+**Status:** One retained active session was accepted in alpha.7. Three
+independent live sessions and switching are planned in #53–#54.
 
 Threadline now allows navigation Home while retaining the one active
 foreground-service-backed session. Home identifies the active session, offers
@@ -301,7 +304,8 @@ layout choice that can be tested in both modes.
 
 ## Deferred connection-profile options
 
-**Status:** Deferred product design; not required for the current MVP or Phase 5.
+**Status:** Reusable identity selection and a preferred identity per profile are
+planned in #45–#47. Other profile options remain deferred.
 
 The current host profile intentionally stores display name, endpoint, and
 username without an authentication mode or credentials. Before adding an
@@ -341,7 +345,8 @@ persisted output or metadata remains reachable elsewhere.
 
 ## Live transcript search
 
-**Status:** Deferred transcript polish; persisted-history search is also future work.
+**Status:** Live search remains deferred; bounded saved-history search is
+planned in #55.
 
 Search must define whether it covers the retained in-memory tail, collapsed
 content, ANSI-styled text, the current session, saved history, or all of them.
@@ -350,7 +355,9 @@ secondary index of terminal output.
 
 ## Technical-alpha evidence collection
 
-**Status:** Design before implementation; no remote analytics are authorized.
+**Status:** The original ten-user Phase 5 criterion was superseded without being
+met. Invited-tester acceptance for the everyday-use roadmap is planned in #57;
+no remote analytics are authorized.
 
 The alpha needs enough evidence to distinguish isolated test success from useful
 day-to-day behavior. Start with an explicit tester checklist, a short feedback
@@ -362,8 +369,9 @@ content, host data, or terminal output merely to claim that metrics exist.
 
 ## Automated release-path and device acceptance
 
-**Status:** Deferred test-infrastructure design; manual physical acceptance
-through alpha.8 is complete.
+**Status:** Combined minified, installed-update, owner-device, and invited-tester
+validation is planned in #57. Earlier manual physical acceptance remains valid
+for the builds it covered.
 
 The core debug Android suite and static release-shrinker checks run in public CI,
 but alpha.5 showed the remaining gap: assembling a minified APK is not the same
