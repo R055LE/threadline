@@ -99,6 +99,7 @@ import dev.threadline.data.host.KnownHostMetadata
 import dev.threadline.data.identity.IdentityAuthenticationMethod
 import dev.threadline.data.identity.SshIdentity
 import dev.threadline.data.key.ImportedPrivateKeyMetadata
+import dev.threadline.data.key.InvalidImportedPrivateKeyException
 import dev.threadline.data.key.SavedSshPasswordPromptPurpose
 import dev.threadline.data.key.authenticateSavedSshPasswordUse
 import dev.threadline.data.key.supportsSavedSshPasswords
@@ -249,6 +250,9 @@ internal object ConnectionFormTags {
     const val CONFIRM_RENAME_KEY = "connection-confirm-rename-key"
     const val CONFIRM_DELETE_KEY = "connection-confirm-delete-key"
     const val SAVED_PROFILE_PREFIX = "connection-saved-profile-"
+    const val EDIT_PROFILE_PREFIX = "connection-edit-profile-"
+    const val CHANGE_IDENTITY_PREFIX = "connection-change-identity-"
+    const val EDIT_DETAILS = "connection-edit-details"
     const val SAVE_PROFILE = "connection-save-profile"
     const val UPDATE_PROFILE = "connection-update-profile"
     const val USE_PROFILE_AS_NEW = "connection-use-profile-as-new"
@@ -806,6 +810,8 @@ internal fun HostForm(
     var selectedKeyUri by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPreferredIdentityId by rememberSaveable { mutableStateOf<String?>(null) }
+    var credentialOnly by rememberSaveable { mutableStateOf(false) }
+    var focusIdentityOnEntry by remember { mutableStateOf(false) }
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<ConnectionValidationError?>(null) }
@@ -825,9 +831,11 @@ internal fun HostForm(
     val portFocusRequester = remember { FocusRequester() }
     val usernameFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
+    val identityFocusRequester = remember { FocusRequester() }
     val privateKeyBringIntoViewRequester = remember { BringIntoViewRequester() }
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
+    val isCredentialEntry = credentialOnly && selectedHostProfile != null
     val selectedPreferredIdentity = sshIdentities.firstOrNull {
         it.id == selectedPreferredIdentityId
     }
@@ -845,6 +853,13 @@ internal fun HostForm(
         when {
             activeSessionDisplayName != null -> savedTask = HomeTask.OVERVIEW.name
             sessionError != null -> savedTask = HomeTask.CONNECTION.name
+        }
+    }
+
+    LaunchedEffect(task, focusIdentityOnEntry) {
+        if (task == HomeTask.CONNECTION && focusIdentityOnEntry) {
+            identityFocusRequester.requestFocus()
+            focusIdentityOnEntry = false
         }
     }
 
@@ -888,10 +903,39 @@ internal fun HostForm(
             ConnectionValidationField.HOSTNAME -> hostnameFocusRequester.requestFocus()
             ConnectionValidationField.PORT -> portFocusRequester.requestFocus()
             ConnectionValidationField.USERNAME -> usernameFocusRequester.requestFocus()
+            ConnectionValidationField.IDENTITY -> identityFocusRequester.requestFocus()
             ConnectionValidationField.PASSWORD -> passwordFocusRequester.requestFocus()
             ConnectionValidationField.PRIVATE_KEY ->
                 privateKeyBringIntoViewRequester.bringIntoView()
+            ConnectionValidationField.KEY_PASSPHRASE ->
+                keyPassphraseFocusRequester.requestFocus()
         }
+    }
+
+    fun openProfile(profile: SavedHostProfile): SshIdentity? {
+        val identity = sshIdentities.firstOrNull { it.id == profile.preferredIdentityId }
+        onSelectedHostProfileChange(profile.id)
+        selectedPreferredIdentityId = identity?.id
+        onDraftChange(
+            draft.copy(
+                displayName = profile.displayName,
+                hostname = profile.hostname,
+                port = profile.port.toString(),
+                username = identity?.username ?: profile.username,
+                authenticationMode = identity?.authenticationMethod
+                    ?.toAuthenticationMode() ?: draft.authenticationMode,
+            ),
+        )
+        clearSessionCredentialInputs()
+        selectedSavedKeyId = identity?.importedPrivateKeyId
+        formError = null
+        return identity
+    }
+
+    fun openCredentialEntry(field: ConnectionValidationField, message: String) {
+        credentialOnly = true
+        savedTask = HomeTask.CONNECTION.name
+        showValidationError(ConnectionValidationError(field, message))
     }
 
     fun validationMessage(field: ConnectionValidationField): String? =
@@ -952,32 +996,130 @@ internal fun HostForm(
                     HomeOverviewContent(
                         activeSessionDisplayName = activeSessionDisplayName,
                         hostProfiles = hostProfiles,
+                        sshIdentities = sshIdentities,
                         onReturnToActiveSession = onReturnToActiveSession,
                         onDisconnectActiveSession = onDisconnectActiveSession,
-                        onOpenProfile = { profile ->
-                            onSelectedHostProfileChange(profile.id)
-                            selectedPreferredIdentityId = profile.preferredIdentityId
-                            val identity = sshIdentities.firstOrNull {
-                                it.id == profile.preferredIdentityId
+                        enabled = connectionEnabled && !isBusy,
+                        onConnectProfile = { profile ->
+                            val identity = openProfile(profile)
+                            credentialOnly = false
+                            when {
+                                !notificationPermissionState.allowsCredentialEntry -> {
+                                    credentialOnly = true
+                                    savedTask = HomeTask.CONNECTION.name
+                                }
+
+                                identity == null ||
+                                    identity.authenticationMethod ==
+                                    IdentityAuthenticationMethod.UNCONFIGURED ->
+                                    openCredentialEntry(
+                                        ConnectionValidationField.IDENTITY,
+                                        "Choose a configured SSH identity for this connection.",
+                                    )
+
+                                identity.authenticationMethod ==
+                                    IdentityAuthenticationMethod.PASSWORD &&
+                                    (!identity.hasSavedPassword || !savedPasswordSupported) ->
+                                    openCredentialEntry(
+                                        ConnectionValidationField.PASSWORD,
+                                        if (identity.hasSavedPassword) {
+                                            "The saved password is unavailable here. Enter it " +
+                                                "for this connection."
+                                        } else {
+                                            "Enter the password for this connection."
+                                        },
+                                    )
+
+                                identity.authenticationMethod ==
+                                    IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY &&
+                                    importedPrivateKeys.none {
+                                        it.id == identity.importedPrivateKeyId
+                                    } -> openCredentialEntry(
+                                        ConnectionValidationField.PRIVATE_KEY,
+                                        "The saved private key is unavailable. Choose another key " +
+                                            "or identity.",
+                                    )
+
+                                else -> {
+                                    isPreparing = true
+                                    coroutineScope.launch {
+                                        var credential: SessionCredential? = null
+                                        var transferred = false
+                                        try {
+                                            credential = when (identity.authenticationMethod) {
+                                                IdentityAuthenticationMethod.PASSWORD ->
+                                                    onLoadSavedSshPassword(identity.id)
+
+                                                IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY ->
+                                                    onLoadPrivateKey(
+                                                        requireNotNull(
+                                                            identity.importedPrivateKeyId,
+                                                        ),
+                                                        null,
+                                                    )
+
+                                                IdentityAuthenticationMethod.UNCONFIGURED ->
+                                                    error("Choose a configured SSH identity.")
+                                            }
+                                            val request = ConnectionRequest(
+                                                profile = profile.toHostProfile().copy(
+                                                    username = identity.username,
+                                                ),
+                                                credential = credential,
+                                                ephemeral = false,
+                                            )
+                                            if (onPrepared(request)) {
+                                                transferred = true
+                                            } else {
+                                                credentialOnly = true
+                                                savedTask = HomeTask.CONNECTION.name
+                                                connectionPreparationError =
+                                                    "Another SSH session is already active."
+                                            }
+                                        } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                        } catch (failure: Exception) {
+                                            val field = when (identity.authenticationMethod) {
+                                                IdentityAuthenticationMethod.PASSWORD ->
+                                                    ConnectionValidationField.PASSWORD
+
+                                                IdentityAuthenticationMethod.IMPORTED_PRIVATE_KEY ->
+                                                    if (failure is InvalidImportedPrivateKeyException) {
+                                                        ConnectionValidationField.KEY_PASSPHRASE
+                                                    } else {
+                                                        ConnectionValidationField.PRIVATE_KEY
+                                                    }
+
+                                                IdentityAuthenticationMethod.UNCONFIGURED ->
+                                                    ConnectionValidationField.IDENTITY
+                                            }
+                                            openCredentialEntry(
+                                                field,
+                                                failure.message ?: "Enter credentials to connect.",
+                                            )
+                                        } finally {
+                                            if (!transferred) credential?.clear()
+                                            isPreparing = false
+                                        }
+                                    }
+                                }
                             }
-                            onDraftChange(
-                                draft.copy(
-                                    displayName = profile.displayName,
-                                    hostname = profile.hostname,
-                                    port = profile.port.toString(),
-                                    username = identity?.username ?: profile.username,
-                                    authenticationMode = identity?.authenticationMethod
-                                        ?.toAuthenticationMode() ?: draft.authenticationMode,
-                                ),
-                            )
-                            clearSessionCredentialInputs()
-                            selectedSavedKeyId = identity?.importedPrivateKeyId
-                            formError = null
+                        },
+                        onEditProfile = { profile ->
+                            openProfile(profile)
+                            credentialOnly = false
                             savedTask = HomeTask.CONNECTION.name
+                        },
+                        onChangeIdentity = { profile ->
+                            openProfile(profile)
+                            credentialOnly = true
+                            savedTask = HomeTask.CONNECTION.name
+                            focusIdentityOnEntry = true
                         },
                         onNewConnection = {
                             onSelectedHostProfileChange(null)
                             selectedPreferredIdentityId = null
+                            credentialOnly = false
                             onDraftChange(ConnectionFormDraft.emptyDefaults())
                             clearSessionCredentialInputs()
                             formError = null
@@ -1054,15 +1196,29 @@ internal fun HostForm(
                 },
             )
             Text(
-                "Connect to a server",
+                if (isCredentialEntry) "Complete sign-in" else "Connect to a server",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                "Threadline connects directly to the SSH endpoint you enter and verifies " +
-                    "the server before signing in.",
+                if (isCredentialEntry) {
+                    val profile = requireNotNull(selectedHostProfile)
+                    "${selectedPreferredIdentity?.username ?: profile.username}@" +
+                        "${profile.hostname}:${profile.port}"
+                } else {
+                    "Threadline connects directly to the SSH endpoint you enter and verifies " +
+                        "the server before signing in."
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (isCredentialEntry) {
+                TextButton(
+                    onClick = { credentialOnly = false },
+                    modifier = Modifier.testTag(ConnectionFormTags.EDIT_DETAILS),
+                ) {
+                    Text("Edit host details")
+                }
+            }
 
             sessionError?.let { error ->
                 ErrorCard(
@@ -1104,87 +1260,91 @@ internal fun HostForm(
                 }
             }
 
-            OutlinedTextField(
-                value = draft.displayName,
-                onValueChange = {
-                    clearValidationError(ConnectionValidationField.DISPLAY_NAME)
-                    onDraftChange(draft.copy(displayName = it))
-                },
-                label = { Text("Display name") },
-                supportingText = validationMessage(ConnectionValidationField.DISPLAY_NAME)?.let {
-                    { ConnectionValidationMessage(it) }
-                },
-                isError = validationMessage(ConnectionValidationField.DISPLAY_NAME) != null,
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(displayNameFocusRequester)
-                    .testTag(ConnectionFormTags.DISPLAY_NAME),
-            )
-            OutlinedTextField(
-                value = draft.hostname,
-                onValueChange = {
-                    clearValidationError(ConnectionValidationField.HOSTNAME)
-                    onDraftChange(draft.copy(hostname = it))
-                },
-                label = { Text("Hostname or IP") },
-                supportingText = validationMessage(ConnectionValidationField.HOSTNAME)?.let {
-                    { ConnectionValidationMessage(it) }
-                },
-                isError = validationMessage(ConnectionValidationField.HOSTNAME) != null,
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(hostnameFocusRequester)
-                    .testTag(ConnectionFormTags.HOSTNAME),
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            if (!isCredentialEntry) {
                 OutlinedTextField(
-                    value = draft.port,
+                    value = draft.displayName,
                     onValueChange = {
-                        clearValidationError(ConnectionValidationField.PORT)
-                        onDraftChange(draft.copy(port = it.filter(Char::isDigit)))
+                        clearValidationError(ConnectionValidationField.DISPLAY_NAME)
+                        onDraftChange(draft.copy(displayName = it))
                     },
-                    label = { Text("Port") },
-                    supportingText = validationMessage(ConnectionValidationField.PORT)?.let {
+                    label = { Text("Display name") },
+                    supportingText = validationMessage(ConnectionValidationField.DISPLAY_NAME)?.let {
                         { ConnectionValidationMessage(it) }
                     },
-                    isError = validationMessage(ConnectionValidationField.PORT) != null,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = validationMessage(ConnectionValidationField.DISPLAY_NAME) != null,
                     singleLine = true,
                     modifier = Modifier
-                        .weight(0.35f)
-                        .focusRequester(portFocusRequester)
-                        .testTag(ConnectionFormTags.PORT),
+                        .fillMaxWidth()
+                        .focusRequester(displayNameFocusRequester)
+                        .testTag(ConnectionFormTags.DISPLAY_NAME),
                 )
                 OutlinedTextField(
-                    value = draft.username,
+                    value = draft.hostname,
                     onValueChange = {
-                        clearValidationError(ConnectionValidationField.USERNAME)
-                        selectedPreferredIdentityId = null
-                        onDraftChange(draft.copy(username = it))
+                        clearValidationError(ConnectionValidationField.HOSTNAME)
+                        onDraftChange(draft.copy(hostname = it))
                     },
-                    label = { Text("Username") },
-                    supportingText = validationMessage(ConnectionValidationField.USERNAME)?.let {
+                    label = { Text("Hostname or IP") },
+                    supportingText = validationMessage(ConnectionValidationField.HOSTNAME)?.let {
                         { ConnectionValidationMessage(it) }
                     },
-                    isError = validationMessage(ConnectionValidationField.USERNAME) != null,
+                    isError = validationMessage(ConnectionValidationField.HOSTNAME) != null,
                     singleLine = true,
                     modifier = Modifier
-                        .weight(0.65f)
-                        .focusRequester(usernameFocusRequester)
-                        .testTag(ConnectionFormTags.USERNAME),
+                        .fillMaxWidth()
+                        .focusRequester(hostnameFocusRequester)
+                        .testTag(ConnectionFormTags.HOSTNAME),
                 )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedTextField(
+                        value = draft.port,
+                        onValueChange = {
+                            clearValidationError(ConnectionValidationField.PORT)
+                            onDraftChange(draft.copy(port = it.filter(Char::isDigit)))
+                        },
+                        label = { Text("Port") },
+                        supportingText = validationMessage(ConnectionValidationField.PORT)?.let {
+                            { ConnectionValidationMessage(it) }
+                        },
+                        isError = validationMessage(ConnectionValidationField.PORT) != null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(0.35f)
+                            .focusRequester(portFocusRequester)
+                            .testTag(ConnectionFormTags.PORT),
+                    )
+                    OutlinedTextField(
+                        value = draft.username,
+                        onValueChange = {
+                            clearValidationError(ConnectionValidationField.USERNAME)
+                            selectedPreferredIdentityId = null
+                            onDraftChange(draft.copy(username = it))
+                        },
+                        label = { Text("Username") },
+                        supportingText = validationMessage(ConnectionValidationField.USERNAME)?.let {
+                            { ConnectionValidationMessage(it) }
+                        },
+                        isError = validationMessage(ConnectionValidationField.USERNAME) != null,
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(0.65f)
+                            .focusRequester(usernameFocusRequester)
+                            .testTag(ConnectionFormTags.USERNAME),
+                    )
+                }
             }
 
             PreferredIdentitySelector(
                 identities = sshIdentities,
                 selectedIdentityId = selectedPreferredIdentityId,
                 enabled = !isBusy,
+                modifier = Modifier.focusRequester(identityFocusRequester),
                 onSelect = { identity ->
+                    clearValidationError(ConnectionValidationField.IDENTITY)
                     selectedPreferredIdentityId = identity?.id
                     if (identity != null) {
                         clearSessionCredentialInputs()
@@ -1199,101 +1359,106 @@ internal fun HostForm(
                     }
                 },
             )
+            validationMessage(ConnectionValidationField.IDENTITY)?.let {
+                ConnectionValidationMessage(it)
+            }
 
-            Button(
-                onClick = {
-                    if (isBusy) return@Button
-                    val invalidField = draft.validationErrorOrNull()
-                    if (invalidField != null) {
-                        showValidationError(invalidField)
-                        return@Button
-                    }
-                    val profile = draft.toHostProfile()
-                    formError = null
-                    isManagingProfile = true
-                    coroutineScope.launch {
-                        try {
-                            val selectedId = selectedHostProfile?.id
-                            val preferredIdentityId = selectedPreferredIdentityId
-                                ?.takeIf { id -> sshIdentities.any { it.id == id } }
-                                ?: onCreateDefaultSshIdentity(
-                                    profile,
-                                    draft.authenticationMode,
-                                    selectedSavedKeyId.takeIf {
-                                        draft.authenticationMode == AuthenticationMode.PRIVATE_KEY
-                                    },
-                                ).id
-                            if (selectedId == null) {
-                                val saved = onSaveHostProfile(
-                                    profile,
-                                    preferredIdentityId,
-                                )
-                                onSelectedHostProfileChange(saved.id)
-                            } else {
-                                onUpdateHostProfile(
-                                    selectedId,
-                                    profile,
-                                    preferredIdentityId,
-                                )
-                            }
-                            selectedPreferredIdentityId = preferredIdentityId
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: Exception) {
-                            formError = failure.message
-                                ?: "The host profile could not be saved."
-                        } finally {
-                            isManagingProfile = false
+            if (!isCredentialEntry) {
+                Button(
+                    onClick = {
+                        if (isBusy) return@Button
+                        val invalidField = draft.validationErrorOrNull()
+                        if (invalidField != null) {
+                            showValidationError(invalidField)
+                            return@Button
                         }
-                    }
-                },
-                enabled = !isBusy,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(
-                        if (selectedHostProfile == null) {
-                            ConnectionFormTags.SAVE_PROFILE
-                        } else {
-                            ConnectionFormTags.UPDATE_PROFILE
+                        val profile = draft.toHostProfile()
+                        formError = null
+                        isManagingProfile = true
+                        coroutineScope.launch {
+                            try {
+                                val selectedId = selectedHostProfile?.id
+                                val preferredIdentityId = selectedPreferredIdentityId
+                                    ?.takeIf { id -> sshIdentities.any { it.id == id } }
+                                    ?: onCreateDefaultSshIdentity(
+                                        profile,
+                                        draft.authenticationMode,
+                                        selectedSavedKeyId.takeIf {
+                                            draft.authenticationMode == AuthenticationMode.PRIVATE_KEY
+                                        },
+                                    ).id
+                                if (selectedId == null) {
+                                    val saved = onSaveHostProfile(
+                                        profile,
+                                        preferredIdentityId,
+                                    )
+                                    onSelectedHostProfileChange(saved.id)
+                                } else {
+                                    onUpdateHostProfile(
+                                        selectedId,
+                                        profile,
+                                        preferredIdentityId,
+                                    )
+                                }
+                                selectedPreferredIdentityId = preferredIdentityId
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                formError = failure.message
+                                    ?: "The host profile could not be saved."
+                            } finally {
+                                isManagingProfile = false
+                            }
+                        }
+                    },
+                    enabled = !isBusy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(
+                            if (selectedHostProfile == null) {
+                                ConnectionFormTags.SAVE_PROFILE
+                            } else {
+                                ConnectionFormTags.UPDATE_PROFILE
+                            },
+                        ),
+                ) {
+                    Text(if (selectedHostProfile == null) "Save profile" else "Update profile")
+                }
+                selectedHostProfile?.let { profile ->
+                    OutlinedButton(
+                        onClick = {
+                            onSelectedHostProfileChange(null)
+                            selectedPreferredIdentityId = null
+                            clearSessionCredentialInputs()
+                            formError = null
                         },
-                    ),
-            ) {
-                Text(if (selectedHostProfile == null) "Save profile" else "Update profile")
-            }
-            selectedHostProfile?.let { profile ->
-                OutlinedButton(
-                    onClick = {
-                        onSelectedHostProfileChange(null)
-                        selectedPreferredIdentityId = null
-                        clearSessionCredentialInputs()
-                        formError = null
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(ConnectionFormTags.USE_PROFILE_AS_NEW),
-                ) {
-                    Text("Use details as new connection")
+                        enabled = !isBusy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.USE_PROFILE_AS_NEW),
+                    ) {
+                        Text("Use details as new connection")
+                    }
+                    TextButton(
+                        onClick = {
+                            profilePendingDeletion = profile
+                            formError = null
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + profile.id),
+                    ) {
+                        Text("Delete saved profile")
+                    }
                 }
-                TextButton(
-                    onClick = {
-                        profilePendingDeletion = profile
-                        formError = null
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(ConnectionFormTags.DELETE_PROFILE_PREFIX + profile.id),
-                ) {
-                    Text("Delete saved profile")
-                }
+                Text(
+                    "Profiles save the server address and preferred identity. Passwords are " +
+                        "entered for each connection unless you opt in to an encrypted saved copy. " +
+                        "Private-key passphrases are entered for each connection.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
-            Text(
-                "Profiles save the server address and preferred identity. Passwords are " +
-                    "entered for each connection unless you opt in to an encrypted saved copy. " +
-                    "Private-key passphrases are entered for each connection.",
-                style = MaterialTheme.typography.bodySmall,
-            )
 
             if (!notificationPermissionState.allowsCredentialEntry) {
                 NotificationPermissionCard(
@@ -1445,10 +1610,17 @@ internal fun HostForm(
                     OutlinedTextField(
                         value = keyPassphrase,
                         onValueChange = {
+                            clearValidationError(ConnectionValidationField.KEY_PASSPHRASE)
                             connectionPreparationError = null
                             keyPassphrase = it
                         },
                         label = { Text("Key passphrase (optional)") },
+                        supportingText = validationMessage(
+                            ConnectionValidationField.KEY_PASSPHRASE,
+                        )?.let { { ConnectionValidationMessage(it) } },
+                        isError = validationMessage(
+                            ConnectionValidationField.KEY_PASSPHRASE,
+                        ) != null,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
@@ -1897,10 +2069,14 @@ internal fun HostForm(
 private fun HomeOverviewContent(
     activeSessionDisplayName: String?,
     hostProfiles: List<SavedHostProfile>,
+    sshIdentities: List<SshIdentity>,
     transcriptCount: Int,
+    enabled: Boolean,
     onReturnToActiveSession: () -> Unit,
     onDisconnectActiveSession: () -> Unit,
-    onOpenProfile: (SavedHostProfile) -> Unit,
+    onConnectProfile: (SavedHostProfile) -> Unit,
+    onEditProfile: (SavedHostProfile) -> Unit,
+    onChangeIdentity: (SavedHostProfile) -> Unit,
     onNewConnection: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSecurity: () -> Unit,
@@ -1962,30 +2138,59 @@ private fun HomeOverviewContent(
             } else {
                 Text("Choose a saved connection. Credentials are entered or unlocked each time.")
                 hostProfiles.forEach { profile ->
-                    OutlinedButton(
-                        onClick = { onOpenProfile(profile) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id),
-                        contentPadding = PaddingValues(14.dp),
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(profile.displayName)
-                            Text(
-                                if (profile.preferredIdentityId == null) {
-                                    "Choose identity · ${profile.hostname}:${profile.port}"
-                                } else {
-                                    "${profile.username}@${profile.hostname}:${profile.port}"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
-                            )
+                    val preferredIdentity = sshIdentities.firstOrNull {
+                        it.id == profile.preferredIdentityId
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        OutlinedButton(
+                            onClick = { onConnectProfile(profile) },
+                            enabled = enabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id),
+                            contentPadding = PaddingValues(14.dp),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(profile.displayName)
+                                Text(
+                                    if (
+                                        preferredIdentity == null ||
+                                        preferredIdentity.authenticationMethod ==
+                                        IdentityAuthenticationMethod.UNCONFIGURED
+                                    ) {
+                                        "Choose identity · ${profile.hostname}:${profile.port}"
+                                    } else {
+                                        "${preferredIdentity.username}@${profile.hostname}:${profile.port}"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = { onChangeIdentity(profile) },
+                            enabled = enabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(ConnectionFormTags.CHANGE_IDENTITY_PREFIX + profile.id),
+                        ) {
+                            Text("Change identity")
+                        }
+                        TextButton(
+                            onClick = { onEditProfile(profile) },
+                            enabled = enabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(ConnectionFormTags.EDIT_PROFILE_PREFIX + profile.id),
+                        ) {
+                            Text("Edit")
                         }
                     }
                 }
             }
             Button(
                 onClick = onNewConnection,
+                enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(ConnectionFormTags.NEW_CONNECTION),
@@ -2440,8 +2645,10 @@ private enum class ConnectionValidationField {
     HOSTNAME,
     PORT,
     USERNAME,
+    IDENTITY,
     PASSWORD,
     PRIVATE_KEY,
+    KEY_PASSPHRASE,
 }
 
 private data class ConnectionValidationError(

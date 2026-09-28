@@ -110,6 +110,7 @@ internal class EncryptedImportedPrivateKeyStore(
             aad.fill(0)
         }
         try {
+            inspectPrivateKey(plaintext, passphrase)
             SessionCredential.PrivateKey.from(plaintext, passphrase)
         } finally {
             plaintext.fill(0)

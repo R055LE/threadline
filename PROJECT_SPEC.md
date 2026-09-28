@@ -93,7 +93,9 @@ and it can be reopened from Help. It is not an account setup flow or a multi-pag
 
 After the first-run introduction, the user enters the focused connection editor directly. On later
 launches with no active session, Home shows saved connections and a primary action for starting a
-new connection. Selecting either opens the focused connection editor; users do not cross transcript
+new connection. Tapping a saved host with a ready preferred identity starts a connection; a saved
+password adds device approval. Missing credentials open focused entry, while Edit and Change
+identity are separate actions. New connection opens the editor. Users do not cross transcript
 history or trust-management content to reach credentials and the connect action. Only the standard
 SSH port `22` is prefilled for a new connection; development-fixture values are never production
 defaults.
@@ -123,9 +125,11 @@ A saved host profile contains:
 - Hostname or IP address
 - Port, default `22`
 - Username
+- Preferred SSH identity, if one is chosen
 
-Authentication method is selected for each connection and is not linked to the
-saved profile. Credentials are never part of a host profile.
+An identity supplies the authentication method for a connection. Choosing a different identity
+for one attempt does not change the saved preference unless the profile is updated explicitly.
+Credentials are never part of a host profile.
 
 Supported authentication for MVP:
 
