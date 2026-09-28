@@ -283,7 +283,7 @@ class HomeDirectConnectionTest {
 
         compose.onNodeWithTag(ConnectionFormTags.CHANGE_IDENTITY_PREFIX + profile.id)
             .performClick()
-        compose.onNodeWithTag(ConnectionFormTags.PREFERRED_IDENTITY).assertIsFocused()
+        compose.onNodeWithTag(ConnectionFormTags.PREFERRED_IDENTITY).assertIsDisplayed()
         compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE).assertDoesNotExist()
         compose.runOnIdle { assertNull(prepared) }
 
@@ -363,7 +363,7 @@ class HomeDirectConnectionTest {
             .performClick()
         compose.onNodeWithText("Choose a configured SSH identity for this connection.")
             .assertExists()
-        compose.onNodeWithTag(ConnectionFormTags.PREFERRED_IDENTITY).assertIsFocused()
+        compose.onNodeWithTag(ConnectionFormTags.PREFERRED_IDENTITY).assertIsDisplayed()
         compose.onNodeWithTag(ConnectionFormTags.UPDATE_PROFILE).assertDoesNotExist()
     }
 

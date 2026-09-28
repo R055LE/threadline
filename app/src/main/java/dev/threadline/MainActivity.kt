@@ -811,7 +811,7 @@ internal fun HostForm(
     var selectedSavedKeyId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPreferredIdentityId by rememberSaveable { mutableStateOf<String?>(null) }
     var credentialOnly by rememberSaveable { mutableStateOf(false) }
-    var focusIdentityOnEntry by remember { mutableStateOf(false) }
+    var scrollIdentityOnEntry by remember { mutableStateOf(false) }
     var savePrivateKey by rememberSaveable { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<ConnectionValidationError?>(null) }
@@ -831,7 +831,7 @@ internal fun HostForm(
     val portFocusRequester = remember { FocusRequester() }
     val usernameFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
-    val identityFocusRequester = remember { FocusRequester() }
+    val identityBringIntoViewRequester = remember { BringIntoViewRequester() }
     val privateKeyBringIntoViewRequester = remember { BringIntoViewRequester() }
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
@@ -856,10 +856,10 @@ internal fun HostForm(
         }
     }
 
-    LaunchedEffect(task, focusIdentityOnEntry) {
-        if (task == HomeTask.CONNECTION && focusIdentityOnEntry) {
-            identityFocusRequester.requestFocus()
-            focusIdentityOnEntry = false
+    LaunchedEffect(task, scrollIdentityOnEntry) {
+        if (task == HomeTask.CONNECTION && scrollIdentityOnEntry) {
+            identityBringIntoViewRequester.bringIntoView()
+            scrollIdentityOnEntry = false
         }
     }
 
@@ -903,7 +903,8 @@ internal fun HostForm(
             ConnectionValidationField.HOSTNAME -> hostnameFocusRequester.requestFocus()
             ConnectionValidationField.PORT -> portFocusRequester.requestFocus()
             ConnectionValidationField.USERNAME -> usernameFocusRequester.requestFocus()
-            ConnectionValidationField.IDENTITY -> identityFocusRequester.requestFocus()
+            ConnectionValidationField.IDENTITY ->
+                identityBringIntoViewRequester.bringIntoView()
             ConnectionValidationField.PASSWORD -> passwordFocusRequester.requestFocus()
             ConnectionValidationField.PRIVATE_KEY ->
                 privateKeyBringIntoViewRequester.bringIntoView()
@@ -1114,7 +1115,7 @@ internal fun HostForm(
                             openProfile(profile)
                             credentialOnly = true
                             savedTask = HomeTask.CONNECTION.name
-                            focusIdentityOnEntry = true
+                            scrollIdentityOnEntry = true
                         },
                         onNewConnection = {
                             onSelectedHostProfileChange(null)
@@ -1342,7 +1343,7 @@ internal fun HostForm(
                 identities = sshIdentities,
                 selectedIdentityId = selectedPreferredIdentityId,
                 enabled = !isBusy,
-                modifier = Modifier.focusRequester(identityFocusRequester),
+                modifier = Modifier.bringIntoViewRequester(identityBringIntoViewRequester),
                 onSelect = { identity ->
                     clearValidationError(ConnectionValidationField.IDENTITY)
                     selectedPreferredIdentityId = identity?.id
