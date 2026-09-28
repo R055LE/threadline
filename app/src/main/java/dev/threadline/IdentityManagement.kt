@@ -52,6 +52,7 @@ internal fun PreferredIdentitySelector(
     selectedIdentityId: String?,
     enabled: Boolean,
     onSelect: (SshIdentity?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedIdentity = identities.firstOrNull { it.id == selectedIdentityId }
@@ -64,6 +65,7 @@ internal fun PreferredIdentitySelector(
                 enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(modifier)
                     .testTag(ConnectionFormTags.PREFERRED_IDENTITY),
             ) {
                 Text(

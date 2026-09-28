@@ -59,6 +59,43 @@ class EncryptedImportedPrivateKeyStoreTest {
     }
 
     @Test
+    fun encryptedKeyRequiresPassphraseBeforeAConnectionCredentialIsReturned() = runBlocking {
+        val store = EncryptedImportedPrivateKeyStore(
+            dao = FakeImportedPrivateKeyDao(),
+            cipher = RecordingPrivateKeyCipher(),
+            ioDispatcher = Dispatchers.Unconfined,
+            newId = { "encrypted-key" },
+        )
+        val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(1024) }
+            .generateKeyPair()
+        val keyBytes = SshKeys.encodePemPrivateKey(
+            keyPair,
+            "fixture-passphrase",
+        ).encodeToByteArray()
+        try {
+            val metadata = store.save(
+                "Encrypted key",
+                keyBytes,
+                "fixture-passphrase".toCharArray(),
+            )
+
+            val missingPassphrase = runCatching {
+                store.credential(metadata.id, null)
+            }.exceptionOrNull()
+            assertTrue(missingPassphrase is InvalidImportedPrivateKeyException)
+
+            val credential = store.credential(
+                metadata.id,
+                "fixture-passphrase".toCharArray(),
+            )
+            assertArrayEquals(keyBytes, credential.keyBytes)
+            credential.clear()
+        } finally {
+            keyBytes.fill(0)
+        }
+    }
+
+    @Test
     fun renamePreservesCiphertextAndDeleteMakesCredentialUnavailable() = runBlocking {
         val dao = FakeImportedPrivateKeyDao()
         val cipher = RecordingPrivateKeyCipher()

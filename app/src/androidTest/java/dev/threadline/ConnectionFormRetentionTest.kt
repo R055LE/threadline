@@ -121,7 +121,7 @@ class ConnectionFormRetentionTest {
     }
 
     @Test
-    fun savedConnectionAndNewConnectionLeadDirectlyToFocusedEditorAtLargeFontScale() {
+    fun savedProfileEditAndNewConnectionLeadToFocusedEditorAtLargeFontScale() {
         val profile = SavedHostProfile(
             id = "saved-profile",
             displayName = "Barnabas",
@@ -155,7 +155,7 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id)
+        compose.onNodeWithTag(ConnectionFormTags.EDIT_PROFILE_PREFIX + profile.id)
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
@@ -795,7 +795,7 @@ class ConnectionFormRetentionTest {
         compose.onNodeWithTag(ConnectionFormTags.BACK_HOME)
             .performScrollTo()
             .performClick()
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
+        compose.onNodeWithTag(ConnectionFormTags.EDIT_PROFILE_PREFIX + original.id)
             .performScrollTo()
             .performClick()
         compose.onNodeWithTag(ConnectionFormTags.DISPLAY_NAME)
@@ -833,7 +833,7 @@ class ConnectionFormRetentionTest {
         compose.waitForIdle()
 
         assertEquals(original.id, deletedId)
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + original.id)
+        compose.onNodeWithTag(ConnectionFormTags.EDIT_PROFILE_PREFIX + original.id)
             .assertDoesNotExist()
         compose.onNodeWithTag(ConnectionFormTags.NEW_CONNECTION).performClick()
         compose.onNodeWithTag(ConnectionFormTags.PASSWORD)
@@ -893,7 +893,7 @@ class ConnectionFormRetentionTest {
             }
         }
 
-        compose.onNodeWithTag(ConnectionFormTags.SAVED_PROFILE_PREFIX + profile.id)
+        compose.onNodeWithTag(ConnectionFormTags.EDIT_PROFILE_PREFIX + profile.id)
             .performClick()
         compose.onNodeWithTag(ConnectionFormTags.USERNAME)
             .assertEditableTextEquals("operator")
