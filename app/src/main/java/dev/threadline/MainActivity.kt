@@ -406,6 +406,7 @@ private fun ThreadlineApp() {
                 onSubmit = manager::submitCommand,
                 onSubmitIsolated = manager::submitIsolatedCommand,
                 onControlC = manager::sendControlC,
+                onReply = manager::sendReply,
                 onDisconnect = manager::disconnect,
                 onOpenHome = { showConnectedSession = false },
                 onOpenDiagnostics = openDiagnostics,

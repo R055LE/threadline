@@ -22,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -64,6 +65,7 @@ import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.CompletedCommand
 import dev.threadline.core.shell.LifecyclePhase
 import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.session.ReplySubmissionResult
 import dev.threadline.core.terminal.TerminalKey
 import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.CommandOutput
@@ -79,6 +81,116 @@ import org.junit.Test
 class TranscriptScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun runningReplySendsToItsCommandWithoutChangingTheComposerDraft() {
+        val replies = mutableListOf<Pair<CommandId, String>>()
+        composeRule.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn(status = CommandStatus.RUNNING)),
+                    ),
+                    onSubmit = { CommandSubmissionResult.Rejected(CommandSubmissionRejection.NOT_READY) },
+                    onReply = { id, value ->
+                        replies += id to value.concatToString()
+                        ReplySubmissionResult.SENT
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.COMPOSER).performTextInput("draft command")
+        composeRule.onNodeWithTag(TranscriptTags.REPLY).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("The remote program can echo or print this reply. " +
+            "It may appear in the transcript and saved history.").assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_FIELD).performTextInput("yes")
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_SEND).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(listOf(CommandId("command-42") to "yes"), replies)
+        }
+        assertComposerText("draft command")
+        composeRule.onNodeWithText("Reply to running command").assertDoesNotExist()
+    }
+
+    @Test
+    fun maskedReplyIsNotRestoredAndCancelSendsNothing() {
+        val replies = mutableListOf<String>()
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            MaterialTheme {
+                TranscriptSurface(
+                    structuredShell = runningShell(),
+                    transcript = CommandTranscriptState(
+                        turns = listOf(turn(status = CommandStatus.RUNNING)),
+                    ),
+                    onSubmit = { CommandSubmissionResult.Rejected(CommandSubmissionRejection.NOT_READY) },
+                    onReply = { _, value ->
+                        replies += value.concatToString()
+                        ReplySubmissionResult.SENT
+                    },
+                    onStop = {},
+                    onDisconnect = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.REPLY).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_MASKED).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_FIELD)
+            .assert(SemanticsMatcher.expectValue(
+                SemanticsProperties.ContentDataType,
+                ContentDataType.None,
+            ))
+            .performTextInput("fixture-secret")
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_FIELD)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
+        composeRule.onNodeWithText("Cancel").performClick()
+        composeRule.runOnIdle { assertTrue(replies.isEmpty()) }
+
+        composeRule.onNodeWithTag(TranscriptTags.REPLY).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_MASKED).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_SEND).performClick()
+        composeRule.runOnIdle { assertEquals(listOf(""), replies) }
+
+        composeRule.onNodeWithTag(TranscriptTags.REPLY).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_MASKED).performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_FIELD).performTextInput("not-restored")
+        restorationTester.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithText("Reply to running command").assertDoesNotExist()
+        composeRule.onNodeWithText("not-restored").assertDoesNotExist()
+    }
+
+    @Test
+    fun replyControlsRemainReachableAtTwoHundredPercentFontScale() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                MaterialTheme {
+                    TranscriptSurface(
+                        structuredShell = runningShell(),
+                        transcript = CommandTranscriptState(
+                            turns = listOf(turn(status = CommandStatus.RUNNING)),
+                        ),
+                        onSubmit = {
+                            CommandSubmissionResult.Rejected(CommandSubmissionRejection.NOT_READY)
+                        },
+                        onStop = {},
+                        onDisconnect = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(TranscriptTags.REPLY).assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_MASKED).assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_FIELD).assertIsDisplayed()
+        composeRule.onNodeWithTag(TranscriptTags.REPLY_SEND).assertIsDisplayed()
+    }
 
     @Test
     fun composerSubmitsExactMultilineCommandAndClearsAfterAcceptance() {

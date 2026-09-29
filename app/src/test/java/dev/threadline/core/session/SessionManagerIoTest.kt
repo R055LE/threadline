@@ -159,6 +159,76 @@ class SessionManagerIoTest {
     }
 
     @Test
+    fun `reply uses the active PTY without becoming a command or archived input`() = runBlocking {
+        val session = RecordingSession()
+        val archiveSink = RecordingTranscriptArchiveSink()
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { nonce },
+            commandIdFactory = {
+                if (session.sent.isEmpty()) CommandId("bootstrap-probe")
+                else CommandId("running-command")
+            },
+            transcriptArchiveSink = archiveSink,
+        )
+
+        manager.prepareConnection(fixtureRequest())
+        manager.connectPrepared()
+        withTimeout(2_000) { while (session.sent.isEmpty()) delay(10) }
+        session.output.send(
+            lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"),
+        )
+        withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+        }
+
+        val commandId = CommandId("running-command")
+        assertEquals(
+            CommandSubmissionResult.Accepted(commandId),
+            manager.submitCommand("read -r reply"),
+        )
+        assertEquals(
+            ReplySubmissionResult.NOT_RUNNING,
+            manager.sendReply(CommandId("other-command"), "wrong".toCharArray()),
+        )
+        assertEquals(
+            ReplySubmissionResult.INVALID_TEXT,
+            manager.sendReply(commandId, "two\nlines".toCharArray()),
+        )
+        assertEquals(
+            ReplySubmissionResult.SENT,
+            manager.sendReply(commandId, "π-confirm".toCharArray()),
+        )
+        withTimeout(2_000) { while (session.sent.size < 3) delay(10) }
+        assertTrue(session.sent[1].decodeToString().contains("read -r reply"))
+        assertArrayEquals("π-confirm\r".encodeToByteArray(), session.sent[2])
+        assertEquals(listOf("read -r reply"), manager.transcriptState.value.turns.map { it.command })
+
+        session.output.send(
+            lifecycleBytes(nonce, commandId, 0, "/tmp", output = "prompt: "),
+        )
+        withTimeout(2_000) {
+            manager.structuredState.filterIsInstance<StructuredShellState.Ready>()
+                .first { it.lastCommand?.id == commandId }
+        }
+        assertEquals(
+            ReplySubmissionResult.NOT_RUNNING,
+            manager.sendReply(commandId, "late".toCharArray()),
+        )
+        assertEquals(3, session.sent.size)
+        assertEquals("prompt: ", manager.transcriptState.value.turns.single().output.plainText)
+
+        manager.disconnect()
+        withTimeout(2_000) { while (archiveSink.archives.isEmpty()) delay(10) }
+        val archived = archiveSink.archives.single().transcript.turns.single()
+        assertEquals("read -r reply", archived.command)
+        assertEquals("prompt: ", archived.output.plainText)
+    }
+
+    @Test
     fun `cancelling input echo expectation releases a partial match`() {
         val filter = InternalInputEchoFilter()
         filter.expect("bootstrap\n".encodeToByteArray())
@@ -793,7 +863,7 @@ private class RecordingSession : LiveSshSession {
 
     override suspend fun send(bytes: ByteArray) {
         delay(1)
-        sent += bytes
+        sent += bytes.copyOf()
     }
 
     override suspend fun resize(size: TerminalSize): Boolean = true
