@@ -51,6 +51,109 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AndroidStructuredShellIntegrationTest {
     @Test
+    fun repliesReachRunningCommandAndOnlyRemoteEchoEntersSavedOutput() = runBlocking {
+        val arguments = InstrumentationRegistry.getArguments()
+        val password = arguments.getString(PASSWORD_ARGUMENT)
+        assumeTrue("No fixture password supplied", !password.isNullOrEmpty())
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val legacyPreferences = targetContext.getSharedPreferences(
+            "android_reply_known_hosts",
+            Context.MODE_PRIVATE,
+        )
+        legacyPreferences.edit().clear().commit()
+        val database = Room.inMemoryDatabaseBuilder(
+            targetContext,
+            ThreadlineDatabase::class.java,
+        ).build()
+        val transcriptHistoryStore = RoomTranscriptHistoryStore(database.transcriptArchives())
+        val manager = SessionManager(
+            adapter = ConnectBotSshClientAdapter(
+                HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(
+                    AndroidSshCryptoProvider.install(),
+                ),
+            ),
+            knownHostStore = RoomKnownHostStore(database.knownHosts(), legacyPreferences),
+            terminal = NoOpTerminal,
+            transcriptArchiveSink = transcriptHistoryStore,
+        )
+        val profile = HostProfile(
+            displayName = "Reply fixture",
+            endpoint = HostEndpoint(
+                arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
+                arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT,
+            ),
+            username = arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER,
+        )
+
+        try {
+            assertTrue(manager.prepareConnection(ConnectionRequest(
+                profile,
+                SessionCredential.Password.from(requireNotNull(password).toCharArray()),
+            )))
+            assertTrue(manager.connectPrepared())
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+            }
+            assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+            }
+
+            val ordinary = accepted(manager.submitCommand(
+                "stty -echo; read -r -p 'Continue? ' reply; stty echo; test -n \"\$reply\"",
+            ))
+            awaitTranscriptOutput(manager, ordinary.commandId, "Continue? ")
+            assertEquals(ReplySubmissionResult.SENT,
+                manager.sendReply(ordinary.commandId, "yes".toCharArray()))
+            assertEquals(0, awaitCompletion(manager, ordinary.commandId).exitStatus)
+
+            val masked = accepted(manager.submitCommand(
+                "stty -echo; read -r -p 'Secret? ' reply; stty echo; test -n \"\$reply\"",
+            ))
+            awaitTranscriptOutput(manager, masked.commandId, "Secret? ")
+            assertEquals(ReplySubmissionResult.SENT,
+                manager.sendReply(masked.commandId, "fixture-secret".toCharArray()))
+            assertEquals(0, awaitCompletion(manager, masked.commandId).exitStatus)
+            assertTrue(!manager.transcriptState.value.turns.first { it.id == masked.commandId }
+                .output.plainText.contains("fixture-secret"))
+
+            val echoed = accepted(manager.submitCommand(
+                "read -r -p 'Password: ' reply; test -n \"\$reply\"",
+            ))
+            awaitTranscriptOutput(manager, echoed.commandId, "Password: ")
+            assertEquals(ReplySubmissionResult.SENT,
+                manager.sendReply(echoed.commandId, "fixture-echo".toCharArray()))
+            assertEquals(0, awaitCompletion(manager, echoed.commandId).exitStatus)
+            assertTrue(manager.transcriptState.value.turns.first { it.id == echoed.commandId }
+                .output.plainText.contains("fixture-echo"))
+
+            manager.disconnect()
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.first { it is SessionState.Disconnected }
+            }
+            val savedId = withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                transcriptHistoryStore.sessions.first { it.isNotEmpty() }.single().id
+            }
+            val saved = transcriptHistoryStore.load(savedId).turns.map { it.turn }
+            assertTrue(saved.first { it.id == masked.commandId }.let {
+                !it.command.contains("fixture-secret") &&
+                    !it.output.plainText.contains("fixture-secret")
+            })
+            assertTrue(saved.first { it.id == echoed.commandId }
+                .output.plainText.contains("fixture-echo"))
+        } finally {
+            if (manager.state.value !is SessionState.Disconnected) {
+                manager.disconnect()
+                withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                    manager.state.first { it is SessionState.Disconnected }
+                }
+            }
+            database.close()
+            legacyPreferences.edit().clear().commit()
+        }
+    }
+
+    @Test
     fun encryptedImportedKeyAuthenticatesAfterDatabaseReopen() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
@@ -469,6 +572,19 @@ class AndroidStructuredShellIntegrationTest {
             "interactive $description command",
         )
         assertEquals(0, completed.exitStatus)
+    }
+
+    private suspend fun awaitTranscriptOutput(
+        manager: SessionManager,
+        commandId: CommandId,
+        text: String,
+    ) {
+        withTimeout(COMMAND_TIMEOUT_MILLIS) {
+            manager.transcriptState.first { transcript ->
+                transcript.turns.firstOrNull { it.id == commandId }
+                    ?.output?.plainText?.contains(text) == true
+            }
+        }
     }
 
     private suspend fun assertSuccessful(

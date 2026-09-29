@@ -26,7 +26,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -35,6 +38,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -53,6 +57,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -66,6 +71,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.contentDataType
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -77,15 +83,18 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
+import dev.threadline.core.shell.CommandId
 import dev.threadline.core.shell.CommandExecutionMode
 import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.StructuredShellState
 import dev.threadline.core.shell.commandMayChangePersistentStrictMode
+import dev.threadline.core.session.ReplySubmissionResult
 import dev.threadline.core.terminal.TerminalKey
 import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.AnsiColor
@@ -114,6 +123,11 @@ internal object TranscriptTags {
     const val SUBMISSION_ERROR = "command-submission-error"
     const val SESSION_ACTIONS = "session-actions"
     const val SESSION_OVERFLOW = "session-overflow"
+    const val REPLY = "command-reply"
+    const val REPLY_ORDINARY = "command-reply-ordinary"
+    const val REPLY_MASKED = "command-reply-masked"
+    const val REPLY_FIELD = "command-reply-field"
+    const val REPLY_SEND = "command-reply-send"
     const val COMPACT_HEADER = "session-compact-header"
     const val RAW_TERMINAL_VIEWPORT = "raw-terminal-viewport"
     const val HOME = "session-home"
@@ -158,6 +172,9 @@ internal fun ConnectedSessionScreen(
     onSubmit: (String) -> CommandSubmissionResult,
     onSubmitIsolated: ((String) -> CommandSubmissionResult)? = null,
     onControlC: () -> Unit,
+    onReply: (CommandId, CharArray) -> ReplySubmissionResult = { _, _ ->
+        ReplySubmissionResult.NOT_RUNNING
+    },
     onDisconnect: () -> Unit,
     onOpenHome: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
@@ -219,6 +236,7 @@ internal fun ConnectedSessionScreen(
                         transcript = transcript,
                         onSubmit = onSubmit,
                         onSubmitIsolated = onSubmitIsolated,
+                        onReply = onReply,
                         onStop = onControlC,
                         onDisconnect = onDisconnect,
                         onOpenTerminal = { rawModeRequested = true },
@@ -570,6 +588,9 @@ internal fun TranscriptSurface(
     transcript: CommandTranscriptState,
     onSubmit: (String) -> CommandSubmissionResult,
     onSubmitIsolated: ((String) -> CommandSubmissionResult)? = null,
+    onReply: (CommandId, CharArray) -> ReplySubmissionResult = { _, _ ->
+        ReplySubmissionResult.NOT_RUNNING
+    },
     onStop: () -> Unit,
     onDisconnect: () -> Unit,
     onOpenTerminal: () -> Unit = {},
@@ -702,6 +723,9 @@ internal fun TranscriptSurface(
                 CommandCard(
                     turn = turn,
                     canSubmit = structuredShell is StructuredShellState.Ready,
+                    canReply = structuredShell is StructuredShellState.Running &&
+                        structuredShell.activeCommand.id == turn.id,
+                    onReply = onReply,
                     onStop = onStop,
                     onDisconnect = onDisconnect,
                     onEdit = {
@@ -859,9 +883,130 @@ internal fun TranscriptSurface(
 }
 
 @Composable
+private fun RunningCommandReplyDialog(
+    commandId: CommandId,
+    onReply: (CommandId, CharArray) -> ReplySubmissionResult,
+    onDismiss: () -> Unit,
+) {
+    var masked by remember { mutableStateOf(false) }
+    var ordinaryText by remember { mutableStateOf("") }
+    val maskedText = remember { TextFieldState() }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun clearInput() {
+        ordinaryText = ""
+        maskedText.edit { replace(0, length, "") }
+    }
+
+    fun dismiss() {
+        clearInput()
+        onDismiss()
+    }
+
+    AlertDialog(
+        onDismissRequest = ::dismiss,
+        title = { Text("Reply to running command") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "The remote program can echo or print this reply. It may appear in the " +
+                        "transcript and saved history.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !masked,
+                        onClick = {
+                            clearInput()
+                            masked = false
+                            error = null
+                        },
+                        label = { Text("Ordinary") },
+                        modifier = Modifier.testTag(TranscriptTags.REPLY_ORDINARY),
+                    )
+                    FilterChip(
+                        selected = masked,
+                        onClick = {
+                            clearInput()
+                            masked = true
+                            error = null
+                        },
+                        label = { Text("Masked") },
+                        modifier = Modifier.testTag(TranscriptTags.REPLY_MASKED),
+                    )
+                }
+                if (masked) {
+                    OutlinedSecureTextField(
+                        state = maskedText,
+                        label = { Text("Masked reply") },
+                        textObfuscationMode = TextObfuscationMode.Hidden,
+                        keyboardOptions = KeyboardOptions(
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Password,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDataType = ContentDataType.None }
+                            .testTag(TranscriptTags.REPLY_FIELD),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = ordinaryText,
+                        onValueChange = { ordinaryText = it },
+                        label = { Text("Reply") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(TranscriptTags.REPLY_FIELD),
+                    )
+                }
+                error?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val value = if (masked) {
+                        CharArray(maskedText.text.length) { maskedText.text[it] }
+                    } else {
+                        ordinaryText.toCharArray()
+                    }
+                    val result = try {
+                        onReply(commandId, value)
+                    } finally {
+                        value.fill('\u0000')
+                    }
+                    when (result) {
+                        ReplySubmissionResult.SENT,
+                        ReplySubmissionResult.NOT_RUNNING,
+                        -> dismiss()
+
+                        ReplySubmissionResult.INVALID_TEXT ->
+                            error = "Replies must be one line without NUL characters."
+
+                        ReplySubmissionResult.INPUT_BACKPRESSURE ->
+                            error = "The session input queue is full. Try again."
+                    }
+                },
+                modifier = Modifier.testTag(TranscriptTags.REPLY_SEND),
+            ) { Text("Send reply") }
+        },
+        dismissButton = { TextButton(onClick = ::dismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun CommandCard(
     turn: CommandTurn,
     canSubmit: Boolean,
+    canReply: Boolean,
+    onReply: (CommandId, CharArray) -> ReplySubmissionResult,
     onStop: () -> Unit,
     onDisconnect: () -> Unit,
     onEdit: () -> Unit,
@@ -874,6 +1019,7 @@ private fun CommandCard(
     val context = LocalContext.current
     var expanded by rememberSaveable(turn.id.value) { mutableStateOf(false) }
     var cardActionsExpanded by remember { mutableStateOf(false) }
+    var replyOpen by remember { mutableStateOf(false) }
     var pendingUrl by rememberSaveable(turn.id.value) { mutableStateOf<String?>(null) }
     var linkOpenFailed by rememberSaveable(turn.id.value) { mutableStateOf(false) }
     val nowMillis = rememberTurnTime(turn, clockMillis)
@@ -884,6 +1030,10 @@ private fun CommandCard(
         turn.output.plainText.length - COLLAPSED_OUTPUT_CHARACTERS
     } else {
         0
+    }
+
+    LaunchedEffect(canReply) {
+        if (!canReply) replyOpen = false
     }
 
     Card(modifier = modifier.fillMaxWidth()) {
@@ -961,6 +1111,12 @@ private fun CommandCard(
                         Text(if (expanded) "Collapse" else "Show all")
                     }
                 }
+                if (turn.status == CommandStatus.RUNNING && canReply) {
+                    TextButton(
+                        onClick = { replyOpen = true },
+                        modifier = Modifier.testTag(TranscriptTags.REPLY),
+                    ) { Text("Reply") }
+                }
                 when (turn.status) {
                     CommandStatus.SUBMITTED,
                     CommandStatus.RUNNING,
@@ -1029,6 +1185,14 @@ private fun CommandCard(
                 }
             }
         }
+    }
+
+    if (replyOpen && canReply) {
+        RunningCommandReplyDialog(
+            commandId = turn.id,
+            onReply = onReply,
+            onDismiss = { replyOpen = false },
+        )
     }
 
     pendingUrl?.let { url ->

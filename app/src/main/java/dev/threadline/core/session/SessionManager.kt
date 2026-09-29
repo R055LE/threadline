@@ -34,6 +34,8 @@ import dev.threadline.core.transcript.NoOpTranscriptArchiveSink
 import dev.threadline.core.transcript.TranscriptArchiveSink
 import dev.threadline.core.transcript.TranscriptSessionArchive
 import java.io.ByteArrayOutputStream
+import java.nio.CharBuffer
+import java.nio.charset.CharacterCodingException
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -56,6 +58,13 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+enum class ReplySubmissionResult {
+    SENT,
+    NOT_RUNNING,
+    INVALID_TEXT,
+    INPUT_BACKPRESSURE,
+}
 
 @OptIn(FlowPreview::class)
 class SessionManager(
@@ -130,21 +139,33 @@ class SessionManager(
     init {
         scope.launch {
             inputRequests.consumeEach { input ->
-                runCatching {
-                    if (input.hideExactPtyEcho) {
-                        internalInputEchoFilter.expect(input.bytes)
-                    }
-                    input.session.send(input.bytes)
+                if (
+                    input.commandId != null &&
+                    (structuredState.value as? StructuredShellState.Running)
+                        ?.activeCommand?.id != input.commandId
+                ) {
+                    input.bytes.fill(0)
+                    return@consumeEach
                 }
-                    .onFailure {
-                        internalInputEchoFilter.cancel()
-                        if (
-                            liveSession === input.session &&
-                            state.value is SessionState.Connected
-                        ) {
-                            failSession(SessionError.ConnectionLost)
+                try {
+                    runCatching {
+                        if (input.hideExactPtyEcho) {
+                            internalInputEchoFilter.expect(input.bytes)
                         }
+                        input.session.send(input.bytes)
                     }
+                        .onFailure {
+                            internalInputEchoFilter.cancel()
+                            if (
+                                liveSession === input.session &&
+                                state.value is SessionState.Connected
+                            ) {
+                                failSession(SessionError.ConnectionLost)
+                            }
+                        }
+                } finally {
+                    if (input.clearAfterSend) input.bytes.fill(0)
+                }
             }
         }
         scope.launch {
@@ -228,6 +249,48 @@ class SessionManager(
         commandTranscript.stopRequested()
         send(byteArrayOf(0x03))
     }
+
+    fun sendReply(commandId: CommandId, reply: CharArray): ReplySubmissionResult =
+        synchronized(structuredLock) {
+            val running = structuredState.value as? StructuredShellState.Running
+            if (
+                state.value !is SessionState.Connected ||
+                running?.activeCommand?.id != commandId
+            ) {
+                return@synchronized ReplySubmissionResult.NOT_RUNNING
+            }
+            if (reply.any { it == '\r' || it == '\n' || it == '\u0000' }) {
+                return@synchronized ReplySubmissionResult.INVALID_TEXT
+            }
+            val session = liveSession ?: return@synchronized ReplySubmissionResult.NOT_RUNNING
+            val encoded = try {
+                Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(reply))
+            } catch (_: CharacterCodingException) {
+                return@synchronized ReplySubmissionResult.INVALID_TEXT
+            }
+            val bytes = try {
+                ByteArray(encoded.remaining() + 1).also {
+                    encoded.get(it, 0, it.lastIndex)
+                    it[it.lastIndex] = '\r'.code.toByte()
+                }
+            } finally {
+                if (encoded.hasArray()) encoded.array().fill(0)
+            }
+            if (
+                inputRequests.trySend(
+                    SessionInput(
+                        session = session,
+                        bytes = bytes,
+                        clearAfterSend = true,
+                        commandId = commandId,
+                    ),
+                ).isFailure
+            ) {
+                bytes.fill(0)
+                return@synchronized ReplySubmissionResult.INPUT_BACKPRESSURE
+            }
+            ReplySubmissionResult.SENT
+        }
 
     fun submitCommand(command: String): CommandSubmissionResult = submitCommand(
         command = command,
@@ -707,6 +770,8 @@ class SessionManager(
         val session: LiveSshSession,
         val bytes: ByteArray,
         val hideExactPtyEcho: Boolean = false,
+        val clearAfterSend: Boolean = false,
+        val commandId: CommandId? = null,
     )
 
     private data class StructuredShellContext(
