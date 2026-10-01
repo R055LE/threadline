@@ -159,6 +159,43 @@ class SessionManagerIoTest {
     }
 
     @Test
+    fun `two startup echoes are removed across every byte split with surrounding output intact`() {
+        val input = "builtin eval -- setup\n".encodeToByteArray()
+        val echo = ptyEcho(input)
+        val greeting = "welcome\r\n".encodeToByteArray()
+        val prompt = "prompt> ".encodeToByteArray()
+        val output = "remote output\r\n".encodeToByteArray()
+        val observed = greeting + echo + prompt + echo + output + echo
+
+        for (split in 0..observed.size) {
+            val filter = InternalInputEchoFilter()
+            filter.expect(input, maximumEchoes = 2)
+            val actual = filter.consume(observed.copyOfRange(0, split)) +
+                filter.consume(observed.copyOfRange(split, observed.size)) + filter.cancel()
+
+            assertArrayEquals("split=$split", greeting + prompt + output + echo, actual)
+        }
+    }
+
+    @Test
+    fun `ordinary input removes only one echo and incomplete startup redraw fails open`() {
+        val input = "abcab\n".encodeToByteArray()
+        val echo = ptyEcho(input)
+        val ordinary = InternalInputEchoFilter()
+        ordinary.expect(input)
+        assertArrayEquals(echo, ordinary.consume(echo + echo))
+
+        val startup = InternalInputEchoFilter()
+        startup.expect(input, maximumEchoes = 2)
+        val mismatched = "abcax\r\n".encodeToByteArray()
+        assertArrayEquals(mismatched, startup.consume(echo + mismatched))
+        val partial = echo.copyOf(3)
+        assertTrue(startup.consume(partial).isEmpty())
+        assertArrayEquals(partial, startup.cancel())
+        assertArrayEquals(echo, startup.consume(echo))
+    }
+
+    @Test
     fun `reply uses the active PTY without becoming a command or archived input`() = runBlocking {
         val session = RecordingSession()
         val archiveSink = RecordingTranscriptArchiveSink()
@@ -412,7 +449,8 @@ class SessionManagerIoTest {
                 exitStatus = 0,
                 currentDirectory = "/home/threadline",
             )
-            val bootstrapStream = bootstrapEcho + bootstrapRaw
+            val startupOutput = "welcome\r\nprompt> ".encodeToByteArray()
+            val bootstrapStream = bootstrapEcho + startupOutput + bootstrapEcho + bootstrapRaw
             val bootstrapEchoSplit = bootstrapEcho.size / 2
             session.output.send(bootstrapStream.copyOfRange(0, bootstrapEchoSplit))
             session.output.send(
@@ -483,7 +521,7 @@ class SessionManagerIoTest {
                 turn.output,
             )
             assertArrayEquals(
-                bootstrapRaw + backgroundOutput + commandRaw,
+                startupOutput + bootstrapRaw + backgroundOutput + commandRaw,
                 terminal.received.flattenBytes(),
             )
             assertEquals(
