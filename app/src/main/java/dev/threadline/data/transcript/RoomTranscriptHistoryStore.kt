@@ -27,7 +27,7 @@ internal data class SavedTranscriptSessionSummary(
     val port: Int,
     val username: String,
     val startedAtMillis: Long,
-    val endedAtMillis: Long,
+    val savedAtMillis: Long,
     val turnsTruncated: Boolean,
     val turnCount: Int,
 )
@@ -62,7 +62,8 @@ internal class RoomTranscriptHistoryStore(
             port = archive.profile.endpoint.port,
             username = archive.profile.username,
             startedAtMillis = archive.startedAtMillis,
-            endedAtMillis = archive.endedAtMillis,
+            // Keep the legacy column for both checkpoints and finalized archives.
+            endedAtMillis = archive.savedAtMillis,
             turnsTruncated = retainedTurns.size < archive.transcript.turns.size,
         )
         val turns = retainedTurns.mapIndexed { index, turn ->
@@ -209,7 +210,7 @@ private fun TranscriptSessionSummaryRow.toSummary() = SavedTranscriptSessionSumm
     port = port,
     username = username,
     startedAtMillis = startedAtMillis,
-    endedAtMillis = endedAtMillis,
+    savedAtMillis = endedAtMillis,
     turnsTruncated = turnsTruncated,
     turnCount = turnCount,
 )

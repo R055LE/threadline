@@ -58,6 +58,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class ReplySubmissionResult {
     SENT,
@@ -89,6 +91,7 @@ class SessionManager(
     private val decisionLock = Any()
     private val structuredLock = Any()
     private val transcriptArchiveLock = Any()
+    private val transcriptSaveMutex = Mutex()
     private val resizeRequests = MutableSharedFlow<TerminalSize>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -667,6 +670,7 @@ class SessionManager(
                 }
 
                 is ProtocolStreamItem.Lifecycle -> {
+                    var commandCompleted = false
                     val pendingBytes = synchronized(structuredLock) {
                         val pending = if (item.event is ShellLifecycleEvent.CommandStarted) {
                             internalInputEchoFilter.cancel()
@@ -674,6 +678,8 @@ class SessionManager(
                             byteArrayOf()
                         }
                         if (structuredContext === context) {
+                            commandCompleted = item.event is ShellLifecycleEvent.CommandEnded &&
+                                commandTranscript.state.value.activeCommandId == item.event.commandId
                             commandTranscript.lifecycle(item.event)
                             val next = structuredStateMachine.apply(
                                 StructuredShellEvent.Lifecycle(item.event),
@@ -692,6 +698,7 @@ class SessionManager(
                         pending
                     }
                     if (pendingBytes.isNotEmpty()) terminal.receive(pendingBytes)
+                    if (commandCompleted) checkpointTranscriptSession(context)
                 }
             }
         }
@@ -738,24 +745,53 @@ class SessionManager(
         synchronized(transcriptArchiveLock) {
             val active = activeTranscriptSession ?: return@synchronized null
             activeTranscriptSession = null
-            val startedAtMillis = active.startedAtMillis
-            if (
-                active.ephemeral ||
-                startedAtMillis == null ||
-                commandTranscript.state.value.turns.isEmpty()
-            ) {
-                return@synchronized null
-            }
-            TranscriptSessionArchive(
-                id = active.id,
-                profile = active.profile,
-                startedAtMillis = startedAtMillis,
-                endedAtMillis = clockMillis(),
-                transcript = commandTranscript.state.value,
-            )
+            transcriptArchive(active, completedOnly = false)
         }
 
-    private suspend fun persistTranscriptArchive(archive: TranscriptSessionArchive?) {
+    private suspend fun checkpointTranscriptSession(context: StructuredShellContext) {
+        transcriptSaveMutex.withLock {
+            // Capture after acquiring the save lock so a closed or replaced session
+            // cannot enqueue an older snapshot after its final archive.
+            val archive = synchronized(structuredLock) {
+                if (structuredContext !== context) return@synchronized null
+                synchronized(transcriptArchiveLock) {
+                    activeTranscriptSession?.let { transcriptArchive(it, completedOnly = true) }
+                }
+            }
+            saveTranscriptArchive(archive)
+        }
+    }
+
+    private fun transcriptArchive(
+        active: ActiveTranscriptSession,
+        completedOnly: Boolean,
+    ): TranscriptSessionArchive? {
+        val startedAtMillis = active.startedAtMillis ?: return null
+        if (active.ephemeral) return null
+        val transcript = commandTranscript.state.value.let { state ->
+            if (completedOnly) {
+                state.copy(
+                    turns = state.turns.filter { it.completedAtMillis != null },
+                    activeCommandId = null,
+                )
+            } else {
+                state
+            }
+        }
+        if (transcript.turns.isEmpty()) return null
+        return TranscriptSessionArchive(
+            id = active.id,
+            profile = active.profile,
+            startedAtMillis = startedAtMillis,
+            savedAtMillis = clockMillis(),
+            transcript = transcript,
+        )
+    }
+
+    private suspend fun persistTranscriptArchive(archive: TranscriptSessionArchive?) =
+        transcriptSaveMutex.withLock { saveTranscriptArchive(archive) }
+
+    private suspend fun saveTranscriptArchive(archive: TranscriptSessionArchive?) {
         if (archive == null) return
         try {
             transcriptArchiveSink.save(archive)

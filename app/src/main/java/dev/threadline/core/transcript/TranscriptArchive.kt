@@ -6,7 +6,7 @@ data class TranscriptSessionArchive(
     val id: String,
     val profile: HostProfile,
     val startedAtMillis: Long,
-    val endedAtMillis: Long,
+    val savedAtMillis: Long,
     val transcript: CommandTranscriptState,
 )
 

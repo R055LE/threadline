@@ -45,7 +45,7 @@ class RoomTranscriptHistoryStoreTest {
     }
 
     @Test
-    fun archiveSurvivesReopenWithOrderedChunksAndBoundedNewestData() = runBlocking {
+    fun checkpointsAndFinalArchiveSurviveReopenWithBoundedNewestData() = runBlocking {
         val store = store()
         val retainedOutput =
             "x".repeat(RoomTranscriptHistoryStore.OUTPUT_CHUNK_CHARACTERS - 1) +
@@ -80,6 +80,9 @@ class RoomTranscriptHistoryStoreTest {
                 },
             )
         }
+        turns.indices.forEach { index ->
+            store.save(archive("persistent-session", index.toLong(), turns.take(index + 1)))
+        }
         store.save(archive("persistent-session", 100, turns))
 
         database.close()
@@ -87,6 +90,7 @@ class RoomTranscriptHistoryStoreTest {
         val reopenedStore = store()
         val summary = reopenedStore.sessions.first().single()
         assertEquals("persistent-session", summary.id)
+        assertEquals(100L, summary.savedAtMillis)
         assertEquals(RoomTranscriptHistoryStore.MAXIMUM_TURNS_PER_SESSION, summary.turnCount)
         assertTrue(summary.turnsTruncated)
 
@@ -129,6 +133,12 @@ class RoomTranscriptHistoryStoreTest {
         assertNull(database.transcriptArchives().findSession("session-0"))
         assertEquals("session-20", retained.first().id)
 
+        store.save(archive("session-20", 21, listOf(turn(20), turn(21))))
+        assertEquals(RoomTranscriptHistoryStore.MAXIMUM_SESSIONS, store.sessions.first().size)
+        assertEquals(2, store.load("session-20").turns.size)
+        assertEquals(2, database.transcriptArchives().findTurns("session-20").size)
+        assertEquals(2, database.transcriptArchives().findChunks("session-20").size)
+
         store.delete("session-10")
         assertNull(database.transcriptArchives().findSession("session-10"))
         assertTrue(database.transcriptArchives().findSession("session-11") != null)
@@ -164,7 +174,7 @@ class RoomTranscriptHistoryStoreTest {
 
     private fun archive(
         id: String,
-        endedAtMillis: Long,
+        savedAtMillis: Long,
         turns: List<CommandTurn>,
     ) = TranscriptSessionArchive(
         id = id,
@@ -174,7 +184,7 @@ class RoomTranscriptHistoryStoreTest {
             username = "threadline",
         ),
         startedAtMillis = 1,
-        endedAtMillis = endedAtMillis,
+        savedAtMillis = savedAtMillis,
         transcript = CommandTranscriptState(turns = turns),
     )
 

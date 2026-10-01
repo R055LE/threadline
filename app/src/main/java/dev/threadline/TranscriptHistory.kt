@@ -68,7 +68,8 @@ internal fun TranscriptHistorySection(
     if (saveFailed || error != null) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = error ?: "The last session ended, but its transcript could not be saved.",
+                text = error ?: "The latest transcript could not be saved. " +
+                    "Recent commands may be missing from history.",
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(16.dp),
             )
@@ -120,7 +121,7 @@ internal fun TranscriptHistorySection(
                                     fontFamily = FontFamily.Monospace,
                                 )
                                 Text(
-                                    "${formatTranscriptTimestamp(session.endedAtMillis)} · " +
+                                    "${formatTranscriptTimestamp(session.savedAtMillis)} · " +
                                         "${session.turnCount} " +
                                         if (session.turnCount == 1) "turn" else "turns",
                                     style = MaterialTheme.typography.bodySmall,
@@ -222,10 +223,15 @@ internal fun TranscriptHistorySection(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                "Ended " +
-                                    formatTranscriptTimestamp(session.summary.endedAtMillis) +
+                                "Saved " +
+                                    formatTranscriptTimestamp(session.summary.savedAtMillis) +
                                     ". Saved output is plain text; terminal styling and " +
                                     "links are inert.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "While connected, only completed commands are saved. " +
+                                    "A crash can lose the unfinished command.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
