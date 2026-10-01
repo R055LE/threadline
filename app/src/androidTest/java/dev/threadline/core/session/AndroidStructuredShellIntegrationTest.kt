@@ -347,8 +347,7 @@ class AndroidStructuredShellIntegrationTest {
             }
             assertTrue(
                 "Bootstrap input reached terminal history: " +
-                    "inputBytes=${bootstrapInput.size}, sharedBytes=$sharedBytes, " +
-                    initialTerminal.substringAfter("builtin eval -- $'", "").take(120),
+                    "inputBytes=${bootstrapInput.size}, sharedBytes=$sharedBytes",
                 !initialTerminal.contains("builtin eval -- $'"),
             )
             assertTrue(!terminal.text().contains("__threadline_run_"))
@@ -423,6 +422,15 @@ class AndroidStructuredShellIntegrationTest {
             assertTrue(!renderedTurn.output.approximate)
             assertTrue(!renderedTurn.output.truncated)
             assertTrue(!terminal.text().contains("__threadline_run_"))
+
+            val turnsBeforeRawInput = manager.transcriptState.value.turns.size
+            manager.send("printf 'raw-input-proof\\n'\r".encodeToByteArray())
+            withTimeout(COMMAND_TIMEOUT_MILLIS) {
+                while (!terminal.text().contains("raw-input-proof\r\n")) delay(10)
+            }
+            assertTrue(terminal.text().contains("printf 'raw-input-proof\\n'"))
+            assertEquals(turnsBeforeRawInput, manager.transcriptState.value.turns.size)
+            assertSuccessful(manager, "test \"\$PWD\" = /tmp")
 
             executeInteractive(
                 manager = manager,

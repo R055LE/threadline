@@ -149,8 +149,8 @@ class SessionManager(
                 }
                 try {
                     runCatching {
-                        if (input.hideExactPtyEcho) {
-                            internalInputEchoFilter.expect(input.bytes)
+                        if (input.maximumPtyEchoes > 0) {
+                            internalInputEchoFilter.expect(input.bytes, input.maximumPtyEchoes)
                         }
                         input.session.send(input.bytes)
                     }
@@ -344,7 +344,7 @@ class SessionManager(
         )
         if (
             inputRequests.trySend(
-                SessionInput(session, invocation, hideExactPtyEcho = true),
+                SessionInput(session, invocation, maximumPtyEchoes = 1),
             ).isFailure
         ) {
             structuredStateMachine.apply(
@@ -633,7 +633,8 @@ class SessionManager(
         }
         if (
             inputRequests.trySend(
-                SessionInput(session, bootstrap, hideExactPtyEcho = true),
+                // Startup can echo the bootstrap twice before its lifecycle begins.
+                SessionInput(session, bootstrap, maximumPtyEchoes = 2),
             ).isFailure
         ) {
             downgradeStructuredShell(
@@ -769,7 +770,7 @@ class SessionManager(
     private data class SessionInput(
         val session: LiveSshSession,
         val bytes: ByteArray,
-        val hideExactPtyEcho: Boolean = false,
+        val maximumPtyEchoes: Int = 0,
         val clearAfterSend: Boolean = false,
         val commandId: CommandId? = null,
     )
@@ -823,14 +824,17 @@ internal class InternalInputEchoFilter {
     private var pattern: ByteArray? = null
     private var prefixLengths = IntArray(0)
     private var matchedBytes = 0
+    private var echoesRemaining = 0
 
     @Synchronized
-    fun expect(input: ByteArray) {
+    fun expect(input: ByteArray, maximumEchoes: Int = 1) {
         check(pattern == null) { "Only one internal input echo may be pending" }
+        require(maximumEchoes in 1..2)
         val expected = input.withPtyEchoLineEnding()
         pattern = expected
         prefixLengths = expected.prefixLengths()
         matchedBytes = 0
+        echoesRemaining = maximumEchoes
     }
 
     @Synchronized
@@ -853,7 +857,11 @@ internal class InternalInputEchoFilter {
 
             if (byte == expected[matchedBytes]) {
                 matchedBytes += 1
-                if (matchedBytes == expected.size) reset()
+                if (matchedBytes == expected.size) {
+                    matchedBytes = 0
+                    echoesRemaining -= 1
+                    if (echoesRemaining == 0) reset()
+                }
             } else {
                 output.write(byte.toInt())
             }
@@ -874,6 +882,7 @@ internal class InternalInputEchoFilter {
         pattern = null
         prefixLengths = IntArray(0)
         matchedBytes = 0
+        echoesRemaining = 0
     }
 }
 
