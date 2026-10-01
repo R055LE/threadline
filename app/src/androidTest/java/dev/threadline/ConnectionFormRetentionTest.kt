@@ -584,6 +584,10 @@ class ConnectionFormRetentionTest {
             .performClick()
         compose.waitForIdle()
         compose.onNodeWithText("printf saved").assertExists()
+        compose.onNodeWithText(
+            "While connected, only completed commands are saved. " +
+                "A crash can lose the unfinished command.",
+        ).assertExists()
         compose.onNodeWithTag(TranscriptHistoryTags.OUTPUT_PREFIX + "command-session-1")
             .assertExists()
         compose.onNodeWithText("Succeeded · exit 0").assertExists()
@@ -607,6 +611,25 @@ class ConnectionFormRetentionTest {
         compose.waitForIdle()
         assertEquals(1, clearCount)
         compose.onAllNodesWithTag(TranscriptHistoryTags.OPEN).assertCountEquals(0)
+    }
+
+    @Test
+    fun transcriptSaveFailureDoesNotClaimTheSessionEnded() {
+        compose.setContent {
+            MaterialTheme {
+                TranscriptHistorySection(
+                    sessions = emptyList(),
+                    saveFailed = true,
+                    onLoad = { error("No saved session") },
+                    onDelete = {},
+                    onClearAll = {},
+                )
+            }
+        }
+        compose.onNodeWithText(
+            "The latest transcript could not be saved. " +
+                "Recent commands may be missing from history.",
+        ).assertExists()
     }
 
     @Test
@@ -1338,7 +1361,7 @@ private fun transcriptSummary(
     port = 2222,
     username = "threadline",
     startedAtMillis = 1,
-    endedAtMillis = 2,
+    savedAtMillis = 2,
     turnsTruncated = false,
     turnCount = 1,
 )

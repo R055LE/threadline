@@ -29,6 +29,7 @@ import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.TranscriptArchiveSink
 import dev.threadline.core.transcript.TranscriptSessionArchive
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -259,8 +261,8 @@ class SessionManagerIoTest {
         assertEquals("prompt: ", manager.transcriptState.value.turns.single().output.plainText)
 
         manager.disconnect()
-        withTimeout(2_000) { while (archiveSink.archives.isEmpty()) delay(10) }
-        val archived = archiveSink.archives.single().transcript.turns.single()
+        withTimeout(2_000) { manager.state.first { it is SessionState.Disconnected } }
+        val archived = archiveSink.archives.last().transcript.turns.single()
         assertEquals("read -r reply", archived.command)
         assertEquals("prompt: ", archived.output.plainText)
     }
@@ -545,12 +547,16 @@ class SessionManagerIoTest {
         }
 
     @Test
-    fun `durable session archives one completed snapshot on disconnect`() = runBlocking {
+    fun `durable session checkpoints completed turns before disconnect`() = runBlocking {
         val session = RecordingSession()
         val archiveSink = RecordingTranscriptArchiveSink()
         val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
         val commandIds = ArrayDeque(
-            listOf(CommandId("bootstrap-probe"), CommandId("saved-command")),
+            listOf(
+                CommandId("bootstrap-probe"),
+                CommandId("saved-command"),
+                CommandId("unfinished-command"),
+            ),
         )
         var now = 100L
         val manager = SessionManager(
@@ -566,13 +572,14 @@ class SessionManagerIoTest {
 
         manager.prepareConnection(fixtureRequest())
         manager.connectPrepared()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.filterIsInstance<SessionState.Connected>().first()
         }
+        session.awaitSent(1)
         session.output.send(
             lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/home/threadline"),
         )
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
         }
         now = 125L
@@ -580,6 +587,7 @@ class SessionManagerIoTest {
             CommandSubmissionResult.Accepted(CommandId("saved-command")),
             manager.submitCommand("printf saved"),
         )
+        session.awaitSent(2)
         session.output.send(
             lifecycleBytes(
                 nonce = nonce,
@@ -589,26 +597,114 @@ class SessionManagerIoTest {
                 output = "saved output\r\n",
             ),
         )
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.transcriptState.first {
                 it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
             }
         }
 
+        withTimeout(5_000) { while (archiveSink.archives.isEmpty()) delay(10) }
+        val checkpoint = archiveSink.archives.single()
+        assertTrue(manager.state.value is SessionState.Connected)
+        assertEquals(125L, checkpoint.savedAtMillis)
+        assertEquals("saved output\n", checkpoint.transcript.turns.single().output.plainText)
+
+        manager.submitCommand("sleep 30")
+        session.awaitSent(3)
+        session.output.send(
+            ("\u001b]777;threadline;${nonce.value};start;unfinished-command\u0007" +
+                "\u001b]777;threadline;${nonce.value};output;unfinished-command\u0007" +
+                "unfinished output").encodeToByteArray(),
+        )
+        withTimeout(5_000) {
+            manager.transcriptState.first {
+                it.turns.last().output.plainText == "unfinished output"
+            }
+        }
+        assertEquals(1, archiveSink.archives.size)
+        assertEquals(listOf("printf saved"), checkpoint.transcript.turns.map { it.command })
+        assertEquals(null, checkpoint.transcript.activeCommandId)
+
         now = 200L
         manager.disconnect()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.first { it is SessionState.Disconnected }
         }
 
-        val archived = archiveSink.archives.single()
+        assertEquals(2, archiveSink.archives.size)
+        val archived = archiveSink.archives.last()
         assertEquals("saved-session", archived.id)
         assertEquals(100L, archived.startedAtMillis)
-        assertEquals(200L, archived.endedAtMillis)
+        assertEquals(200L, archived.savedAtMillis)
         assertEquals("Fixture", archived.profile.displayName)
-        assertEquals("printf saved", archived.transcript.turns.single().command)
-        assertEquals("saved output\n", archived.transcript.turns.single().output.plainText)
+        assertEquals("printf saved", archived.transcript.turns.first().command)
+        assertEquals("saved output\n", archived.transcript.turns.first().output.plainText)
+        assertEquals(2, archived.transcript.turns.size)
+        assertEquals(CommandStatus.DISCONNECTED, archived.transcript.turns.last().status)
+        assertEquals("unfinished output", archived.transcript.turns.last().output.plainText)
         assertTrue(!manager.transcriptSaveFailed.value)
+    }
+
+    @Test
+    fun `slow checkpoint cannot overwrite connection loss archive`() = runBlocking {
+        val session = RecordingSession()
+        val checkpointStarted = CompletableDeferred<Unit>()
+        val releaseCheckpoint = CompletableDeferred<Unit>()
+        val archives = CopyOnWriteArrayList<TranscriptSessionArchive>()
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val commandIds = ArrayDeque(
+            listOf(
+                CommandId("bootstrap-probe"),
+                CommandId("saved-command"),
+                CommandId("unfinished-command"),
+            ),
+        )
+        val manager = SessionManager(
+            adapter = ImmediateAdapter(session),
+            knownHostStore = EmptyKnownHostStore,
+            terminal = FakeTerminal,
+            sessionNonceFactory = { nonce },
+            commandIdFactory = { commandIds.removeFirst() },
+            transcriptArchiveSink = TranscriptArchiveSink { archive ->
+                if (archive.transcript.turns.size == 1) {
+                    checkpointStarted.complete(Unit)
+                    withContext(NonCancellable) { releaseCheckpoint.await() }
+                }
+                archives += archive
+            },
+        )
+        try {
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            session.awaitSent(1)
+            session.output.send(lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"))
+            withTimeout(5_000) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+            }
+            manager.submitCommand("printf saved")
+            session.awaitSent(2)
+            session.output.send(
+                lifecycleBytes(nonce, CommandId("saved-command"), 0, "/tmp", "saved"),
+            )
+            withTimeout(5_000) { checkpointStarted.await() }
+            manager.submitCommand("sleep 30")
+            session.awaitSent(3)
+            session.disconnects.emit(Unit)
+            withTimeout(5_000) { manager.state.first { it is SessionState.Failed } }
+            delay(100)
+            assertTrue(archives.isEmpty())
+
+            releaseCheckpoint.complete(Unit)
+            withTimeout(5_000) { while (archives.size < 2) delay(10) }
+            assertEquals(archives.first().id, archives.last().id)
+            assertEquals(1, archives.first().transcript.turns.size)
+            assertEquals(2, archives.last().transcript.turns.size)
+            assertEquals(CommandStatus.DISCONNECTED, archives.last().transcript.turns.last().status)
+        } finally {
+            releaseCheckpoint.complete(Unit)
+            manager.disconnect()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Disconnected } }
+        }
     }
 
     @Test
@@ -630,16 +726,18 @@ class SessionManagerIoTest {
 
         manager.prepareConnection(fixtureRequest(ephemeral = true))
         manager.connectPrepared()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.filterIsInstance<SessionState.Connected>().first()
         }
+        session.awaitSent(1)
         session.output.send(
             lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"),
         )
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
         }
         manager.submitCommand("printf private")
+        session.awaitSent(2)
         session.output.send(
             lifecycleBytes(
                 nonce,
@@ -649,14 +747,15 @@ class SessionManagerIoTest {
                 "private output",
             ),
         )
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.transcriptState.first {
                 it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
             }
         }
+        assertTrue(archiveSink.archives.isEmpty())
 
         manager.disconnect()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.first { it is SessionState.Disconnected }
         }
 
@@ -683,25 +782,29 @@ class SessionManagerIoTest {
 
         manager.prepareConnection(fixtureRequest())
         manager.connectPrepared()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.filterIsInstance<SessionState.Connected>().first()
         }
+        session.awaitSent(1)
         session.output.send(lifecycleBytes(nonce, CommandId("bootstrap-probe"), 0, "/tmp"))
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
         }
         manager.submitCommand("printf private")
+        session.awaitSent(2)
         session.output.send(
             lifecycleBytes(nonce, CommandId("saved-command"), 0, "/tmp", "private output"),
         )
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.transcriptState.first {
                 it.turns.singleOrNull()?.status == CommandStatus.SUCCEEDED
             }
         }
+        withTimeout(5_000) { manager.transcriptSaveFailed.first { it } }
+        assertTrue(manager.state.value is SessionState.Connected)
 
         manager.disconnect()
-        withTimeout(2_000) {
+        withTimeout(5_000) {
             manager.state.first { it is SessionState.Disconnected }
         }
 
@@ -895,13 +998,17 @@ private fun SessionCredential.isCleared(): Boolean = when (this) {
 
 private class RecordingSession : LiveSshSession {
     override val output = Channel<ByteArray>(Channel.BUFFERED)
-    override val disconnects: Flow<Unit> = MutableSharedFlow()
+    override val disconnects = MutableSharedFlow<Unit>()
     val sent = CopyOnWriteArrayList<ByteArray>()
     val disconnected = CompletableDeferred<Unit>()
 
     override suspend fun send(bytes: ByteArray) {
         delay(1)
         sent += bytes.copyOf()
+    }
+
+    suspend fun awaitSent(count: Int) {
+        withTimeout(5_000) { while (sent.size < count) delay(10) }
     }
 
     override suspend fun resize(size: TerminalSize): Boolean = true
