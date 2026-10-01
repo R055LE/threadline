@@ -220,6 +220,11 @@ class SessionManager(
         val previousCleanup = cleanupJob
         connectJob = scope.launch {
             previousCleanup?.join()
+            // Abandoned input must not consume the fresh shell's bootstrap slot.
+            while (true) {
+                val input = inputRequests.tryReceive().getOrNull() ?: break
+                input.bytes.fill(0)
+            }
             synchronized(transcriptArchiveLock) {
                 activeTranscriptSession = ActiveTranscriptSession(
                     id = transcriptSessionIdFactory(),
@@ -255,7 +260,7 @@ class SessionManager(
             inputRequests.trySend(SessionInput(session, bytes.copyOf())).isFailure &&
             state.value is SessionState.Connected
         ) {
-            failSession(SessionError.InputBackpressure)
+            failSession(SessionError.InputBackpressure, session)
         }
     }
 

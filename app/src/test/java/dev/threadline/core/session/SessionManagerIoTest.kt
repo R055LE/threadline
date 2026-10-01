@@ -48,6 +48,43 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class SessionManagerIoTest {
     @Test
+    fun `input backpressure discards queued old input before a fresh shell`() = runBlocking {
+        val old = RecordingSession(releaseSend = CompletableDeferred())
+        val fresh = RecordingSession()
+        val sessions = ArrayDeque(listOf(old, fresh))
+        val adapter = object : SshClientAdapter {
+            override suspend fun connect(
+                request: ConnectionRequest,
+                verifier: ServerHostKeyVerifier,
+                initialSize: TerminalSize,
+                onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
+            ): LiveSshSession = sessions.removeFirst()
+        }
+        val manager = SessionManager(adapter, EmptyKnownHostStore, FakeTerminal)
+        try {
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Connected } }
+            withTimeout(5_000) { old.sendStarted.await() }
+            repeat(257) { manager.send("queued-old".encodeToByteArray()) }
+            val failed = withTimeout(5_000) {
+                manager.state.filterIsInstance<SessionState.Failed>().first()
+            }
+            assertEquals(SessionError.InputBackpressure, failed.error)
+            withTimeout(5_000) { old.disconnected.await() }
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            fresh.awaitSent(1)
+            assertTrue(manager.state.value is SessionState.Connected)
+            assertEquals(1, old.sent.size)
+            assertTrue(!fresh.sent.single().decodeToString().contains("queued-old"))
+        } finally {
+            manager.disconnect()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Disconnected } }
+        }
+    }
+
+    @Test
     fun `fresh connection waits for cleanup uses a new archive and never replays commands`() = runBlocking {
         val releaseDisconnect = CompletableDeferred<Unit>()
         val old = RecordingSession(releaseDisconnect)
@@ -1144,13 +1181,17 @@ private fun SessionCredential.isCleared(): Boolean = when (this) {
 
 private class RecordingSession(
     private val releaseDisconnect: CompletableDeferred<Unit>? = null,
+    private val releaseSend: CompletableDeferred<Unit>? = null,
 ) : LiveSshSession {
     override val output = Channel<ByteArray>(Channel.BUFFERED)
     override val disconnects = MutableSharedFlow<Unit>()
     val sent = CopyOnWriteArrayList<ByteArray>()
     val disconnected = CompletableDeferred<Unit>()
+    val sendStarted = CompletableDeferred<Unit>()
 
     override suspend fun send(bytes: ByteArray) {
+        sendStarted.complete(Unit)
+        releaseSend?.await()
         delay(1)
         sent += bytes.copyOf()
     }
@@ -1163,6 +1204,7 @@ private class RecordingSession(
 
     override suspend fun disconnect() {
         releaseDisconnect?.await()
+        releaseSend?.complete(Unit)
         disconnected.complete(Unit)
     }
 }
