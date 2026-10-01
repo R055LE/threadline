@@ -219,6 +219,7 @@ private fun SessionError.diagnosticCode(): String = when (this) {
     SessionError.NetworkUnreachable -> "network_unreachable"
     SessionError.ProtocolMismatch -> "protocol_mismatch"
     SessionError.ConnectionLost -> "connection_lost"
+    is SessionError.ShellEnded -> "shell_ended"
     SessionError.InputBackpressure -> "input_backpressure"
     SessionError.TerminalRendererFailed -> "terminal_renderer_failed"
     SessionError.NotificationPermissionRequired -> "notification_permission_required"

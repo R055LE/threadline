@@ -138,6 +138,7 @@ class DiagnosticReportTest {
             SessionError.NetworkUnreachable to "network_unreachable",
             SessionError.ProtocolMismatch to "protocol_mismatch",
             SessionError.ConnectionLost to "connection_lost",
+            SessionError.ShellEnded(1) to "shell_ended",
             SessionError.InputBackpressure to "input_backpressure",
             SessionError.TerminalRendererFailed to "terminal_renderer_failed",
             SessionError.NotificationPermissionRequired to "notification_permission_required",

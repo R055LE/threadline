@@ -73,6 +73,11 @@ nonzero exit even though
 cases are skipped during ordinary connected-test runs because neither fixture
 credential is supplied.
 
+Recovery cases cover shell `exit`, `exec`, persistent strict-mode failure, and abrupt transport
+loss. Each fresh connection verifies the server again, gets its own archive, and starts without
+the previous directory, exports, aliases, functions, or command replay. A deliberately missed
+bootstrap also proves that the connected raw PTY remains usable.
+
 To run the opt-in Phase 5 large-output profile against the production SSH,
 session, transcript, and terminal path:
 

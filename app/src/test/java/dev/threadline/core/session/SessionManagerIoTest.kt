@@ -48,6 +48,152 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class SessionManagerIoTest {
     @Test
+    fun `fresh connection waits for cleanup uses a new archive and never replays commands`() = runBlocking {
+        val releaseDisconnect = CompletableDeferred<Unit>()
+        val old = RecordingSession(releaseDisconnect)
+        val fresh = RecordingSession()
+        val sessions = ArrayDeque(listOf(old, fresh))
+        val attempts = AtomicInteger()
+        val adapter = object : SshClientAdapter {
+            override suspend fun connect(
+                request: ConnectionRequest,
+                verifier: ServerHostKeyVerifier,
+                initialSize: TerminalSize,
+                onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
+            ): LiveSshSession {
+                attempts.incrementAndGet()
+                return sessions.removeFirst()
+            }
+        }
+        val nonce = SessionNonce("0123456789abcdef0123456789abcdef")
+        val freshNonce = SessionNonce("abcdef0123456789abcdef0123456789")
+        val nonces = ArrayDeque(listOf(nonce, freshNonce))
+        val ids = ArrayDeque(listOf("bootstrap-old", "completed-old", "exit-old", "bootstrap-new", "command-new"))
+        val archiveIds = ArrayDeque(listOf("old-session", "new-session"))
+        val archives = RecordingTranscriptArchiveSink()
+        val manager = SessionManager(
+            adapter, EmptyKnownHostStore, FakeTerminal,
+            sessionNonceFactory = { nonces.removeFirst() },
+            commandIdFactory = { CommandId(ids.removeFirst()) },
+            transcriptSessionIdFactory = { archiveIds.removeFirst() },
+            transcriptArchiveSink = archives,
+        )
+        val profile = HostProfile("Fixture", HostEndpoint("fixture.test", 2222), "threadline")
+        fun request() = ConnectionRequest(
+            profile = profile,
+            credential = SessionCredential.PrivateKey.from(byteArrayOf(1, 2), null),
+            identityId = "chosen-identity",
+            importedPrivateKeyId = "chosen-key",
+        )
+        try {
+            assertTrue(manager.prepareConnection(request()))
+            assertTrue(manager.connectPrepared())
+            old.awaitSent(1)
+            old.output.send(lifecycleBytes(nonce, CommandId("bootstrap-old"), 0, "/tmp"))
+            withTimeout(5_000) { manager.structuredState.first { it is StructuredShellState.Ready } }
+            manager.submitCommand("printf old")
+            old.awaitSent(2)
+            old.output.send(lifecycleBytes(nonce, CommandId("completed-old"), 0, "/tmp", "old output"))
+            withTimeout(5_000) {
+                manager.structuredState.first {
+                    it is StructuredShellState.Ready && it.lastCommand?.id == CommandId("completed-old")
+                }
+            }
+            manager.submitCommand("exit")
+            old.awaitSent(3)
+            old.output.close()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Failed } }
+            assertEquals(listOf("printf old", "exit"), manager.transcriptState.value.turns.map { it.command })
+            assertEquals(CommandStatus.DISCONNECTED, manager.transcriptState.value.turns.last().status)
+            assertEquals("chosen-identity", manager.connectionTarget.value?.identityId)
+            assertEquals("chosen-key", manager.connectionTarget.value?.importedPrivateKeyId)
+            assertTrue(requireNotNull(manager.connectionTarget.value).usesPrivateKey)
+            assertEquals(1, attempts.get())
+
+            manager.cancelPrepared(SessionError.ServiceStartFailed)
+            assertTrue(manager.prepareConnection(request()))
+            assertTrue(manager.connectPrepared())
+            delay(100)
+            assertEquals(1, attempts.get())
+            releaseDisconnect.complete(Unit)
+            fresh.awaitSent(1)
+            fresh.output.send(lifecycleBytes(freshNonce, CommandId("bootstrap-new"), 0, "/home/threadline"))
+            withTimeout(5_000) { manager.structuredState.first { it is StructuredShellState.Ready } }
+            old.disconnects.emit(Unit)
+            delay(100)
+            assertTrue(manager.state.value is SessionState.Connected)
+            assertTrue(manager.transcriptState.value.turns.isEmpty())
+            assertEquals(1, fresh.sent.size)
+            assertTrue(!fresh.sent.single().decodeToString().contains("printf old"))
+            assertEquals(2, attempts.get())
+
+            manager.submitCommand("printf fresh")
+            fresh.awaitSent(2)
+            fresh.output.send(lifecycleBytes(freshNonce, CommandId("command-new"), 0, "/home/threadline", "fresh output"))
+            withTimeout(5_000) { while (archives.archives.none { it.id == "new-session" }) delay(10) }
+            assertEquals(setOf("old-session", "new-session"), archives.archives.map { it.id }.toSet())
+            assertEquals(2, archives.archives.last { it.id == "old-session" }.transcript.turns.size)
+            assertEquals("printf fresh", archives.archives.last { it.id == "new-session" }.transcript.turns.single().command)
+        } finally {
+            releaseDisconnect.complete(Unit)
+            manager.disconnect()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Disconnected } }
+        }
+    }
+
+    @Test
+    fun `fresh connection verifies the host key again and blocks a changed key`() = runBlocking {
+        val original = byteArrayOf(1, 2, 3)
+        val replacement = byteArrayOf(9, 9, 9)
+        val session = RecordingSession()
+        val adapter = HostKeyCheckingAdapter(listOf(original, original, replacement), session)
+        val store = MutableKnownHostStore()
+        val manager = SessionManager(adapter, store, FakeTerminal)
+        try {
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            withTimeout(5_000) { manager.state.first { it is SessionState.AwaitingHostKey } }
+            manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE)
+            withTimeout(5_000) { manager.state.first { it is SessionState.Connected } }
+            session.output.close()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Failed } }
+            val freshRequest = fixtureRequest()
+            manager.prepareConnection(freshRequest)
+            manager.connectPrepared()
+            val failed = withTimeout(5_000) {
+                manager.state.filterIsInstance<SessionState.Failed>().first()
+            }
+            assertTrue(failed.error is SessionError.HostKeyChanged)
+            assertEquals(3, adapter.attempts)
+            assertArrayEquals(original, requireNotNull(store.record).key.encoded)
+            withTimeout(5_000) { while (!freshRequest.credential.isCleared()) delay(10) }
+        } finally {
+            manager.disconnect()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Disconnected } }
+        }
+    }
+
+    @Test
+    fun `ended shell releases its transport before another connection`() = runBlocking {
+        val session = RecordingSession()
+        val manager = SessionManager(ImmediateAdapter(session), EmptyKnownHostStore, FakeTerminal)
+        try {
+            manager.prepareConnection(fixtureRequest())
+            manager.connectPrepared()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Connected } }
+            session.output.close()
+            val failed = withTimeout(5_000) {
+                manager.state.filterIsInstance<SessionState.Failed>().first()
+            }
+            assertEquals(SessionError.ShellEnded(), failed.error)
+            withTimeout(5_000) { session.disconnected.await() }
+        } finally {
+            manager.disconnect()
+            withTimeout(5_000) { manager.state.first { it is SessionState.Disconnected } }
+        }
+    }
+
+    @Test
     fun `unknown host saves and reconnects after deferred decision`() = runBlocking {
         val key = byteArrayOf(1, 2, 3, 4)
         val session = RecordingSession()
@@ -996,7 +1142,9 @@ private fun SessionCredential.isCleared(): Boolean = when (this) {
         keyBytes.all { it == 0.toByte() } && passphrase?.all { it == '\u0000' } != false
 }
 
-private class RecordingSession : LiveSshSession {
+private class RecordingSession(
+    private val releaseDisconnect: CompletableDeferred<Unit>? = null,
+) : LiveSshSession {
     override val output = Channel<ByteArray>(Channel.BUFFERED)
     override val disconnects = MutableSharedFlow<Unit>()
     val sent = CopyOnWriteArrayList<ByteArray>()
@@ -1014,6 +1162,7 @@ private class RecordingSession : LiveSshSession {
     override suspend fun resize(size: TerminalSize): Boolean = true
 
     override suspend fun disconnect() {
+        releaseDisconnect?.await()
         disconnected.complete(Unit)
     }
 }

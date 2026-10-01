@@ -1,6 +1,7 @@
 package dev.threadline.core.session
 
 import dev.threadline.core.model.ConnectionRequest
+import dev.threadline.core.model.ConnectionTarget
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
@@ -55,7 +56,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -105,6 +106,8 @@ class SessionManager(
     val transcriptState: StateFlow<CommandTranscriptState> = commandTranscript.state
     private val mutableTranscriptSaveFailed = MutableStateFlow(false)
     val transcriptSaveFailed: StateFlow<Boolean> = mutableTranscriptSaveFailed
+    private val mutableConnectionTarget = MutableStateFlow<ConnectionTarget?>(null)
+    val connectionTarget: StateFlow<ConnectionTarget?> = mutableConnectionTarget
     val snapshot: StateFlow<SessionSnapshot> = combine(
         state,
         structuredState,
@@ -126,6 +129,7 @@ class SessionManager(
     private var outputJob: Job? = null
     private var disconnectMonitorJob: Job? = null
     private var disconnectJob: Job? = null
+    private var cleanupJob: Job? = null
     private var bootstrapTimeoutJob: Job? = null
     private var activeTranscriptSession: ActiveTranscriptSession? = null
 
@@ -143,9 +147,10 @@ class SessionManager(
         scope.launch {
             inputRequests.consumeEach { input ->
                 if (
+                    liveSession !== input.session ||
                     input.commandId != null &&
-                    (structuredState.value as? StructuredShellState.Running)
-                        ?.activeCommand?.id != input.commandId
+                        (structuredState.value as? StructuredShellState.Running)
+                            ?.activeCommand?.id != input.commandId
                 ) {
                     input.bytes.fill(0)
                     return@consumeEach
@@ -158,12 +163,9 @@ class SessionManager(
                         input.session.send(input.bytes)
                     }
                         .onFailure {
-                            internalInputEchoFilter.cancel()
-                            if (
-                                liveSession === input.session &&
-                                state.value is SessionState.Connected
-                            ) {
-                                failSession(SessionError.ConnectionLost)
+                            if (liveSession === input.session) {
+                                internalInputEchoFilter.cancel()
+                                failSession(SessionError.ConnectionLost, input.session)
                             }
                         }
                 } finally {
@@ -175,10 +177,11 @@ class SessionManager(
             resizeRequests
                 .debounce(100)
                 .collect { size ->
-                    val accepted = runCatching { liveSession?.resize(size) ?: true }
+                    val session = liveSession ?: return@collect
+                    val accepted = runCatching { session.resize(size) }
                         .getOrDefault(false)
-                    if (!accepted && state.value is SessionState.Connected) {
-                        failSession(SessionError.PtyResizeRejected)
+                    if (!accepted) {
+                        failSession(SessionError.PtyResizeRejected, session)
                     }
                 }
         }
@@ -192,8 +195,8 @@ class SessionManager(
 
     fun prepareConnection(request: ConnectionRequest): Boolean = synchronized(pendingLock) {
         if (
-            state.value !is SessionState.Disconnected &&
-            state.value !is SessionState.Failed
+            disconnectJob?.isActive == true ||
+            state.value !is SessionState.Disconnected && state.value !is SessionState.Failed
         ) {
             request.credential.clear()
             return@synchronized false
@@ -204,25 +207,33 @@ class SessionManager(
         true
     }
 
-    fun connectPrepared(): Boolean {
-        val request = synchronized(pendingLock) {
-            pendingRequest.also { pendingRequest = null }
-        } ?: return false
-
-        synchronized(transcriptArchiveLock) {
-            activeTranscriptSession = ActiveTranscriptSession(
-                id = transcriptSessionIdFactory(),
-                profile = request.profile,
-                ephemeral = request.ephemeral,
-            )
+    fun connectPrepared(): Boolean = synchronized(pendingLock) {
+        val request = pendingRequest ?: return@synchronized false
+        pendingRequest = null
+        if (disconnectJob?.isActive == true ||
+            state.value !is SessionState.Disconnected && state.value !is SessionState.Failed
+        ) {
+            request.credential.clear()
+            return@synchronized false
         }
         stateMachine.apply(SessionEvent.ConnectRequested(request.profile.displayName))
-        commandTranscript.reset()
-        resetStructuredShell()
-        internalInputEchoFilter.reset()
-        terminal.clear()
-        connectJob = scope.launch { establish(request) }
-        return true
+        val previousCleanup = cleanupJob
+        connectJob = scope.launch {
+            previousCleanup?.join()
+            synchronized(transcriptArchiveLock) {
+                activeTranscriptSession = ActiveTranscriptSession(
+                    id = transcriptSessionIdFactory(),
+                    profile = request.profile,
+                    ephemeral = request.ephemeral,
+                )
+            }
+            commandTranscript.reset()
+            resetStructuredShell()
+            internalInputEchoFilter.reset()
+            terminal.clear()
+            establish(request)
+        }.also { job -> job.invokeOnCompletion { request.credential.clear() } }
+        true
     }
 
     fun cancelPrepared(error: SessionError) {
@@ -230,7 +241,7 @@ class SessionManager(
             pendingRequest?.credential?.clear()
             pendingRequest = null
         }
-        stateMachine.apply(SessionEvent.Failed(error))
+        failSession(error)
     }
 
     fun resolveHostKey(decision: HostKeyDecision): Boolean {
@@ -365,10 +376,12 @@ class SessionManager(
         resizeRequests.tryEmit(size)
     }
 
-    fun disconnect() {
-        if (disconnectJob?.isActive == true) return
+    fun disconnect() = synchronized(pendingLock) {
+        if (disconnectJob?.isActive == true) return@synchronized
+        stateMachine.apply(SessionEvent.DisconnectRequested)
+        val previousCleanup = cleanupJob
         disconnectJob = scope.launch {
-            stateMachine.apply(SessionEvent.DisconnectRequested)
+            previousCleanup?.join()
             synchronized(decisionLock) {
                 hostKeyDecision?.complete(HostKeyDecision.REJECT)
             }
@@ -388,25 +401,7 @@ class SessionManager(
     }
 
     fun onServiceDestroyed() {
-        scope.launch {
-            synchronized(decisionLock) {
-                hostKeyDecision?.complete(HostKeyDecision.REJECT)
-            }
-            connectJob?.cancelAndJoin()
-            outputJob?.cancelAndJoin()
-            disconnectMonitorJob?.cancelAndJoin()
-            bootstrapTimeoutJob?.cancelAndJoin()
-            val session = liveSession
-            liveSession = null
-            commandTranscript.sessionDisconnected()
-            val archive = closeTranscriptSession()
-            resetStructuredShell()
-            runCatching { session?.disconnect() }
-            persistTranscriptArchive(archive)
-            if (state.value !is SessionState.Failed) {
-                stateMachine.apply(SessionEvent.Disconnected)
-            }
-        }
+        if (state.value !is SessionState.Failed) disconnect()
     }
 
     private suspend fun establish(request: ConnectionRequest) {
@@ -436,11 +431,21 @@ class SessionManager(
                     }
                 }
             }
-            liveSession = session
-            markTranscriptSessionConnected()
-            startStructuredShell(session)
-            stateMachine.apply(SessionEvent.ShellReady(terminal.size))
-            startSessionJobs(session)
+            synchronized(pendingLock) {
+                liveSession = session
+                mutableConnectionTarget.value = ConnectionTarget(
+                    profile = request.profile,
+                    usesPrivateKey = request.credential is SessionCredential.PrivateKey,
+                    ephemeral = request.ephemeral,
+                    identityId = request.identityId,
+                    importedPrivateKeyId = request.importedPrivateKeyId,
+                    privateKeyUri = request.privateKeyUri,
+                )
+                markTranscriptSessionConnected()
+                startStructuredShell(session)
+                stateMachine.apply(SessionEvent.ShellReady(terminal.size))
+                startSessionJobs(session)
+            }
         } catch (failure: SshAdapterException) {
             failSession(failure.error)
         } finally {
@@ -474,6 +479,9 @@ class SessionManager(
             profile = request.profile,
             credential = attemptCredential,
             ephemeral = request.ephemeral,
+            identityId = request.identityId,
+            importedPrivateKeyId = request.importedPrivateKeyId,
+            privateKeyUri = request.privateKeyUri,
         )
 
         return try {
@@ -550,28 +558,22 @@ class SessionManager(
         outputJob = scope.launch {
             try {
                 for (bytes in session.output) {
+                    if (liveSession !== session) break
                     val terminalBytes = internalInputEchoFilter.consume(bytes)
                     if (terminalBytes.isNotEmpty()) terminal.receive(terminalBytes)
                     processStructuredOutput(bytes)
                 }
-                failIfUnexpectedDisconnect()
+                failSession(session.outputEndError(), session)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (state.value is SessionState.Connected) {
-                    failSession(SessionError.TerminalRendererFailed)
-                }
+                failSession(SessionError.TerminalRendererFailed, session)
             }
         }
         disconnectMonitorJob = scope.launch {
-            session.disconnects.first()
-            failIfUnexpectedDisconnect()
-        }
-    }
-
-    private fun failIfUnexpectedDisconnect() {
-        if (state.value is SessionState.Connected) {
-            failSession(SessionError.ConnectionLost)
+            if (session.disconnects.firstOrNull() != null) {
+                failSession(SessionError.ConnectionLost, session)
+            }
         }
     }
 
@@ -727,13 +729,33 @@ class SessionManager(
         }
     }
 
-    private fun failSession(error: SessionError) {
-        commandTranscript.sessionDisconnected()
-        val archive = closeTranscriptSession()
-        scope.launch { persistTranscriptArchive(archive) }
-        resetStructuredShell()
-        stateMachine.apply(SessionEvent.Failed(error))
-    }
+    private fun failSession(error: SessionError, expectedSession: LiveSshSession? = null) =
+        synchronized(pendingLock) {
+            if (expectedSession != null &&
+                (liveSession !== expectedSession || state.value !is SessionState.Connected)
+            ) return@synchronized
+            val session = liveSession
+            liveSession = null
+            val connecting = connectJob
+            val output = outputJob
+            val monitor = disconnectMonitorJob
+            val previousCleanup = cleanupJob
+            connecting?.cancel()
+            output?.cancel()
+            monitor?.cancel()
+            commandTranscript.sessionDisconnected()
+            val archive = closeTranscriptSession()
+            resetStructuredShell()
+            cleanupJob = scope.launch {
+                previousCleanup?.join()
+                connecting?.join()
+                output?.join()
+                monitor?.join()
+                runCatching { session?.disconnect() }
+                persistTranscriptArchive(archive)
+            }
+            stateMachine.apply(SessionEvent.Failed(error))
+        }
 
     private fun markTranscriptSessionConnected() = synchronized(transcriptArchiveLock) {
         activeTranscriptSession = activeTranscriptSession?.copy(

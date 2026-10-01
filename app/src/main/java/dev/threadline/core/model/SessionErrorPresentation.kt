@@ -119,6 +119,12 @@ fun SessionError.presentation(): SessionErrorPresentation = when (this) {
         action = SessionErrorAction.REVIEW_SERVER,
     )
 
+    is SessionError.ShellEnded -> SessionErrorPresentation(
+        title = "Shell ended",
+        message = userMessage,
+        recovery = "Start a fresh shell to continue. The last command may have ended the shell.",
+    )
+
     SessionError.InputBackpressure -> SessionErrorPresentation(
         title = "Session input stopped",
         message = userMessage,

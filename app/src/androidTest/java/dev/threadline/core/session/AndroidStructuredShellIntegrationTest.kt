@@ -9,6 +9,7 @@ import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostProfile
 import dev.threadline.core.model.SessionCredential
+import dev.threadline.core.model.SessionError
 import dev.threadline.core.model.SessionState
 import dev.threadline.core.model.TerminalSize
 import dev.threadline.core.shell.CommandId
@@ -16,6 +17,7 @@ import dev.threadline.core.shell.CommandSubmissionRejection
 import dev.threadline.core.shell.CommandSubmissionResult
 import dev.threadline.core.shell.CompletedCommand
 import dev.threadline.core.shell.StructuredShellState
+import dev.threadline.core.shell.StructuredShellUnavailableReason
 import dev.threadline.core.ssh.AndroidSshCryptoProvider
 import dev.threadline.core.ssh.ConnectBotSshClientAdapter
 import dev.threadline.core.ssh.HostKeyAlgorithmPolicy
@@ -36,6 +38,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -50,6 +53,165 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AndroidStructuredShellIntegrationTest {
+    @Test
+    fun shellExitExecStrictFailureAndTransportLossRequireExplicitFreshConnections() = runBlocking {
+        val arguments = InstrumentationRegistry.getArguments()
+        val password = arguments.getString(PASSWORD_ARGUMENT)
+        assumeTrue("No fixture password supplied", !password.isNullOrEmpty())
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("android_recovery_known_hosts", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        val database = Room.inMemoryDatabaseBuilder(context, ThreadlineDatabase::class.java).build()
+        val history = RoomTranscriptHistoryStore(database.transcriptArchives())
+        val adapter = RecordingSshClientAdapter(ConnectBotSshClientAdapter(
+            HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(AndroidSshCryptoProvider.install()),
+        ))
+        val ids = AtomicInteger()
+        val manager = SessionManager(
+            adapter = adapter,
+            knownHostStore = RoomKnownHostStore(database.knownHosts(), preferences),
+            terminal = NoOpTerminal,
+            transcriptArchiveSink = history,
+            transcriptSessionIdFactory = { "recovery-session-${ids.incrementAndGet()}" },
+        )
+        val profile = HostProfile(
+            "Recovery fixture",
+            HostEndpoint(arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
+                arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT),
+            arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER,
+        )
+        suspend fun connect(first: Boolean = false) {
+            val request = ConnectionRequest(
+                profile, SessionCredential.Password.from(requireNotNull(password).toCharArray()),
+                identityId = "fixture-identity",
+            )
+            assertTrue(manager.prepareConnection(request))
+            assertTrue(manager.connectPrepared())
+            if (first) {
+                withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                    manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+                }
+                assertTrue(manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE))
+            }
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Ready>().first()
+            }
+            assertTrue(manager.transcriptState.value.turns.isEmpty())
+        }
+        try {
+            connect(first = true)
+            val cases = listOf(
+                "exit 7" to SessionError.ShellEnded(7),
+                "exec bash -c 'printf exec-output; exit 6'" to SessionError.ShellEnded(6),
+                "set -e; false" to SessionError.ShellEnded(1),
+                "kill -KILL \"\$PPID\"" to SessionError.ConnectionLost,
+            ) + List(5) {
+                "printf '%131072s' ''; kill -KILL \"\$PPID\"" to SessionError.ConnectionLost
+            }
+            cases.forEachIndexed { index, (command, expected) ->
+                assertSuccessful(manager,
+                    "cd /tmp; export THREADLINE_RECOVERY=old; " +
+                        "alias recovery_alias='printf old'; recovery_function() { printf old; }")
+                val ended = accepted(manager.submitCommand(command))
+                val failure = withTimeout(COMMAND_TIMEOUT_MILLIS) {
+                    manager.state.filterIsInstance<SessionState.Failed>().first()
+                }
+                assertEquals(expected, failure.error)
+                assertEquals(profile, manager.connectionTarget.value?.profile)
+                assertEquals("fixture-identity", manager.connectionTarget.value?.identityId)
+                assertEquals(CommandStatus.DISCONNECTED,
+                    manager.transcriptState.value.turns.last().status)
+                assertEquals(ended.commandId, manager.transcriptState.value.turns.last().id)
+                val sends = adapter.sent.size
+                val attempts = adapter.attempts.get()
+                delay(200)
+                assertEquals(sends, adapter.sent.size)
+                assertEquals(attempts, adapter.attempts.get())
+                connect()
+                assertEquals(attempts + 1, adapter.attempts.get())
+                assertEquals(sends + 1, adapter.sent.size)
+                assertEquals(index + 2, ids.get())
+                val archived = history.load("recovery-session-${index + 1}")
+                assertEquals(command, archived.turns.last().turn.command)
+                assertEquals(CommandStatus.DISCONNECTED, archived.turns.last().turn.status)
+                assertEquals(0, execute(manager,
+                    "test \"\$PWD\" = \"\$HOME\" && test \"\${THREADLINE_RECOVERY-unset}\" = unset && " +
+                        "! alias recovery_alias >/dev/null 2>&1 && ! declare -F recovery_function && " +
+                        "printf 'fresh-state\\n'").exitStatus)
+            }
+        } finally {
+            manager.disconnect()
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) { manager.state.first { it is SessionState.Disconnected } }
+            database.close()
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun bootstrapDowngradeKeepsTheFixturePtyLive() = runBlocking {
+        val arguments = InstrumentationRegistry.getArguments()
+        val password = arguments.getString(PASSWORD_ARGUMENT)
+        assumeTrue("No fixture password supplied", !password.isNullOrEmpty())
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("android_downgrade_known_hosts", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        val database = Room.inMemoryDatabaseBuilder(context, ThreadlineDatabase::class.java).build()
+        val delegate = ConnectBotSshClientAdapter(
+            HostKeyAlgorithmPolicy.overrideWhenEd25519Unavailable(AndroidSshCryptoProvider.install()),
+        )
+        val adapter = object : SshClientAdapter {
+            override suspend fun connect(
+                request: ConnectionRequest,
+                verifier: ServerHostKeyVerifier,
+                initialSize: TerminalSize,
+                onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
+            ): LiveSshSession {
+                val session = delegate.connect(request, verifier, initialSize, onStage)
+                var firstSend = true
+                return object : LiveSshSession by session {
+                    override suspend fun send(bytes: ByteArray) {
+                        if (firstSend) {
+                            firstSend = false
+                            session.send("printf 'raw-only-fixture\\n'\r".encodeToByteArray())
+                        } else session.send(bytes)
+                    }
+                }
+            }
+        }
+        val terminal = RecordingTerminal()
+        val manager = SessionManager(adapter, RoomKnownHostStore(database.knownHosts(), preferences),
+            terminal, bootstrapTimeoutMillis = 1_000)
+        try {
+            manager.prepareConnection(ConnectionRequest(
+                HostProfile("Downgrade fixture", HostEndpoint(
+                    arguments.getString(HOST_ARGUMENT) ?: DEFAULT_HOST,
+                    arguments.getString(PORT_ARGUMENT)?.toIntOrNull() ?: DEFAULT_PORT),
+                    arguments.getString(USER_ARGUMENT) ?: DEFAULT_USER),
+                SessionCredential.Password.from(requireNotNull(password).toCharArray()),
+            ))
+            manager.connectPrepared()
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.state.filterIsInstance<SessionState.AwaitingHostKey>().first()
+            }
+            manager.resolveHostKey(HostKeyDecision.ACCEPT_AND_SAVE)
+            val downgrade = withTimeout(CONNECTION_TIMEOUT_MILLIS) {
+                manager.structuredState.filterIsInstance<StructuredShellState.Unavailable>().first()
+            }
+            assertEquals(StructuredShellUnavailableReason.BOOTSTRAP_TIMED_OUT, downgrade.reason)
+            assertTrue(manager.state.value is SessionState.Connected)
+            manager.send("printf 'live-%s\\n' terminal\r".encodeToByteArray())
+            withTimeout(COMMAND_TIMEOUT_MILLIS) {
+                while (!terminal.text().contains("live-terminal")) delay(10)
+            }
+            assertTrue(manager.state.value is SessionState.Connected)
+        } finally {
+            manager.disconnect()
+            withTimeout(CONNECTION_TIMEOUT_MILLIS) { manager.state.first { it is SessionState.Disconnected } }
+            database.close()
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test
     fun repliesReachRunningCommandAndOnlyRemoteEchoEntersSavedOutput() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
@@ -707,6 +869,7 @@ private class RecordingSshClientAdapter(
     private val delegate: SshClientAdapter,
 ) : SshClientAdapter {
     val sent = CopyOnWriteArrayList<ByteArray>()
+    val attempts = AtomicInteger()
 
     override suspend fun connect(
         request: ConnectionRequest,
@@ -714,6 +877,7 @@ private class RecordingSshClientAdapter(
         initialSize: TerminalSize,
         onStage: (dev.threadline.core.model.ConnectionStage) -> Unit,
     ): LiveSshSession {
+        attempts.incrementAndGet()
         val session = delegate.connect(request, verifier, initialSize, onStage)
         return object : LiveSshSession by session {
             override suspend fun send(bytes: ByteArray) {

@@ -18,6 +18,8 @@ interface LiveSshSession {
     val output: ReceiveChannel<ByteArray>
     val disconnects: Flow<Unit>
 
+    suspend fun outputEndError(): SessionError = SessionError.ShellEnded()
+
     suspend fun send(bytes: ByteArray)
 
     suspend fun resize(size: TerminalSize): Boolean
