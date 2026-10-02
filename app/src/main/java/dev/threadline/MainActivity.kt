@@ -82,6 +82,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.threadline.core.model.ConnectionRequest
+import dev.threadline.core.model.ConnectionTarget
 import dev.threadline.core.model.HostEndpoint
 import dev.threadline.core.model.HostKeyDecision
 import dev.threadline.core.model.HostKeyPrompt
@@ -300,6 +301,7 @@ private fun ThreadlineApp() {
     val transcriptSessions by SessionRuntime.transcriptHistory.sessions
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val transcriptSaveFailed by manager.transcriptSaveFailed.collectAsStateWithLifecycle()
+    val connectionTarget by manager.connectionTarget.collectAsStateWithLifecycle()
     val state = snapshot.connection
     var connectionDraft by rememberSaveable(stateSaver = ConnectionFormDraft.Saver) {
         mutableStateOf(ConnectionFormDraft.emptyDefaults())
@@ -318,6 +320,8 @@ private fun ThreadlineApp() {
     }
     var selectedHostProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var showConnectedSession by rememberSaveable { mutableStateOf(true) }
+    var showRecovery by rememberSaveable { mutableStateOf(true) }
+    var reconnectRequested by rememberSaveable { mutableStateOf(false) }
     val connectedSessionStateHolder = rememberSaveableStateHolder()
     var diagnosticGeneratedAtMillis by remember { mutableStateOf<Long?>(null) }
     val diagnosticEnvironment = remember(context) { androidDiagnosticEnvironment(context) }
@@ -383,9 +387,19 @@ private fun ThreadlineApp() {
     val canShowIntroduction = state is SessionState.Disconnected ||
         state is SessionState.Failed ||
         state is SessionState.Connected && !showConnectedSession
+    val endedError = (state as? SessionState.Failed)?.error?.takeIf {
+        it is SessionError.ShellEnded || it == SessionError.ConnectionLost
+    }
     val initialHomeTask = when {
-        state is SessionState.Failed -> HomeTask.CONNECTION
+        reconnectRequested -> HomeTask.CONNECTION
+        state is SessionState.Failed && endedError == null -> HomeTask.CONNECTION
         else -> homeTaskAfterIntroduction
+    }
+    LaunchedEffect(state) {
+        if (state is SessionState.Connecting || state is SessionState.Connected) {
+            showRecovery = true
+            reconnectRequested = false
+        }
     }
     LaunchedEffect(showIntroduction) {
         if (!showIntroduction) homeTaskAfterIntroduction = HomeTask.OVERVIEW
@@ -396,6 +410,23 @@ private fun ThreadlineApp() {
                 onboardingPreferences.markIntroductionComplete()
                 showIntroduction = false
             },
+        )
+    } else if (endedError != null && connectionTarget != null && showRecovery) {
+        EndedSessionScreen(
+            target = requireNotNull(connectionTarget),
+            error = endedError,
+            transcript = snapshot.transcript,
+            onReconnect = {
+                showRecovery = false
+                reconnectRequested = true
+                selectedHostProfileId = null
+            },
+            onOpenHome = {
+                showRecovery = false
+                reconnectRequested = false
+                homeTaskAfterIntroduction = HomeTask.OVERVIEW
+            },
+            onOpenDiagnostics = openDiagnostics,
         )
     } else if (state is SessionState.Connected && showConnectedSession) {
         connectedSessionStateHolder.SaveableStateProvider("active-session") {
@@ -421,7 +452,10 @@ private fun ThreadlineApp() {
             onDraftChange = { connectionDraft = it },
             sessionError = (current as? SessionState.Failed)
                 ?.error
-                ?.takeUnless { it == SessionError.NotificationPermissionRequired },
+                ?.takeUnless {
+                    it == SessionError.NotificationPermissionRequired || endedError != null
+                },
+            reconnectTarget = connectionTarget.takeIf { reconnectRequested },
             activeSessionDisplayName = (current as? SessionState.Connected)?.displayName,
             connectionEnabled = current !is SessionState.Connected,
             initialTask = initialHomeTask,
@@ -716,6 +750,7 @@ internal fun HostForm(
     draft: ConnectionFormDraft,
     onDraftChange: (ConnectionFormDraft) -> Unit,
     sessionError: SessionError?,
+    reconnectTarget: ConnectionTarget? = null,
     activeSessionDisplayName: String? = null,
     connectionEnabled: Boolean = true,
     initialTask: HomeTask = HomeTask.CONNECTION,
@@ -836,7 +871,7 @@ internal fun HostForm(
     val privateKeyBringIntoViewRequester = remember { BringIntoViewRequester() }
     val keyPassphraseFocusRequester = remember { FocusRequester() }
     val selectedHostProfile = hostProfiles.firstOrNull { it.id == selectedHostProfileId }
-    val isCredentialEntry = credentialOnly && selectedHostProfile != null
+    val isCredentialEntry = credentialOnly
     val selectedPreferredIdentity = sshIdentities.firstOrNull {
         it.id == selectedPreferredIdentityId
     }
@@ -864,19 +899,45 @@ internal fun HostForm(
         }
     }
 
-    fun clearSessionCredentialInputs() {
+    fun clearSessionCredentialInputs(clearKeySelection: Boolean = true) {
         passwordState = TextFieldState()
         keyPassphrase = ""
-        selectedKeyUri = null
-        selectedSavedKeyId = null
+        if (clearKeySelection) {
+            selectedKeyUri = null
+            selectedSavedKeyId = null
+        }
         savePrivateKey = false
         validationError = null
         connectionPreparationError = null
     }
 
+    LaunchedEffect(reconnectTarget) {
+        val target = reconnectTarget ?: return@LaunchedEffect
+        clearSessionCredentialInputs()
+        selectedPreferredIdentityId = target.identityId
+        selectedSavedKeyId = target.importedPrivateKeyId
+        selectedKeyUri = target.privateKeyUri
+        credentialOnly = true
+        savedTask = HomeTask.CONNECTION.name
+        onDraftChange(
+            ConnectionFormDraft(
+                displayName = target.profile.displayName,
+                hostname = target.profile.endpoint.hostname,
+                port = target.profile.endpoint.port.toString(),
+                username = target.profile.username,
+                authenticationMode = if (target.usesPrivateKey) {
+                    AuthenticationMode.PRIVATE_KEY
+                } else {
+                    AuthenticationMode.PASSWORD
+                },
+                ephemeral = target.ephemeral,
+            ),
+        )
+    }
+
     LaunchedEffect(notificationPermissionState) {
         if (!notificationPermissionState.allowsCredentialEntry) {
-            clearSessionCredentialInputs()
+            clearSessionCredentialInputs(clearKeySelection = reconnectTarget == null)
         }
     }
 
@@ -1069,6 +1130,8 @@ internal fun HostForm(
                                                 ),
                                                 credential = credential,
                                                 ephemeral = false,
+                                                identityId = identity.id,
+                                                importedPrivateKeyId = identity.importedPrivateKeyId,
                                             )
                                             if (onPrepared(request)) {
                                                 transferred = true
@@ -1190,7 +1253,11 @@ internal fun HostForm(
             }
 
             HomeTaskHeader(
-                title = selectedHostProfile?.displayName ?: "New connection",
+                title = if (isCredentialEntry) {
+                    draft.displayName
+                } else {
+                    selectedHostProfile?.displayName ?: "New connection"
+                },
                 onBack = {
                     clearSessionCredentialInputs()
                     formError = null
@@ -1204,15 +1271,16 @@ internal fun HostForm(
             )
             Text(
                 if (isCredentialEntry) {
-                    val profile = requireNotNull(selectedHostProfile)
-                    "${selectedPreferredIdentity?.username ?: profile.username}@" +
-                        "${profile.hostname}:${profile.port}"
+                    "${draft.username}@${draft.hostname}:${draft.port}"
                 } else {
                     "Threadline connects directly to the SSH endpoint you enter and verifies " +
                         "the server before signing in."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (isCredentialEntry && reconnectTarget != null) {
+                Text(FreshShellNotice, style = MaterialTheme.typography.bodySmall)
+            }
             if (isCredentialEntry) {
                 TextButton(
                     onClick = { credentialOnly = false },
@@ -1794,6 +1862,13 @@ internal fun HostForm(
                                 profile = profile,
                                 credential = credential,
                                 ephemeral = draft.ephemeral,
+                                identityId = selectedPreferredIdentityId,
+                                importedPrivateKeyId = selectedSavedKeyId.takeIf {
+                                    draft.authenticationMode == AuthenticationMode.PRIVATE_KEY
+                                },
+                                privateKeyUri = selectedKeyUri.takeIf {
+                                    draft.authenticationMode == AuthenticationMode.PRIVATE_KEY
+                                },
                             )
                             if (onPrepared(request)) {
                                 credentialTransferred = true

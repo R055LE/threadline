@@ -65,10 +65,22 @@ class ConnectionRequest(
     val profile: HostProfile,
     val credential: SessionCredential,
     val ephemeral: Boolean = false,
+    val identityId: String? = null,
+    val importedPrivateKeyId: String? = null,
+    val privateKeyUri: String? = null,
 ) {
     override fun toString(): String =
         "ConnectionRequest(profile=$profile, credential=$credential, ephemeral=$ephemeral)"
 }
+
+data class ConnectionTarget(
+    val profile: HostProfile,
+    val usesPrivateKey: Boolean,
+    val ephemeral: Boolean,
+    val identityId: String?,
+    val importedPrivateKeyId: String?,
+    val privateKeyUri: String?,
+)
 
 data class TerminalSize(
     val rows: Int,
@@ -168,6 +180,12 @@ sealed interface SessionError {
 
     data object ConnectionLost : SessionError {
         override val userMessage: String = "The SSH connection was lost."
+    }
+
+    data class ShellEnded(val exitStatus: Long? = null) : SessionError {
+        override val userMessage: String = exitStatus?.let {
+            "The remote shell ended with exit status $it."
+        } ?: "The remote shell or SSH channel ended without an exit status."
     }
 
     data object InputBackpressure : SessionError {

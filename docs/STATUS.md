@@ -1,6 +1,6 @@
 # Threadline current status
 
-Updated: 2026-09-25
+Updated: 2026-10-01
 
 This is the canonical execution-status page. `PROJECT_SPEC.md` remains the normative product and
 technical specification. Dated investigations are historical evidence for the boundary they
@@ -30,6 +30,14 @@ Start with the connection increment for the first tester-visible gain. Issues
 without a dependency may be worked independently. Signed builds continue through
 direct invited sharing; public release needs a separate decision. No feature in
 this roadmap is implemented merely because its issue is open.
+
+Fresh-shell recovery (#50) keeps the available transcript when a shell or channel ends or the
+connection is lost. Starting a fresh shell repeats host-key verification and credential entry or
+unlock, with the original endpoint and identity selection. It creates a new session without
+restoring shell state or replaying commands. Integration downgrade keeps the live raw terminal.
+The recovery fixture exposed an uncaught receive-window write failure in sshlib 0.4.2 (#73).
+The adapter uses 0.5.0 with its receive window explicitly kept at 64 KiB; repeated transport-loss
+and existing SSH/PTY, trust, imported-key, and transcript fixture paths passed on Android.
 
 ## Phase 5 checkpoint (historical)
 

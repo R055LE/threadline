@@ -86,6 +86,8 @@ class SessionErrorPresentationTest {
         SessionError.NetworkUnreachable,
         SessionError.ProtocolMismatch,
         SessionError.ConnectionLost,
+        SessionError.ShellEnded(),
+        SessionError.ShellEnded(1),
         SessionError.InputBackpressure,
         SessionError.TerminalRendererFailed,
         SessionError.NotificationPermissionRequired,

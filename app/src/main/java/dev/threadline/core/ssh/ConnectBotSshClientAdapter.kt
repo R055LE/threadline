@@ -13,7 +13,16 @@ import java.nio.channels.UnresolvedAddressException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeoutOrNull
 import org.connectbot.sshlib.AuthResult
 import org.connectbot.sshlib.ConnectResult
 import org.connectbot.sshlib.HostKeyVerifier
@@ -21,6 +30,7 @@ import org.connectbot.sshlib.PublicKey
 import org.connectbot.sshlib.SshClient
 import org.connectbot.sshlib.SshClientConfig
 import org.connectbot.sshlib.SshSession
+import org.connectbot.sshlib.SessionExit
 
 class ConnectBotSshClientAdapter(
     private val hostKeyAlgorithmsOverride: String? = null,
@@ -35,6 +45,9 @@ class ConnectBotSshClientAdapter(
             host = request.profile.endpoint.hostname
             port = request.profile.endpoint.port
             preferPasswordAuth = true
+            autoDisconnectOnLastChannelClose = false
+            // Preserve the existing bound on unread remote output after the library update.
+            sessionWindowSize = 64 * 1024
             hostKeyAlgorithmsOverride?.let { hostKeyAlgorithms = it }
             hostKeyVerifier = object : HostKeyVerifier {
                 override suspend fun verify(key: PublicKey): Boolean =
@@ -42,7 +55,13 @@ class ConnectBotSshClientAdapter(
             }
         }
         val client = SshClient(config)
+        val monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val connectionEnded = monitorScope.async(start = CoroutineStart.UNDISPATCHED) {
+            client.disconnectedFlow.first()
+            Unit
+        }
         var session: SshSession? = null
+        var transferred = false
 
         try {
             when (val result = client.connect()) {
@@ -91,7 +110,8 @@ class ConnectBotSshClientAdapter(
                 throw SshAdapterException(SessionError.ShellRejected)
             }
 
-            return ConnectBotLiveSession(client, session)
+            transferred = true
+            return ConnectBotLiveSession(client, session, connectionEnded, monitorScope)
         } catch (cancelled: CancellationException) {
             cleanUp(client, session)
             throw cancelled
@@ -103,6 +123,7 @@ class ConnectBotSshClientAdapter(
             throw SshAdapterException(transportSessionError(unexpected), unexpected)
         } finally {
             request.credential.clear()
+            if (!transferred) monitorScope.cancel()
         }
     }
 
@@ -157,9 +178,29 @@ private const val MAX_CAUSE_DEPTH = 8
 private class ConnectBotLiveSession(
     private val client: SshClient,
     private val session: SshSession,
+    private val connectionEnded: Deferred<Unit>,
+    private val monitorScope: CoroutineScope,
 ) : LiveSshSession {
     override val output: ReceiveChannel<ByteArray> = session.stdout
-    override val disconnects: Flow<Unit> = client.disconnectedFlow.map { }
+    override val disconnects: Flow<Unit> = flow {
+        connectionEnded.await()
+        // A reported shell exit takes precedence over a following transport shutdown.
+        if (session.exitInfo.await() == null) emit(Unit)
+    }
+
+    override suspend fun outputEndError(): SessionError =
+        // sshlib resolves unknown exit info before forwarding transport failure.
+        // Bound the wait because EOF alone need not include an exit report or CLOSE.
+        withTimeoutOrNull(1_000) {
+            when (val exit = session.exitInfo.await()) {
+                is SessionExit.Status -> SessionError.ShellEnded(exit.code)
+                is SessionExit.Signal -> SessionError.ShellEnded()
+                null -> {
+                    connectionEnded.await()
+                    SessionError.ConnectionLost
+                }
+            }
+        } ?: SessionError.ShellEnded()
 
     override suspend fun send(bytes: ByteArray) = session.write(bytes)
 
@@ -172,7 +213,11 @@ private class ConnectBotLiveSession(
         )
 
     override suspend fun disconnect() {
-        runCatching { session.close() }
-        client.disconnect()
+        try {
+            runCatching { session.close() }
+            client.disconnect()
+        } finally {
+            monitorScope.cancel()
+        }
     }
 }

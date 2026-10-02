@@ -97,6 +97,7 @@ class SshSessionService : Service() {
             SessionState.Disconnected,
             is SessionState.Failed,
             -> {
+                handlesSessionCommand = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }

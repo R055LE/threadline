@@ -3,6 +3,7 @@ package dev.threadline
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
@@ -99,6 +100,9 @@ import dev.threadline.core.terminal.TerminalKey
 import dev.threadline.core.terminal.TerminalModifiers
 import dev.threadline.core.transcript.AnsiColor
 import dev.threadline.core.transcript.CommandOutput
+import dev.threadline.core.model.ConnectionTarget
+import dev.threadline.core.model.SessionError
+import dev.threadline.core.model.presentation
 import dev.threadline.core.transcript.CommandStatus
 import dev.threadline.core.transcript.CommandTranscriptState
 import dev.threadline.core.transcript.CommandTurn
@@ -108,6 +112,8 @@ import kotlinx.coroutines.delay
 import org.connectbot.terminal.Terminal
 
 internal object TranscriptTags {
+    const val ENDED_SESSION = "session-ended"
+    const val RECONNECT = "session-reconnect"
     const val TRANSCRIPT = "session-transcript"
     const val COMPOSER = "command-composer"
     const val SEND = "command-send"
@@ -163,6 +169,86 @@ private val terminalExtraKeys = listOf(
 )
 
 private val CompactRawSessionHeight = 360.dp
+
+internal const val FreshShellNotice =
+    "A fresh connection starts a new shell. The old directory, exports, aliases, functions, " +
+        "and remote processes are not restored. No command is replayed. " +
+        "Remote processes may still be running on the server."
+
+@Composable
+internal fun EndedSessionScreen(
+    target: ConnectionTarget,
+    error: SessionError,
+    transcript: CommandTranscriptState,
+    onReconnect: () -> Unit,
+    onOpenHome: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {},
+) {
+    BackHandler(onBack = onOpenHome)
+    val presentation = error.presentation()
+    val uriHandler = LocalUriHandler.current
+    Scaffold(
+        topBar = {
+            Column(Modifier.statusBarsPadding()) {
+                Text(
+                    target.profile.displayName,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp).semantics { heading() },
+                )
+                Row {
+                    TextButton(onClick = onOpenHome) { Text("Home") }
+                    TextButton(onClick = onOpenDiagnostics) { Text("Diagnostics") }
+                }
+                HorizontalDivider()
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.padding(padding).fillMaxSize()
+                .testTag(TranscriptTags.ENDED_SESSION),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                ) {
+                    Text(presentation.title, style = MaterialTheme.typography.titleMedium)
+                    Text(presentation.message)
+                    Text(presentation.recovery, style = MaterialTheme.typography.bodySmall)
+                    Text(FreshShellNotice, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "The server identity is verified again. Enter or unlock credentials again.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Button(
+                        onClick = onReconnect,
+                        modifier = Modifier.testTag(TranscriptTags.RECONNECT),
+                    ) {
+                        Text("Start fresh shell")
+                    }
+                }
+            }
+            items(transcript.turns, key = { it.id.value }) { turn ->
+                CommandCard(
+                    turn = turn,
+                    canSubmit = false,
+                    canReply = false,
+                    onReply = { _, _ -> ReplySubmissionResult.NOT_RUNNING },
+                    onStop = {},
+                    onDisconnect = {},
+                    onEdit = {},
+                    onRerun = {},
+                    onOpenUrl = uriHandler::openUri,
+                    onOpenTerminal = {},
+                    clockMillis = System::currentTimeMillis,
+                    readOnly = true,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 internal fun ConnectedSessionScreen(
@@ -1015,6 +1101,7 @@ private fun CommandCard(
     onOpenTerminal: () -> Unit,
     clockMillis: () -> Long,
     modifier: Modifier = Modifier,
+    readOnly: Boolean = false,
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable(turn.id.value) { mutableStateOf(false) }
@@ -1081,7 +1168,11 @@ private fun CommandCard(
             }
             if (turn.output.approximate) {
                 Text(
-                    "Transcript rendering is approximate; open Terminal for the exact view.",
+                    if (readOnly) {
+                        "Transcript rendering is approximate."
+                    } else {
+                        "Transcript rendering is approximate; open Terminal for the exact view."
+                    },
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
@@ -1136,7 +1227,7 @@ private fun CommandCard(
                         }
                     }
 
-                    else -> {
+                    else -> if (!readOnly) {
                         TextButton(onClick = onRerun, enabled = canSubmit) { Text("Rerun") }
                     }
                 }
@@ -1153,7 +1244,7 @@ private fun CommandCard(
                         expanded = cardActionsExpanded,
                         onDismissRequest = { cardActionsExpanded = false },
                     ) {
-                        if (!turn.status.isActive()) {
+                        if (!readOnly && !turn.status.isActive()) {
                             DropdownMenuItem(
                                 text = { Text("Edit command") },
                                 onClick = {
